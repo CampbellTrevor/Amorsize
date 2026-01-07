@@ -61,3 +61,18 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Example-generated files
+examples/*.log
+examples/*.csv
+examples/*.txt
+examples/dns_logs/
+*.tmp
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

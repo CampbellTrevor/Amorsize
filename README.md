@@ -2,28 +2,49 @@
 
 **Dynamic Parallelism Optimizer & Overhead Calculator**
 
-Amorsize is a Python utility that analyzes the cost-benefit ratio of parallelization and returns optimal `n_jobs` and `chunksize` parameters to minimize total execution time. It prevents "Negative Scaling" where parallelism becomes slower than serial execution.
+Amorsize analyzes your Python functions and data to determine the optimal parallelization parameters (`n_jobs` and `chunksize`), preventing "Negative Scaling" where parallelism becomes slower than serial execution.
+
+## Why Amorsize?
+
+**The Problem:** Blindly using `multiprocessing.Pool` with `n_jobs=-1` can make your code *slower* due to overhead from process spawning, memory copying, and inter-process communication.
+
+**The Solution:** Amorsize performs intelligent analysis to tell you:
+- ✅ Whether parallelization will help (or hurt)
+- ✅ The optimal number of workers for your system
+- ✅ The ideal chunk size for your workload
+- ✅ Expected speedup vs serial execution
 
 ## Features
 
-- 🚀 **Automatic Optimization**: Determines optimal parallelization parameters
-- 🔍 **Intelligent Analysis**: Performs heuristic dry-runs without executing full workload
-- 💾 **Memory-Aware**: Considers RAM constraints when suggesting worker counts
-- 🖥️ **OS-Aware**: Adjusts overhead estimates based on your operating system
-- ⚡ **CPU Detection**: Uses physical cores (not hyperthreaded) for optimal performance
-- 🛡️ **Safety Checks**: Validates function picklability and handles edge cases
+- 🚀 **Automatic Optimization**: Analyzes function+data and recommends optimal parameters
+- 🔍 **Intelligent Sampling**: Quick dry-run analysis without executing full workload
+- 💾 **Memory-Aware**: Prevents OOM by considering RAM constraints
+- 🖥️ **OS-Aware**: Adjusts for Linux (`fork`) vs Windows/macOS (`spawn`) overhead
+- ⚡ **CPU Detection**: Uses physical cores (not hyperthreaded) for best performance
+- 🛡️ **Safety Checks**: Validates function picklability and handles edge cases gracefully
 
 ## Installation
 
+### From source (development)
+
 ```bash
+git clone https://github.com/CampbellTrevor/Amorsize.git
+cd Amorsize
 pip install -e .
 ```
 
-For full functionality with physical core detection:
+### With optional dependencies
+
+For enhanced physical core detection:
 
 ```bash
 pip install -e ".[full]"
 ```
+
+### Requirements
+
+- Python 3.7+
+- Optional: `psutil` for accurate physical core detection (included in `[full]`)
 
 ## Quick Start
 
@@ -58,25 +79,13 @@ with Pool(processes=result.n_jobs) as pool:
 
 ## How It Works
 
-Amorsize follows a systematic approach based on Amdahl's Law:
+Amorsize uses a 3-step process based on Amdahl's Law:
 
-### 1. Dry Run Sampling
-- Executes function on a small sample (default: 5 items)
-- Measures average execution time
-- Measures return object size for IPC cost estimation
-- Tracks peak memory usage
+1. **Dry Run Sampling**: Executes function on small sample (default: 5 items) to measure timing, memory, and serialization costs
+2. **Overhead Estimation**: Calculates process spawn costs (OS-dependent) and performs fast-fail checks  
+3. **Optimization**: Determines optimal `chunksize` (targets 0.2s/chunk) and `n_jobs` (physical cores, adjusted for memory)
 
-### 2. Overhead Estimation
-- Calculates process spawn cost based on OS:
-  - Linux: ~0.05s (uses `fork`)
-  - Windows/macOS: ~0.2s (uses `spawn`)
-- Estimates total execution time
-- Performs "Fast Fail" if parallelization overhead would dominate
-
-### 3. Optimization
-- **Chunksize**: Targets 0.2s per chunk to amortize IPC overhead
-- **Worker Count**: Uses physical cores, adjusted for memory constraints
-- **Speedup Estimation**: Provides expected performance improvement
+Result: `n_jobs = min(physical_cores, available_RAM / estimated_job_RAM)`
 
 ## API Reference
 
@@ -85,101 +94,59 @@ Amorsize follows a systematic approach based on Amdahl's Law:
 Analyzes a function and data to determine optimal parallelization parameters.
 
 **Parameters:**
-- `func` (Callable): Function to parallelize. Must accept a single argument.
+- `func` (Callable): Function to parallelize (must accept single argument)
 - `data` (Iterable): Input data (list, generator, or iterator)
-- `sample_size` (int): Number of items to sample for timing (default: 5)
-- `target_chunk_duration` (float): Target duration per chunk in seconds (default: 0.2)
-- `verbose` (bool): Print detailed analysis information (default: False)
+- `sample_size` (int): Items to sample for timing (default: 5)
+- `target_chunk_duration` (float): Target seconds per chunk (default: 0.2)
+- `verbose` (bool): Print detailed analysis (default: False)
 
 **Returns:**
-- `OptimizationResult`: Object containing:
+- `OptimizationResult` with attributes:
   - `n_jobs`: Recommended number of workers
   - `chunksize`: Recommended chunk size
-  - `reason`: Explanation of the recommendation
+  - `reason`: Explanation of recommendation
   - `estimated_speedup`: Expected performance improvement
-  - `warnings`: List of any warnings or constraints
+  - `warnings`: List of constraints or issues
 
-## Design Principles
+## Examples & Use Cases
 
-### System Constraints
-- **Physical vs Logical Cores**: Distinguishes between physical and hyperthreaded cores
-- **OS Fork Methods**: Adjusts overhead based on `fork` (Linux) vs `spawn` (Windows/macOS)
-- **Memory Ceiling**: Calculates `Max_Workers = min(CPU_Count, Available_RAM / Est_Job_RAM)`
+Amorsize includes comprehensive examples in the `examples/` directory:
 
-### Workload Constraints
-- **Serialization Cost**: Measures pickle size to account for IPC overhead
-- **Task Granularity**: Optimizes chunksize to amortize per-task overhead
-- **Fast Fail**: Skips parallelization for very fast or small workloads
+- **Quick Start**: `basic_usage.py` - Simple examples for common use cases
+- **Interactive**: `amorsize_quickstart.ipynb` - Jupyter notebook with drop-in template
+- **Real-World**: `dns_entropy_analysis.py` - 120MB log file analysis for security
+- **Memory-Constrained**: Multiple examples showing intermediate `n_jobs` values
 
-## Examples
+See [examples/README.md](examples/README.md) for complete documentation.
 
-### Example 1: CPU-Bound Task
+## Testing
 
-```python
-import numpy as np
-from amorsize import optimize
+Run the test suite:
 
-def matrix_operation(size):
-    """Expensive matrix computation"""
-    a = np.random.rand(size, size)
-    b = np.random.rand(size, size)
-    return np.dot(a, b)
-
-data = [100, 200, 300, 400, 500]
-result = optimize(matrix_operation, data)
-print(f"Use {result.n_jobs} workers with chunksize={result.chunksize}")
+```bash
+pytest tests/ -v
 ```
 
-### Example 2: Generator Input
+All 44 tests cover core functionality, edge cases, and expensive computational scenarios.
 
-```python
-from amorsize import optimize
+## How It Works
 
-def process_item(item):
-    return item ** 2 + item ** 3
+Amorsize uses a 3-step process based on Amdahl's Law:
 
-def data_generator():
-    """Lazy data generation"""
-    for i in range(100000):
-        yield i
+1. **Dry Run Sampling**: Executes function on small sample (default: 5 items) to measure timing, memory, and serialization costs
+2. **Overhead Estimation**: Calculates process spawn costs (OS-dependent) and performs fast-fail checks
+3. **Optimization**: Determines optimal `chunksize` (targets 0.2s/chunk) and `n_jobs` (physical cores, adjusted for memory)
 
-result = optimize(process_item, data_generator())
-print(result)
-```
-
-### Example 3: Too Fast for Parallelization
-
-```python
-from amorsize import optimize
-
-def simple_function(x):
-    return x * 2
-
-data = range(100)
-result = optimize(simple_function, data, verbose=True)
-# Will recommend n_jobs=1 due to overhead
-```
-
-## Requirements
-
-- Python 3.7+
-- Optional: `psutil` for accurate physical core detection
+Result: `n_jobs = min(physical_cores, available_RAM / estimated_job_RAM)`
 
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
 Contributions welcome! Please feel free to submit a Pull Request.
 
-## Implementation Details
+## Design Document
 
-Based on the design document in `Writeup.md`, Amorsize implements:
-- ✅ Generator handling with `itertools.islice`
-- ✅ Picklability checking
-- ✅ Physical core detection
-- ✅ OS-specific overhead estimation
-- ✅ Memory constraint calculation
-- ✅ Optimal chunksize calculation
-- ✅ Clear error propagation
+See [Writeup.md](Writeup.md) for the complete design specification and implementation checklist.
