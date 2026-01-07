@@ -3,14 +3,9 @@ Setup configuration for Amorsize package.
 """
 
 from setuptools import setup, find_packages
-import os
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
-
-# Read requirements
-with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
     name="amorsize",
@@ -38,7 +33,9 @@ setup(
     ],
     keywords="multiprocessing parallelization optimization performance amdahl overhead",
     python_requires=">=3.7",
-    install_requires=requirements,
+    install_requires=[
+        # No required dependencies - psutil is optional
+    ],
     extras_require={
         "full": ["psutil>=5.8.0"],
         "dev": [
