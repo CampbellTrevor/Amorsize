@@ -47,30 +47,60 @@ def optimize(
     data: Union[List, Iterator],
     sample_size: int = 5,
     target_chunk_duration: float = 0.2,
-    verbose: bool = False
+    verbose: bool = False,
+    use_spawn_benchmark: bool = False
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
     
     This function performs a heuristic analysis to prevent "Negative Scaling"
-    where parallelism is slower than serial execution.
+    where parallelism is slower than serial execution, following these steps:
+    
+    1. Dry Run Sampling: Execute func on sample_size items to measure timing
+    2. Overhead Estimation: Calculate process spawn costs (OS-dependent)
+    3. Optimization: Determine optimal chunksize and n_jobs based on:
+       - Target chunk duration (default: 0.2s to amortize IPC overhead)
+       - Physical cores (not hyperthreaded logical cores)
+       - Memory constraints (prevents OOM)
+    
+    Fail-Safe Protocol:
+        If ANY step fails (pickling error, sampling error, etc.), the function
+        returns n_jobs=1 (serial execution) rather than crashing your program.
+        Safety over speed is the priority.
+    
+    Generator Handling:
+        When data is a generator, sampling consumes the first sample_size items.
+        These items are NOT returned to the generator. If you need to preserve
+        the full dataset, pass a list or use itertools.tee before calling.
     
     Args:
-        func: The function to parallelize. Must accept a single argument.
-        data: Iterable of input data
+        func: The function to parallelize. Must accept a single argument and
+              be picklable (no lambdas, no local functions with closures).
+        data: Iterable of input data (list, range, generator, etc.)
         sample_size: Number of items to sample for timing (default: 5)
+                    Larger values = more accurate but slower analysis
         target_chunk_duration: Target duration per chunk in seconds (default: 0.2)
-        verbose: If True, print detailed information
+                              Higher values = fewer chunks, less overhead
+        verbose: If True, print detailed analysis information
+        use_spawn_benchmark: If True, measure actual spawn cost instead of
+                            using OS-based estimate (slower but more accurate)
     
     Returns:
         OptimizationResult with recommended n_jobs and chunksize
     
     Example:
         >>> def expensive_function(x):
-        ...     return x ** 2
+        ...     result = 0
+        ...     for i in range(1000):
+        ...         result += x ** 2
+        ...     return result
         >>> data = range(10000)
-        >>> result = optimize(expensive_function, data)
+        >>> result = optimize(expensive_function, data, verbose=True)
         >>> print(f"Use n_jobs={result.n_jobs}, chunksize={result.chunksize}")
+        >>> # Now use with multiprocessing.Pool:
+        >>> from multiprocessing import Pool
+        >>> with Pool(result.n_jobs) as pool:
+        ...     results = pool.map(expensive_function, data, chunksize=result.chunksize)
     """
     result_warnings = []
     
@@ -134,7 +164,7 @@ def optimize(
     
     # Step 4: Get system information
     physical_cores = get_physical_cores()
-    spawn_cost = get_spawn_cost()
+    spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     
     if verbose:
         print(f"Physical cores: {physical_cores}")

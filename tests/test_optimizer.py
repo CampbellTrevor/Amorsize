@@ -137,3 +137,18 @@ def test_optimize_with_custom_parameters():
     
     assert isinstance(result, OptimizationResult)
     assert result.chunksize >= 1
+
+
+def test_optimize_with_spawn_benchmark():
+    """Test optimization with spawn benchmarking enabled."""
+    data = list(range(100))
+    result = optimize(
+        medium_function,
+        data,
+        use_spawn_benchmark=True,
+        verbose=False
+    )
+    
+    assert isinstance(result, OptimizationResult)
+    assert result.n_jobs >= 1
+    assert result.chunksize >= 1

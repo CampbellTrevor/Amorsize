@@ -9,7 +9,8 @@ from amorsize.sampling import (
     safe_slice_data,
     perform_dry_run,
     estimate_total_items,
-    SamplingResult
+    SamplingResult,
+    reconstruct_iterator
 )
 
 
@@ -43,11 +44,12 @@ def test_check_picklability():
 def test_safe_slice_data_list():
     """Test slicing from a list."""
     data = list(range(100))
-    sample, is_gen = safe_slice_data(data, 5)
+    sample, reconstructed, is_gen = safe_slice_data(data, 5)
     
     assert len(sample) == 5
     assert sample == [0, 1, 2, 3, 4]
     assert is_gen is False
+    assert reconstructed == data  # Original list unchanged
 
 
 def test_safe_slice_data_generator():
@@ -57,11 +59,15 @@ def test_safe_slice_data_generator():
             yield i
     
     data = gen()
-    sample, is_gen = safe_slice_data(data, 5)
+    sample, remaining, is_gen = safe_slice_data(data, 5)
     
     assert len(sample) == 5
     assert sample == [0, 1, 2, 3, 4]
     assert is_gen is True
+    
+    # Verify remaining data continues from where sample left off
+    next_item = next(remaining)
+    assert next_item == 5
 
 
 def test_perform_dry_run_simple():
@@ -123,3 +129,20 @@ def test_estimate_total_items_generator():
     data = gen()
     count = estimate_total_items(data, True)
     assert count == -1  # Cannot determine size
+
+
+def test_reconstruct_iterator():
+    """Test reconstructing an iterator from sample and remaining data."""
+    def gen():
+        for i in range(10):
+            yield i
+    
+    data = gen()
+    sample, remaining, is_gen = safe_slice_data(data, 3)
+    
+    # Reconstruct the full iterator
+    reconstructed = reconstruct_iterator(sample, remaining)
+    
+    # Verify we get all items back in order
+    result = list(reconstructed)
+    assert result == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
