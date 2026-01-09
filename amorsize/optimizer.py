@@ -208,7 +208,8 @@ class OptimizationResult:
         estimated_speedup: float = 1.0,
         warnings: List[str] = None,
         data: Union[List, Iterator, None] = None,
-        profile: Optional[DiagnosticProfile] = None
+        profile: Optional[DiagnosticProfile] = None,
+        executor_type: str = "process"
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -217,16 +218,18 @@ class OptimizationResult:
         self.warnings = warnings or []
         self.data = data
         self.profile = profile
+        self.executor_type = executor_type  # "process" or "thread"
     
     def __repr__(self):
         return (
             f"OptimizationResult(n_jobs={self.n_jobs}, "
             f"chunksize={self.chunksize}, "
+            f"executor_type='{self.executor_type}', "
             f"estimated_speedup={self.estimated_speedup:.2f}x)"
         )
     
     def __str__(self):
-        result = f"Recommended: n_jobs={self.n_jobs}, chunksize={self.chunksize}\n"
+        result = f"Recommended: n_jobs={self.n_jobs}, chunksize={self.chunksize}, executor={self.executor_type}\n"
         result += f"Reason: {self.reason}\n"
         result += f"Estimated speedup: {self.estimated_speedup:.2f}x"
         if self.warnings:
@@ -255,7 +258,8 @@ def _validate_optimize_parameters(
     use_chunking_benchmark: bool,
     profile: bool,
     auto_adjust_for_nested_parallelism: bool,
-    progress_callback: Any
+    progress_callback: Any,
+    prefer_threads_for_io: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -271,6 +275,7 @@ def _validate_optimize_parameters(
         profile: Profile flag to validate
         auto_adjust_for_nested_parallelism: Auto-adjust flag to validate
         progress_callback: Progress callback to validate
+        prefer_threads_for_io: Prefer threads for I/O flag to validate
     
     Returns:
         None if all parameters are valid, error message string otherwise
@@ -314,6 +319,8 @@ def _validate_optimize_parameters(
         return f"profile must be a boolean, got {type(profile).__name__}"
     if not isinstance(auto_adjust_for_nested_parallelism, bool):
         return f"auto_adjust_for_nested_parallelism must be a boolean, got {type(auto_adjust_for_nested_parallelism).__name__}"
+    if not isinstance(prefer_threads_for_io, bool):
+        return f"prefer_threads_for_io must be a boolean, got {type(prefer_threads_for_io).__name__}"
     
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
@@ -415,7 +422,8 @@ def optimize(
     use_chunking_benchmark: bool = True,
     profile: bool = False,
     auto_adjust_for_nested_parallelism: bool = True,
-    progress_callback: Optional[Callable[[str, float], None]] = None
+    progress_callback: Optional[Callable[[str, float], None]] = None,
+    prefer_threads_for_io: bool = True
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -488,6 +496,12 @@ def optimize(
                 `callback(phase: str, progress: float)` where phase is a descriptive
                 string and progress is a value from 0.0 to 1.0. Default is None (no callbacks).
                 Example: `lambda phase, pct: print(f"{phase}: {pct*100:.0f}%")`
+        prefer_threads_for_io: If True, automatically use ThreadPoolExecutor instead of
+                multiprocessing.Pool for I/O-bound workloads (< 30% CPU utilization).
+                Threading is typically faster for I/O-bound tasks due to lower overhead
+                and better handling of I/O operations that release the GIL. 
+                (default: True). Set to False to always use multiprocessing.
+                Must be a boolean.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -498,6 +512,7 @@ def optimize(
             - n_jobs: Recommended number of workers
             - chunksize: Recommended chunk size
             - data: Reconstructed data (important for generators!)
+            - executor_type: "process" (multiprocessing) or "thread" (threading)
             - reason: Explanation of recommendation
             - estimated_speedup: Expected performance improvement
             - warnings: List of constraints or issues
@@ -526,7 +541,7 @@ def optimize(
     validation_error = _validate_optimize_parameters(
         func, data, sample_size, target_chunk_duration,
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
-        auto_adjust_for_nested_parallelism, progress_callback
+        auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io
     )
     
     if validation_error:
@@ -699,6 +714,15 @@ def optimize(
             print(f"WARNING: {workload_warning}")
             print(f"  {recommendation}")
 
+    # Determine executor type based on workload and user preference
+    executor_type = "process"  # Default to multiprocessing
+    if prefer_threads_for_io and sampling_result.workload_type == "io_bound":
+        # Use threading for I/O-bound workloads (lower overhead, better for I/O)
+        executor_type = "thread"
+        if verbose:
+            print("Using ThreadPoolExecutor for I/O-bound workload")
+        if diag:
+            diag.recommendations.append("Using ThreadPoolExecutor instead of multiprocessing for I/O-bound workload")
     
     # Check for errors during sampling
     if sampling_result.error:
@@ -712,7 +736,8 @@ def optimize(
             estimated_speedup=1.0,
             warnings=[f"Sampling failed: {str(sampling_result.error)}"],
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            executor_type="process"  # Serial execution, doesn't matter
         )
     
     # Check picklability
@@ -728,7 +753,8 @@ def optimize(
             estimated_speedup=1.0,
             warnings=["Function cannot be pickled. Use serial execution."],
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            executor_type="process"  # Serial execution, doesn't matter
         )
     
     # Check if data items are picklable
@@ -750,7 +776,8 @@ def optimize(
             estimated_speedup=1.0,
             warnings=[error_msg + ". Use serial execution."],
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            executor_type="process"  # Serial execution, doesn't matter
         )
     
     avg_time = sampling_result.avg_time
@@ -894,7 +921,8 @@ def optimize(
                 estimated_speedup=1.0,
                 warnings=result_warnings,
                 data=reconstructed_data,
-                profile=diag
+                profile=diag,
+                executor_type="process"  # Serial execution, doesn't matter
             )
     
     # Step 6: Calculate optimal chunksize
@@ -1042,7 +1070,8 @@ def optimize(
                 estimated_speedup=1.0,
                 warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"],
                 data=reconstructed_data,
-                profile=diag
+                profile=diag,
+                executor_type="process"  # Serial execution, doesn't matter
             )
     else:
         # Fallback for cases where we don't have enough info
@@ -1066,7 +1095,8 @@ def optimize(
             estimated_speedup=1.0,
             warnings=result_warnings,
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            executor_type="process"  # Serial execution, doesn't matter
         )
     
     # Success case: parallelization is beneficial
@@ -1084,5 +1114,6 @@ def optimize(
         estimated_speedup=estimated_speedup,
         warnings=result_warnings,
         data=reconstructed_data,
-        profile=diag
+        profile=diag,
+        executor_type=executor_type  # Use the determined executor type
     )

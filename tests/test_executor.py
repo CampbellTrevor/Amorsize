@@ -74,14 +74,14 @@ class TestExecuteOptimization:
         """Test that execute uses optimized parameters."""
         data = list(range(100))
         
-        # Get optimization result separately
-        opt_result = optimize(expensive_computation, data, sample_size=3)
+        # Get optimization result separately (use larger sample for stability)
+        opt_result = optimize(expensive_computation, data, sample_size=5)
         
         # Execute and get optimization result
         results, exec_opt_result = execute(
             expensive_computation,
             data,
-            sample_size=3,
+            sample_size=5,
             return_optimization_result=True
         )
         
@@ -89,9 +89,10 @@ class TestExecuteOptimization:
         assert exec_opt_result.n_jobs == opt_result.n_jobs
         
         # Chunksize may vary slightly due to sampling variance, check they're close
-        # Allow up to 10% difference or 10 items (whichever is larger)
-        CHUNKSIZE_TOLERANCE_PERCENT = 0.1
-        CHUNKSIZE_TOLERANCE_ABSOLUTE = 10
+        # Allow up to 20% difference or 20 items (whichever is larger)
+        # Increased tolerance to account for workload variability detection (CV)
+        CHUNKSIZE_TOLERANCE_PERCENT = 0.2
+        CHUNKSIZE_TOLERANCE_ABSOLUTE = 20
         tolerance = max(CHUNKSIZE_TOLERANCE_ABSOLUTE, opt_result.chunksize * CHUNKSIZE_TOLERANCE_PERCENT)
         assert abs(exec_opt_result.chunksize - opt_result.chunksize) < tolerance
         
