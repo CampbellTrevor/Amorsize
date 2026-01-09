@@ -8,7 +8,6 @@ useful when optimize() warns about result memory exceeding safety thresholds.
 
 from typing import Any, Callable, Iterator, List, Union, Optional
 from multiprocessing import Pool
-import itertools
 
 from .optimizer import optimize, OptimizationResult
 from .system_info import get_available_memory
@@ -149,7 +148,7 @@ def process_in_batches(
             try:
                 import pickle
                 avg_result_size = len(pickle.dumps(test_result))
-            except:
+            except (TypeError, pickle.PicklingError, AttributeError, MemoryError):
                 import sys
                 avg_result_size = sys.getsizeof(test_result)
         
