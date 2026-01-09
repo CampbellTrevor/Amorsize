@@ -57,11 +57,11 @@ Comparing 4 strategies on 900 items
 
 [1/4] Testing: Serial: Serial execution
     Execution time: 2.4531s
-[2/4] Testing: 2 Workers: 2 processs, chunksize=50
+[2/4] Testing: 2 Workers: 2 process, chunksize=50
     Execution time: 1.3245s
-[3/4] Testing: 4 Workers: 4 processs, chunksize=25
+[3/4] Testing: 4 Workers: 4 process, chunksize=25
     Execution time: 0.8123s
-[4/4] Testing: 8 Workers: 8 processs, chunksize=13
+[4/4] Testing: 8 Workers: 8 process, chunksize=13
     Execution time: 0.7891s
 
 === Strategy Comparison Results ===

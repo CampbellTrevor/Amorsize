@@ -7,12 +7,11 @@ users make informed decisions about parallelization parameters.
 """
 
 import time
-from typing import Any, Callable, List, Union, Iterator, Optional, Dict, Tuple
+from typing import Any, Callable, List, Union, Iterator, Optional, Tuple
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
 
 from .optimizer import optimize, OptimizationResult
-from .benchmark import BenchmarkResult, validate_optimization
 
 
 class ComparisonConfig:
