@@ -432,6 +432,37 @@ def cmd_compare(args: argparse.Namespace):
     else:
         # Human-readable output
         print(result)
+    
+    # Generate visualizations if requested
+    if args.visualize:
+        try:
+            from .visualization import visualize_comparison_result, check_matplotlib
+            
+            if not check_matplotlib():
+                print("\nWarning: matplotlib is not installed. Skipping visualization.", file=sys.stderr)
+                print("Install matplotlib with: pip install matplotlib", file=sys.stderr)
+            else:
+                if args.verbose:
+                    print(f"\nGenerating visualizations in {args.visualize}...")
+                
+                plot_paths = visualize_comparison_result(
+                    result,
+                    output_dir=args.visualize,
+                    plots=['all']
+                )
+                
+                if plot_paths:
+                    print(f"\n✓ Visualizations saved:")
+                    for plot_type, path in plot_paths.items():
+                        if path:
+                            print(f"  - {plot_type}: {path}")
+                else:
+                    print("\nWarning: Failed to generate visualizations.", file=sys.stderr)
+        except Exception as e:
+            print(f"\nError generating visualizations: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -693,6 +724,11 @@ Examples:
         '-v',
         action='store_true',
         help='Enable verbose output'
+    )
+    compare_parser.add_argument(
+        '--visualize',
+        metavar='DIR',
+        help='Generate visualization plots and save to directory (requires matplotlib)'
     )
     
     return parser

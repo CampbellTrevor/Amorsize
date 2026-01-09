@@ -1,47 +1,65 @@
 # Context for Next Agent
 
-## What Was Accomplished (Iteration 32)
+## What Was Accomplished (Iteration 33)
 
-Successfully implemented **CLI support for comparison mode** - enabling command-line comparison of multiple parallelization strategies without writing code.
+Successfully implemented **complete visualization support** - enabling users to generate professional charts and plots from comparison results without writing extra code.
 
 ### Deliverables
 
-1. **CLI Integration**: Extended `amorsize/__main__.py` with `compare` subcommand
-   - `parse_strategy_config()` - Parses strategy specs from command line
-   - `cmd_compare()` - Main command handler for comparison mode
-   - Full argument parser integration with help text and examples
+1. **Visualization Module**: Created `amorsize/visualization.py` with 6 plotting functions
+   - `plot_comparison_times()` - Bar charts for execution time comparison
+   - `plot_speedup_comparison()` - Speedup visualization with color coding
+   - `plot_overhead_breakdown()` - Stacked bar charts for overhead analysis
+   - `plot_scaling_curve()` - Line plots for scaling analysis
+   - `visualize_comparison_result()` - One-line automatic chart generation
+   - `check_matplotlib()` - Matplotlib availability detection
+   - Graceful fallback when matplotlib is not installed
 
-2. **Tests**: Added 10 comprehensive tests in `tests/test_cli.py`
-   - All tests passing (542 total tests now, up from 532)
-   - Tests cover: basic usage, JSON output, optimizer integration, custom names, error handling
+2. **CLI Integration**: Extended `amorsize/__main__.py` with `--visualize DIR` flag
+   - Automatic chart generation from compare command
+   - Works with all existing comparison options
+   - User-friendly output showing saved plot locations
 
-3. **Features**:
-   - Config parsing: "n_jobs,chunksize" or "name:n_jobs,chunksize,executor"
-   - `--include-optimizer` flag to compare against optimizer recommendation
-   - `--no-baseline` flag to skip serial baseline
-   - `--max-items` to limit benchmark size
-   - `--timeout` for benchmark time control
-   - Both human-readable and JSON output formats
-   - Verbose mode for progress tracking
+3. **Tests**: Added 28 comprehensive tests in `tests/test_visualization.py`
+   - All tests passing (570 total tests now, up from 542)
+   - Tests cover: matplotlib detection, all plot functions, integration, edge cases
+
+4. **Documentation**: Complete guide with API reference
+   - `examples/README_visualization.md` - Comprehensive documentation
+   - `examples/visualization_demo.py` - Working examples of all features
+   - CLI command examples
+
+### Features
+
+- ✅ Execution time bar charts with best strategy highlighting
+- ✅ Speedup visualizations with color coding (red/orange/yellow/green)
+- ✅ CLI integration with `--visualize DIR` flag
+- ✅ Graceful fallback without matplotlib (no breaking changes)
+- ✅ Professional chart styling with automatic layout
+- ✅ Customizable plots (titles, sizes, colors)
 
 ### Usage Examples
 
+```python
+# One-line visualization
+from amorsize import visualize_comparison_result
+result = compare_strategies(func, data, configs)
+visualize_comparison_result(result, output_dir="./plots")
+```
+
 ```bash
-# Compare multiple strategies
-python -m amorsize compare math.factorial --data-range 100 --configs "2,50" "4,25" "8,10"
-
-# Compare with optimizer recommendation
-python -m amorsize compare mymodule.func --data-range 500 --include-optimizer --configs "4,20"
-
-# Use custom names and JSON output
-python -m amorsize compare math.sqrt --data-range 200 --configs "Low:2,50" "High:8,10" --json
+# CLI with visualization
+python -m amorsize compare math.factorial \
+    --data-range 100 \
+    --configs "2,20" "4,10" \
+    --visualize ./output
 ```
 
 ### Status
 
-- ✅ All 542 tests passing
+- ✅ All 570 tests passing
 - ✅ Code review ready
-- ✅ Documentation in help text complete
+- ✅ Documentation complete
 - ✅ Ready for production use
 
 ## Current State of Amorsize
@@ -54,46 +72,64 @@ python -m amorsize compare math.sqrt --data-range 200 --configs "Low:2,50" "High
 4. **Streaming** (`streaming.py`) - imap/imap_unordered optimization
 5. **Benchmark Validation** (`benchmark.py`) - Empirical verification
 6. **Comparison Mode** (`comparison.py`) - Multi-strategy comparison
-7. **CLI Support** (`__main__.py`) - Complete CLI with optimize, execute, validate, and **compare** commands ← NEW
+7. **CLI Support** (`__main__.py`) - Complete CLI with optimize, execute, validate, and compare commands
 8. **System Validation** (`validation.py`) - System capability checks
+9. **Visualization** (`visualization.py`) - Chart generation from comparison results ← NEW
 
 ### Test Coverage
 
-**542 tests total** (all passing)
-- ~14 second execution time
-- Comprehensive coverage of all modules including new CLI compare tests
+**570 tests total** (all passing)
+- ~34 second execution time
+- Comprehensive coverage of all modules including new visualization tests
 
 ## Recommended Next Steps
 
 According to Strategic Priorities, all core infrastructure is complete. High-value next tasks:
 
-### 1. Visualization Support (2-3 hours) - **HIGHEST PRIORITY**
-Add visualization capabilities to comparison results:
-- Generate bar charts of execution times
-- Speedup curves showing performance scaling
-- Overhead breakdown visualizations
-- Integration with matplotlib/plotly for chart generation
-- CLI flag: `--visualize` or `--plot`
-
-**Why This?** Users can now compare strategies via CLI, but visual output would make patterns immediately obvious. Charts are much easier to interpret than tables for performance data.
-
-### 2. Historical Tracking (2-3 hours)
+### 1. Historical Tracking (2-3 hours) - **HIGHEST PRIORITY**
+Add capability to track comparison results over time:
 - Save comparison results to JSON/SQLite database
 - Compare performance across runs/systems
 - Track performance degradation over time
+- Detect regressions automatically
 - CLI subcommand: `python -m amorsize history`
 
-### 3. Auto-Tuning (3-4 hours)
-- Iterative refinement based on comparison results
+**Why This?** Users now have visualization and comparison tools. The next natural step is tracking results over time to:
+- Monitor performance trends
+- Detect regressions early
+- Compare across different systems/environments
+- Build historical performance baseline
+
+**Implementation Plan:**
+- Create `history.py` module for result storage
+- Add database schema for storing comparison results
+- Implement `save_result()` and `load_results()` functions
+- Add CLI commands: `amorsize history list`, `amorsize history compare`
+- Store metadata: timestamp, system info, configuration
+- Support both JSON files and SQLite backend
+
+### 2. Auto-Tuning (3-4 hours)
+Iterative refinement based on comparison results:
 - Grid search over n_jobs/chunksize space
+- Bayesian optimization for parameter selection
 - Converge on optimal configuration
 - CLI flag: `--auto-tune` with `--tune-iterations N`
+- Smart search strategy to minimize benchmark time
 
-### 4. Export/Import Configuration (1-2 hours)
+### 3. Export/Import Configuration (1-2 hours)
+Save and reuse optimal configurations:
 - Save optimal configs to file for reuse
 - Load configs from file in comparison mode
 - Format: YAML or JSON config files
 - CLI: `--save-config optimal.yaml` and `--load-config configs.yaml`
+- Include system metadata for portability warnings
+
+### 4. Performance Profiling Integration (2-3 hours)
+Deep integration with Python profilers:
+- Integrate with cProfile for detailed function analysis
+- Memory profiling with memory_profiler
+- Line-by-line profiling for hotspot identification
+- CLI flag: `--profile-detailed` with flame graph generation
 
 ## Quick Start for Next Agent
 
@@ -101,13 +137,19 @@ Add visualization capabilities to comparison results:
 cd /home/runner/work/Amorsize/Amorsize
 
 # Review recent work
-cat ITERATION_32_SUMMARY.md  # (once created)
+cat ITERATION_33_SUMMARY.md
 
 # Run tests
 python -m pytest tests/ -q
 
-# Try new CLI compare feature
-python -m amorsize compare math.factorial --data-range 100 --configs "2,20" "4,10" --include-optimizer
+# Try new visualization feature
+python examples/visualization_demo.py
+
+# Test CLI with visualization
+python -m amorsize compare math.factorial \
+    --data-range 100 \
+    --configs "2,20" "4,10" \
+    --visualize /tmp/test_viz
 ```
 
 ## Success Criteria

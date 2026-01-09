@@ -12,6 +12,14 @@ from .streaming import optimize_streaming, StreamingOptimizationResult
 from .benchmark import validate_optimization, quick_validate, BenchmarkResult
 from .validation import validate_system, ValidationResult
 from .comparison import compare_strategies, compare_with_optimizer, ComparisonConfig, ComparisonResult
+from .visualization import (
+    plot_comparison_times,
+    plot_speedup_comparison,
+    plot_overhead_breakdown,
+    plot_scaling_curve,
+    visualize_comparison_result,
+    check_matplotlib
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -25,6 +33,12 @@ __all__ = [
     "validate_system",
     "compare_strategies",
     "compare_with_optimizer",
+    "plot_comparison_times",
+    "plot_speedup_comparison",
+    "plot_overhead_breakdown",
+    "plot_scaling_curve",
+    "visualize_comparison_result",
+    "check_matplotlib",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
