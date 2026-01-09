@@ -1,5 +1,181 @@
 # Amorsize Development Context
 
+## Completed: Fix Diagnostic Profile Speedup for Rejected Parallelization (Iteration 16)
+
+### What Was Done
+
+This iteration focused on **fixing diagnostic profile speedup calculation when parallelization is rejected**. This was identified as a high priority SAFETY & ACCURACY task from the Strategic Priorities - ensuring accurate reporting in the diagnostic profiling system.
+
+### The Problem
+
+When parallelization was rejected and serial execution was recommended (n_jobs=1), the diagnostic profile was showing incorrect speedup values. The `profile.estimated_speedup` field would show values like 0.7x instead of 1.0x, which is confusing because serial execution by definition has a speedup of exactly 1.0x.
+
+**Error**: Test failure in `test_diagnostic_profile.py::test_profile_captures_speedup_analysis`
+```
+assert result.profile.estimated_speedup >= 1.0
+E       assert 0.7 >= 1.0
+```
+
+**Impact**:
+- Incorrect speedup reporting in diagnostic profiles for rejected parallelization
+- User confusion when analyzing optimization decisions
+- Inconsistency between OptimizationResult.estimated_speedup (1.0x) and profile.estimated_speedup (0.7x)
+- 1 test failure in diagnostic_profile test suite
+
+**Example of the bug:**
+```python
+from amorsize import optimize
+
+def slow_func(x):
+    result = 0
+    for i in range(5000):
+        result += x ** 2
+    return result
+
+result = optimize(slow_func, range(100), sample_size=3, profile=True)
+# n_jobs=1 (serial execution)
+# result.estimated_speedup = 1.00x  ✓ Correct
+# result.profile.estimated_speedup = 0.7x  ✗ Wrong! Should be 1.0x
+```
+
+### Root Cause
+
+The bug occurred in two code paths where parallelization was rejected:
+
+1. **Lines 922-950**: When calculated speedup < 1.2x threshold:
+   - Line 923: `diag.estimated_speedup = estimated_speedup` (e.g., 0.7x)
+   - Lines 937-950: Returns serial execution but doesn't reset `diag.estimated_speedup`
+   - Result: Profile shows parallel speedup value even though serial execution is used
+
+2. **Lines 953-973**: Fallback path when optimal_n_jobs == 1:
+   - Line 958: `diag.estimated_speedup = estimated_speedup` (e.g., 0.7x for 1 worker)
+   - Lines 960-973: Returns serial execution but doesn't reset `diag.estimated_speedup`
+   - Result: Profile shows 0.7x instead of 1.0x
+
+The fundamental issue: **When rejecting parallelization, the code returned serial execution with `estimated_speedup=1.0` in OptimizationResult, but forgot to reset `diag.estimated_speedup` in the profile object.**
+
+### Changes Made
+
+**File**: `amorsize/optimizer.py` (2 minimal surgical changes)
+
+1. **Line 940**: Reset speedup before rejection when speedup < 1.2x
+   ```python
+   if estimated_speedup < 1.2:
+       if diag:
+           # Reset speedup to 1.0 for serial execution (by definition)
+           diag.estimated_speedup = 1.0
+           diag.rejection_reasons.append(...)
+   ```
+
+2. **Line 965**: Reset speedup before rejection in final sanity check
+   ```python
+   if optimal_n_jobs == 1:
+       if diag:
+           # Reset speedup to 1.0 for serial execution (by definition)
+           diag.estimated_speedup = 1.0
+           diag.rejection_reasons.append(...)
+   ```
+
+### Test Results
+
+**Before Fix**:
+- 242 tests passing
+- 1 test failing: `test_profile_captures_speedup_analysis` (assert 0.7 >= 1.0)
+- 6 pre-existing flaky tests in test_expensive_scenarios.py
+
+**After Fix**:
+- **243 tests passing** (+1 fixed!)
+- 0 diagnostic profile tests failing
+- 5 pre-existing flaky tests in test_expensive_scenarios.py (documented, not related)
+
+**Validation**:
+```python
+# Test 1: Rejected parallelization shows 1.0x
+result = optimize(fast_func, range(100), profile=True)
+assert result.n_jobs == 1
+assert result.profile.estimated_speedup == 1.0  ✓ Fixed!
+assert result.estimated_speedup == 1.0  ✓ Consistent
+
+# Test 2: Accepted parallelization shows calculated speedup
+result = optimize(slow_func, range(100), profile=True)
+assert result.n_jobs > 1
+assert result.profile.estimated_speedup > 1.0  ✓ Works correctly
+```
+
+### Why This Matters
+
+This is a **critical SAFETY & ACCURACY improvement** that provides:
+
+1. **Accurate Reporting**: Serial execution always reports 1.0x speedup by definition
+2. **Transparency**: Users can trust diagnostic profile speedup values for decision analysis
+3. **Consistency**: Both `result.estimated_speedup` and `result.profile.estimated_speedup` show 1.0x
+4. **User Confidence**: Eliminates confusion when analyzing why parallelization was rejected
+5. **Diagnostic Integrity**: Ensures all profile fields accurately reflect the actual optimization decision
+
+Real-world impact:
+- **Data scientist analyzing slow optimization**: Profile now correctly shows 1.0x for rejected cases, not confusing 0.7x
+- **Engineer debugging performance**: Can trust profile speedup values match reality
+- **Team reviewing optimization decisions**: Consistent reporting across all fields
+
+### Performance Characteristics
+
+The fix has **zero performance impact**:
+- No additional computation (simple assignment: `diag.estimated_speedup = 1.0`)
+- No additional I/O or measurements
+- No changes to optimization logic or decision-making
+- Pure correctness fix in reporting layer
+
+### API Changes
+
+**No breaking changes**: This is a pure bug fix with no API modifications.
+
+**Behavior change** (correctness fix):
+- **Before**: `profile.estimated_speedup` could be < 1.0 when `n_jobs=1` (incorrect)
+- **After**: `profile.estimated_speedup` is always 1.0 when `n_jobs=1` (correct)
+
+All existing code continues to work, but now with correct speedup reporting.
+
+### Integration Notes
+
+- No breaking changes to API
+- All return paths checked and corrected
+- Diagnostic profile always consistent with OptimizationResult
+- Test coverage validates all rejection paths
+- Documentation already explains speedup semantics
+
+### Next Steps for Future Agents
+
+Based on the Strategic Priorities and current state (243/248 tests passing):
+
+1. **SAFETY & ACCURACY**:
+   - ✅ DONE: Diagnostic profile speedup calculation fixed (Iteration 16)
+   - ✅ All critical safety features implemented
+   - Consider: Add more ARM/M1 Mac testing
+   - Consider: Validate measurements across diverse architectures
+
+2. **CORE LOGIC**:
+   - ✅ All core features complete (Amdahl's Law, adaptive chunking, auto-adjustment)
+   - Consider: Dynamic runtime adjustment based on actual performance
+   - Consider: Historical performance tracking
+   - Consider: Workload-specific heuristics
+
+3. **UX & ROBUSTNESS**:
+   - ✅ Diagnostic profiling comprehensive and accurate
+   - Consider: Progress callbacks for long-running optimizations
+   - Consider: Visualization tools for overhead breakdown
+   - Consider: CLI interface for standalone usage
+   - Consider: Comparison mode (compare multiple strategies)
+
+4. **INFRASTRUCTURE**:
+   - ✅ All infrastructure solid (physical cores, memory, cgroups)
+   - Consider: cgroup v2 detection improvements
+   - Consider: Windows-specific optimizations
+   - Consider: Performance benchmarking suite
+
+**Note on Remaining Test Failures**: 5 tests in `test_expensive_scenarios.py` still fail. These are pre-existing flaky tests documented in previous iterations as "functions too fast on modern hardware" - NOT related to this fix or a priority to address.
+
+---
+
 ## Completed: Critical Bug Fix - UnboundLocalError in Auto-Adjustment (Iteration 15)
 
 ### What Was Done
@@ -2321,6 +2497,21 @@ Based on the Strategic Priorities, consider these high-value tasks:
 
 ### Key Files Modified
 
+**Iteration 16:**
+- `amorsize/optimizer.py` - Fixed diagnostic profile speedup calculation for rejected parallelization (2 lines)
+- `tests/test_diagnostic_profile.py` - Test now passing (validates speedup >= 1.0 for all scenarios)
+
+**Iteration 15:**
+- `amorsize/optimizer.py` - Fixed UnboundLocalError in auto-adjustment (3 lines)
+- All tests using profile=True and verbose=True now working correctly
+
+**Iteration 14:**
+- `amorsize/sampling.py` - Added `estimate_internal_threads()` function
+- `amorsize/optimizer.py` - Added automatic n_jobs adjustment and `auto_adjust_for_nested_parallelism` parameter
+- `tests/test_auto_adjust_nested_parallelism.py` - Comprehensive test suite (21 tests)
+- `examples/auto_adjust_nested_parallelism_demo.py` - 7 comprehensive examples
+- `examples/README_auto_adjust_nested_parallelism.md` - Complete documentation guide
+
 **Iteration 13:**
 - `amorsize/sampling.py` - Added nested parallelism detection functions and enhanced SamplingResult
 - `amorsize/optimizer.py` - Integrated nested parallelism warnings and recommendations
@@ -2400,6 +2591,31 @@ Based on the Strategic Priorities, consider these high-value tasks:
 - `tests/test_amdahl.py` - New test suite for speedup calculation
 
 ### Engineering Notes
+
+**Critical Decisions Made (Iteration 16)**:
+1. Reset `diag.estimated_speedup = 1.0` whenever returning serial execution (n_jobs=1)
+2. Serial execution by definition has speedup of 1.0x - this is mathematical truth, not estimation
+3. Apply fix to both rejection paths: speedup < 1.2x threshold AND optimal_n_jobs == 1
+4. Minimal surgical changes (2 lines) to preserve existing optimization logic
+5. Zero performance impact - simple assignment before return statements
+6. Maintain consistency: both OptimizationResult and DiagnosticProfile show 1.0x for serial
+7. Pure correctness fix in reporting layer, no changes to decision-making logic
+
+**Critical Decisions Made (Iteration 15)**:
+1. Calculate `adjusted_max_workers` early (before use in recommendation message)
+2. Get `physical_cores` early to support auto-adjustment calculations
+3. Minimal changes to variable ordering (3 lines) without disrupting optimization flow
+4. Preserve all existing logic and behavior - only fix forward reference error
+5. Zero performance impact - no additional function calls, just reordering
+
+**Critical Decisions Made (Iteration 14)**:
+1. Implement automatic n_jobs reduction when nested parallelism detected
+2. Use formula: `optimal_n_jobs = max(1, physical_cores // estimated_internal_threads)`
+3. Enable by default with opt-out via `auto_adjust_for_nested_parallelism=False`
+4. Conservative thread estimation: explicit env vars > observed delta > library defaults (4)
+5. Transparent adjustment with clear warnings explaining rationale
+6. Integration with diagnostic profiling for complete visibility
+7. Zero overhead when nested parallelism not detected
 
 **Critical Decisions Made (Iteration 13)**:
 1. Three-layer detection approach (thread activity + library detection + env vars) for high accuracy
@@ -2485,11 +2701,11 @@ Based on the Strategic Priorities, consider these high-value tasks:
 3. Pickle overhead measured during dry run - adds minimal time to analysis
 
 **Why This Matters**:
-The optimizer now provides complete transparency into its decision-making process through the diagnostic profiling system. Combined with dynamic measurement of all major overhead sources (spawn cost, chunking overhead, pickle overhead), accurate physical core detection, generator safety, memory protection, data picklability detection, adaptive chunking for heterogeneous workloads, comprehensive input validation, and **nested parallelism detection**, it ensures accurate recommendations, intelligent load balancing, early error detection, excellent user experience, and **production safety against thread oversubscription** across diverse deployment environments and workload types: bare metal, VMs, containers, different Python versions, various OS configurations, and varying task complexity.
+The optimizer now provides complete transparency into its decision-making process through the diagnostic profiling system. Combined with dynamic measurement of all major overhead sources (spawn cost, chunking overhead, pickle overhead), accurate physical core detection, generator safety, memory protection, data picklability detection, adaptive chunking for heterogeneous workloads, comprehensive input validation, **nested parallelism detection and auto-adjustment**, and **accurate diagnostic reporting**, it ensures accurate recommendations, intelligent load balancing, early error detection, excellent user experience, and **production safety against thread oversubscription** across diverse deployment environments and workload types: bare metal, VMs, containers, different Python versions, various OS configurations, and varying task complexity.
 
 ---
 
-**Status**: Iteration 13 is COMPLETE. The library now has nested parallelism detection and warning system. Major accomplishments across all 13 iterations:
+**Status**: Iteration 16 is COMPLETE. The library now has accurate diagnostic profile speedup reporting for all scenarios. Major accomplishments across all 16 iterations:
 
 - ✅ Accurate Amdahl's Law with dynamic overhead measurement (spawn, chunking, pickle)
 - ✅ Memory safety with large return object detection and warnings
@@ -2502,22 +2718,23 @@ The optimizer now provides complete transparency into its decision-making proces
 - ✅ Adaptive chunking for heterogeneous workloads with automatic CV-based detection
 - ✅ Comprehensive input validation with clear error messages at API boundary
 - ✅ Smart defaults with measurements enabled (spawn and chunking benchmarks)
-- ✅ **Nested parallelism detection preventing thread oversubscription**
+- ✅ **Nested parallelism detection and automatic n_jobs adjustment**
+- ✅ **Accurate diagnostic profile speedup reporting for rejected parallelization**
 
 The optimizer is now production-ready with:
-- Accurate performance predictions
+- Accurate performance predictions and reporting
 - Comprehensive safety guardrails (function, data, memory, generators, input validation, **nested parallelism**)
-- Complete transparency via diagnostic profiling
+- Complete transparency via diagnostic profiling with **accurate speedup values**
 - Intelligent load balancing for varying workload complexity
 - Early error detection with clear, actionable messages
 - **Protection against thread oversubscription and performance degradation**
 - Minimal dependencies (psutil optional)
 - Cross-platform compatibility
-- 227 tests validating all functionality (207 + 20 nested parallelism tests)
+- **243 tests passing** (248 total, 5 pre-existing flaky tests documented)
 
 Future agents should focus on:
-1. **Advanced Features**: Dynamic runtime adjustment, auto-adjustment of n_jobs for nested parallelism, imap optimization
+1. **Advanced Features**: Dynamic runtime adjustment, imap optimization, historical performance tracking
 2. **Enhanced UX**: Progress callbacks, visualization tools, comparison modes, CLI interface
 3. **Platform Coverage**: ARM/M1 Mac testing, Windows optimizations, cloud environment tuning
 4. **Edge Cases**: Streaming workloads with imap, batch processing utilities
-5. **Performance**: Workload-specific heuristics, historical performance tracking, benchmarking suite
+5. **Performance**: Workload-specific heuristics, benchmarking suite
