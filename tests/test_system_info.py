@@ -17,7 +17,11 @@ from amorsize.system_info import (
     _clear_spawn_cost_cache,
     get_multiprocessing_start_method,
     _get_default_start_method,
-    check_start_method_mismatch
+    check_start_method_mismatch,
+    get_chunking_overhead,
+    measure_chunking_overhead,
+    _clear_chunking_overhead_cache,
+    DEFAULT_CHUNKING_OVERHEAD
 )
 
 # Maximum expected per-worker spawn cost (500ms)
@@ -214,3 +218,69 @@ def test_start_method_mismatch_logic():
         # Message should mention both methods
         assert actual in message
         assert default in message
+
+
+def test_get_chunking_overhead_default():
+    """Test that get_chunking_overhead returns default estimate without benchmark."""
+    cost = get_chunking_overhead(use_benchmark=False)
+    assert isinstance(cost, float)
+    assert cost == DEFAULT_CHUNKING_OVERHEAD
+    assert cost > 0
+
+
+def test_measure_chunking_overhead():
+    """Test actual chunking overhead measurement."""
+    # Clear any cached value
+    _clear_chunking_overhead_cache()
+    
+    # Measure the actual chunking overhead
+    cost = measure_chunking_overhead()
+    
+    assert isinstance(cost, float)
+    assert cost > 0
+    # Chunking overhead should be reasonable (< 10ms per chunk)
+    assert cost < 0.01
+
+
+def test_chunking_overhead_caching():
+    """Test that chunking overhead measurement is cached."""
+    # Clear cache first
+    _clear_chunking_overhead_cache()
+    
+    # First measurement
+    cost1 = measure_chunking_overhead()
+    
+    # Second measurement should return cached value (same instance)
+    cost2 = measure_chunking_overhead()
+    
+    assert cost1 == cost2
+
+
+def test_get_chunking_overhead_with_benchmark():
+    """Test get_chunking_overhead with benchmarking enabled."""
+    # Clear cache first
+    _clear_chunking_overhead_cache()
+    
+    # Get with benchmark
+    cost = get_chunking_overhead(use_benchmark=True)
+    
+    assert isinstance(cost, float)
+    assert cost > 0
+    assert cost < 0.01  # Should be reasonable
+
+
+def test_chunking_overhead_reasonable_bounds():
+    """Test that measured chunking overhead is within reasonable bounds."""
+    # Clear cache first
+    _clear_chunking_overhead_cache()
+    
+    cost = measure_chunking_overhead()
+    
+    # Chunking overhead should be positive
+    assert cost > 0
+    
+    # Should be less than 10ms per chunk (reasonable upper bound)
+    assert cost < 0.01
+    
+    # Should be more than 0.01ms per chunk (reasonable lower bound)
+    assert cost > 0.00001

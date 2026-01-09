@@ -18,6 +18,9 @@ except ImportError:
 # Global cache for spawn cost measurement
 _CACHED_SPAWN_COST: Optional[float] = None
 
+# Global cache for chunking overhead measurement
+_CACHED_CHUNKING_OVERHEAD: Optional[float] = None
+
 # Minimum reasonable marginal cost threshold (1ms)
 # Below this, we assume measurement noise and fall back to single-worker measurement
 MIN_REASONABLE_MARGINAL_COST = 0.001
@@ -26,6 +29,10 @@ MIN_REASONABLE_MARGINAL_COST = 0.001
 SPAWN_COST_FORK = 0.015        # fork with Copy-on-Write (~15ms)
 SPAWN_COST_SPAWN = 0.2         # full interpreter initialization (~200ms)
 SPAWN_COST_FORKSERVER = 0.075  # server process + fork (~75ms)
+
+# Default chunking overhead estimate (in seconds per chunk)
+# This is used as a fallback when measurement fails
+DEFAULT_CHUNKING_OVERHEAD = 0.0005  # 0.5ms per chunk
 
 
 def _clear_spawn_cost_cache():
@@ -37,6 +44,17 @@ def _clear_spawn_cost_cache():
     """
     global _CACHED_SPAWN_COST
     _CACHED_SPAWN_COST = None
+
+
+def _clear_chunking_overhead_cache():
+    """
+    Clear the cached chunking overhead measurement.
+    
+    This is primarily for testing purposes to ensure tests don't
+    interfere with each other's cached values.
+    """
+    global _CACHED_CHUNKING_OVERHEAD
+    _CACHED_CHUNKING_OVERHEAD = None
 
 
 def get_physical_cores() -> int:
@@ -138,6 +156,115 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         # ProcessError: Multiprocessing-specific failures
         _CACHED_SPAWN_COST = get_spawn_cost_estimate()
         return _CACHED_SPAWN_COST
+
+
+def _minimal_worker(x):
+    """Minimal no-op worker function for benchmarking chunking overhead."""
+    return x
+
+
+def measure_chunking_overhead(timeout: float = 2.0) -> float:
+    """
+    Measure the per-chunk overhead for task distribution in multiprocessing.Pool.
+    
+    This function measures the marginal cost of task distribution overhead by
+    comparing execution with different chunk sizes. The overhead comes from:
+    - Queue operations for task distribution
+    - Context switches between workers
+    - Task scheduling and management
+    
+    The measurement is cached globally to avoid repeated benchmarking.
+    
+    Args:
+        timeout: Maximum time to wait for measurement in seconds
+    
+    Returns:
+        Measured per-chunk overhead in seconds, or default estimate on failure
+        
+    Algorithm:
+        1. Execute workload with large chunks (fewer chunks, less overhead)
+        2. Execute workload with small chunks (more chunks, more overhead)
+        3. Calculate marginal cost: (time_small - time_large) / (chunks_small - chunks_large)
+        
+        This isolates the per-chunk overhead from the actual computation time.
+        
+    Fallback Strategy:
+        If benchmarking fails, falls back to the default estimate (0.5ms per chunk).
+    """
+    global _CACHED_CHUNKING_OVERHEAD
+    
+    # Return cached value if available
+    if _CACHED_CHUNKING_OVERHEAD is not None:
+        return _CACHED_CHUNKING_OVERHEAD
+    
+    try:
+        # Use 2 workers for consistency with real use cases
+        n_workers = 2
+        
+        # Use a reasonable workload size
+        total_items = 1000
+        data = range(total_items)
+        
+        # Test with large chunks (fewer chunks, less overhead)
+        # Use chunks of 100 items -> 10 chunks
+        large_chunksize = 100
+        num_large_chunks = (total_items + large_chunksize - 1) // large_chunksize
+        
+        start_large = time.perf_counter()
+        with multiprocessing.Pool(processes=n_workers) as pool:
+            list(pool.map(_minimal_worker, data, chunksize=large_chunksize))
+        end_large = time.perf_counter()
+        time_large = end_large - start_large
+        
+        # Test with small chunks (more chunks, more overhead)
+        # Use chunks of 10 items -> 100 chunks
+        small_chunksize = 10
+        num_small_chunks = (total_items + small_chunksize - 1) // small_chunksize
+        
+        start_small = time.perf_counter()
+        with multiprocessing.Pool(processes=n_workers) as pool:
+            list(pool.map(_minimal_worker, data, chunksize=small_chunksize))
+        end_small = time.perf_counter()
+        time_small = end_small - start_small
+        
+        # Calculate marginal cost per chunk
+        # Difference in execution time divided by difference in number of chunks
+        time_diff = time_small - time_large
+        chunk_diff = num_small_chunks - num_large_chunks
+        
+        if chunk_diff > 0 and time_diff > 0:
+            per_chunk_overhead = time_diff / chunk_diff
+            
+            # Sanity check: overhead should be positive and reasonable (< 10ms per chunk)
+            if 0 < per_chunk_overhead < 0.01:
+                _CACHED_CHUNKING_OVERHEAD = per_chunk_overhead
+                return per_chunk_overhead
+        
+        # If measurement seems unreasonable, fall back to default
+        _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+        return DEFAULT_CHUNKING_OVERHEAD
+        
+    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError) as e:
+        # If measurement fails, fall back to default estimate
+        _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+        return DEFAULT_CHUNKING_OVERHEAD
+
+
+def get_chunking_overhead(use_benchmark: bool = False) -> float:
+    """
+    Get the per-chunk overhead, either measured or estimated.
+    
+    Args:
+        use_benchmark: If True, measures actual chunking overhead. If False,
+                      uses default estimate (default: False for speed)
+    
+    Returns:
+        Chunking overhead in seconds per chunk
+    """
+    if use_benchmark:
+        return measure_chunking_overhead()
+    else:
+        return DEFAULT_CHUNKING_OVERHEAD
 
 
 def get_multiprocessing_start_method() -> str:

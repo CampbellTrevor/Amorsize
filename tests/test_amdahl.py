@@ -13,6 +13,7 @@ def test_calculate_amdahl_speedup_basic():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.001,
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=2,
         chunksize=10,
         total_items=100
@@ -30,6 +31,7 @@ def test_calculate_amdahl_speedup_high_overhead():
         total_compute_time=1.0,
         pickle_overhead_per_item=0.0,
         spawn_cost_per_worker=0.5,  # High spawn cost
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=2,
         chunksize=10,
         total_items=100
@@ -47,6 +49,7 @@ def test_calculate_amdahl_speedup_many_workers():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.0001,
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=2,
         chunksize=10,
         total_items=100
@@ -56,6 +59,7 @@ def test_calculate_amdahl_speedup_many_workers():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.0001,
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=4,
         chunksize=10,
         total_items=100
@@ -72,6 +76,7 @@ def test_calculate_amdahl_speedup_pickle_overhead():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.01,  # 10ms per item
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=2,
         chunksize=10,
         total_items=100
@@ -82,6 +87,7 @@ def test_calculate_amdahl_speedup_pickle_overhead():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.0001,  # 0.1ms per item
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=2,
         chunksize=10,
         total_items=100
@@ -97,6 +103,7 @@ def test_calculate_amdahl_speedup_zero_compute_time():
         total_compute_time=0.0,
         pickle_overhead_per_item=0.001,
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=2,
         chunksize=10,
         total_items=100
@@ -112,6 +119,7 @@ def test_calculate_amdahl_speedup_zero_workers():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.001,
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=0,
         chunksize=10,
         total_items=100
@@ -129,6 +137,7 @@ def test_calculate_amdahl_speedup_realistic_scenario():
         total_compute_time=10.0,
         pickle_overhead_per_item=0.0001,
         spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
         n_jobs=4,
         chunksize=25,
         total_items=100
@@ -147,6 +156,7 @@ def test_calculate_amdahl_speedup_cannot_exceed_n_jobs():
         total_compute_time=100.0,
         pickle_overhead_per_item=0.0,
         spawn_cost_per_worker=0.0,
+        chunking_overhead_per_chunk=0.0,
         n_jobs=8,
         chunksize=100,
         total_items=1000
@@ -154,3 +164,31 @@ def test_calculate_amdahl_speedup_cannot_exceed_n_jobs():
     
     # Should be capped at n_jobs
     assert speedup <= 8.0
+
+
+def test_calculate_amdahl_speedup_chunking_overhead():
+    """Test that chunking overhead affects speedup properly."""
+    # High chunking overhead
+    speedup_high_chunking = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.0001,
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.01,  # 10ms per chunk (high)
+        n_jobs=2,
+        chunksize=10,
+        total_items=100
+    )
+    
+    # Low chunking overhead
+    speedup_low_chunking = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.0001,
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0001,  # 0.1ms per chunk (low)
+        n_jobs=2,
+        chunksize=10,
+        total_items=100
+    )
+    
+    # Lower chunking overhead should give better speedup
+    assert speedup_low_chunking > speedup_high_chunking

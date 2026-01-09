@@ -8,6 +8,7 @@ import warnings
 from .system_info import (
     get_physical_cores,
     get_spawn_cost,
+    get_chunking_overhead,
     calculate_max_workers,
     check_start_method_mismatch,
     get_multiprocessing_start_method
@@ -52,6 +53,7 @@ def calculate_amdahl_speedup(
     total_compute_time: float,
     pickle_overhead_per_item: float,
     spawn_cost_per_worker: float,
+    chunking_overhead_per_chunk: float,
     n_jobs: int,
     chunksize: int,
     total_items: int
@@ -73,6 +75,7 @@ def calculate_amdahl_speedup(
         total_compute_time: Total serial computation time (seconds)
         pickle_overhead_per_item: Time to pickle one result (seconds)
         spawn_cost_per_worker: Time to spawn one worker process (seconds)
+        chunking_overhead_per_chunk: Time per chunk for task distribution (seconds)
         n_jobs: Number of parallel workers
         chunksize: Items per chunk
         total_items: Total number of items to process
@@ -83,11 +86,12 @@ def calculate_amdahl_speedup(
     Mathematical Model:
         Serial Time = T_compute
         
-        Parallel Time = T_spawn + T_parallel_compute + T_ipc
+        Parallel Time = T_spawn + T_parallel_compute + T_ipc + T_chunking
         where:
             T_spawn = spawn_cost * n_jobs (one-time startup)
             T_parallel_compute = T_compute / n_jobs (ideal parallelization)
             T_ipc = pickle_overhead * total_items (serialization overhead)
+            T_chunking = chunking_overhead * num_chunks (task distribution)
         
         The IPC overhead is unavoidable and happens regardless of parallelization,
         but it represents the "serial fraction" in Amdahl's Law because results
@@ -112,9 +116,9 @@ def calculate_amdahl_speedup(
     
     # 4. Chunking overhead (additional cost per chunk for task distribution)
     # Each chunk requires queue operations, context switches, etc.
-    # Empirically, this is ~0.1-1ms per chunk
+    # This is now dynamically measured per-system
     num_chunks = max(1, (total_items + chunksize - 1) // chunksize)
-    chunking_overhead = 0.0005 * num_chunks  # 0.5ms per chunk
+    chunking_overhead = chunking_overhead_per_chunk * num_chunks
     
     # Total parallel execution time
     parallel_time = spawn_overhead + parallel_compute_time + ipc_overhead + chunking_overhead
@@ -134,7 +138,8 @@ def optimize(
     sample_size: int = 5,
     target_chunk_duration: float = 0.2,
     verbose: bool = False,
-    use_spawn_benchmark: bool = False
+    use_spawn_benchmark: bool = False,
+    use_chunking_benchmark: bool = False
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -170,6 +175,8 @@ def optimize(
         verbose: If True, print detailed analysis information
         use_spawn_benchmark: If True, measure actual spawn cost instead of
                             using OS-based estimate (slower but more accurate)
+        use_chunking_benchmark: If True, measure actual chunking overhead instead of
+                               using default estimate (slower but more accurate)
     
     Returns:
         OptimizationResult with recommended n_jobs and chunksize
@@ -253,6 +260,7 @@ def optimize(
     # Step 4: Get system information
     physical_cores = get_physical_cores()
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
+    chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
     
     # Check for non-default start method
     is_mismatch, mismatch_warning = check_start_method_mismatch()
@@ -263,6 +271,7 @@ def optimize(
         print(f"Physical cores: {physical_cores}")
         print(f"Multiprocessing start method: {get_multiprocessing_start_method()}")
         print(f"Estimated spawn cost: {spawn_cost}s")
+        print(f"Estimated chunking overhead: {chunking_overhead * 1000:.3f}ms per chunk")
         if is_mismatch:
             print(f"Warning: {mismatch_warning}")
     
@@ -315,6 +324,7 @@ def optimize(
             total_compute_time=estimated_total_time,
             pickle_overhead_per_item=avg_pickle_time,
             spawn_cost_per_worker=spawn_cost,
+            chunking_overhead_per_chunk=chunking_overhead,
             n_jobs=optimal_n_jobs,
             chunksize=optimal_chunksize,
             total_items=total_items
