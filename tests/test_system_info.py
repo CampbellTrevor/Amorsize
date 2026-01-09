@@ -2,6 +2,7 @@
 Tests for system_info module.
 """
 
+import os
 import pytest
 import sys
 import multiprocessing
@@ -80,7 +81,6 @@ def test_physical_cores_fallback_consistency():
     assert cores1 > 0
     
     # Should not exceed logical core count
-    import os
     logical_cores = os.cpu_count()
     if logical_cores:
         assert cores1 <= logical_cores
@@ -88,8 +88,6 @@ def test_physical_cores_fallback_consistency():
 
 def test_physical_cores_without_psutil():
     """Test physical core detection when psutil fallback is used."""
-    import os
-    
     # This test validates the fallback logic works
     # Even without psutil, we should get a reasonable answer
     cores = get_physical_cores()

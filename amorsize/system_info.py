@@ -4,6 +4,7 @@ System information module for detecting hardware and OS constraints.
 
 import os
 import platform
+import subprocess
 import sys
 import time
 import multiprocessing
@@ -80,16 +81,22 @@ def _parse_proc_cpuinfo() -> Optional[int]:
             for line in f:
                 line = line.strip()
                 
-                if line.startswith('physical id'):
+                # Reset IDs when starting a new processor entry
+                if line.startswith('processor'):
+                    # Save the previous processor's core info if we have both IDs
+                    if current_physical_id is not None and current_core_id is not None:
+                        cores.add((current_physical_id, current_core_id))
+                    # Reset for new processor entry
+                    current_physical_id = None
+                    current_core_id = None
+                elif line.startswith('physical id'):
                     current_physical_id = line.split(':')[1].strip()
                 elif line.startswith('core id'):
                     current_core_id = line.split(':')[1].strip()
-                
-                # When we have both IDs, record this core
-                if current_physical_id is not None and current_core_id is not None:
-                    cores.add((current_physical_id, current_core_id))
-                    current_physical_id = None
-                    current_core_id = None
+            
+            # Don't forget the last processor entry
+            if current_physical_id is not None and current_core_id is not None:
+                cores.add((current_physical_id, current_core_id))
         
         if cores:
             return len(cores)
@@ -111,8 +118,6 @@ def _parse_lscpu() -> Optional[int]:
         lscpu is part of util-linux and should be available on most Linux systems.
     """
     try:
-        import subprocess
-        
         # Run lscpu and capture output
         result = subprocess.run(
             ['lscpu', '-p=Core,Socket'],
