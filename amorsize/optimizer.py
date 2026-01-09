@@ -242,6 +242,73 @@ class OptimizationResult:
         return self.profile.explain_decision()
 
 
+def _validate_optimize_parameters(
+    func: Any,
+    data: Any,
+    sample_size: int,
+    target_chunk_duration: float,
+    verbose: bool,
+    use_spawn_benchmark: bool,
+    use_chunking_benchmark: bool,
+    profile: bool
+) -> Optional[str]:
+    """
+    Validate input parameters for the optimize() function.
+    
+    Args:
+        func: Function to validate
+        data: Data to validate
+        sample_size: Sample size to validate
+        target_chunk_duration: Target chunk duration to validate
+        verbose: Verbose flag to validate
+        use_spawn_benchmark: Spawn benchmark flag to validate
+        use_chunking_benchmark: Chunking benchmark flag to validate
+        profile: Profile flag to validate
+    
+    Returns:
+        None if all parameters are valid, error message string otherwise
+    """
+    # Validate func is callable
+    if func is None:
+        return "func parameter cannot be None"
+    if not callable(func):
+        return f"func parameter must be callable, got {type(func).__name__}"
+    
+    # Validate data is not None and is iterable
+    if data is None:
+        return "data parameter cannot be None"
+    if not hasattr(data, '__iter__'):
+        return f"data parameter must be iterable, got {type(data).__name__}"
+    
+    # Validate sample_size
+    if not isinstance(sample_size, int):
+        return f"sample_size must be an integer, got {type(sample_size).__name__}"
+    if sample_size <= 0:
+        return f"sample_size must be positive, got {sample_size}"
+    if sample_size > 10000:
+        return f"sample_size is unreasonably large ({sample_size}), maximum is 10000"
+    
+    # Validate target_chunk_duration
+    if not isinstance(target_chunk_duration, (int, float)):
+        return f"target_chunk_duration must be a number, got {type(target_chunk_duration).__name__}"
+    if target_chunk_duration <= 0:
+        return f"target_chunk_duration must be positive, got {target_chunk_duration}"
+    if target_chunk_duration > 3600:
+        return f"target_chunk_duration is unreasonably large ({target_chunk_duration}s), maximum is 3600s"
+    
+    # Validate boolean parameters
+    if not isinstance(verbose, bool):
+        return f"verbose must be a boolean, got {type(verbose).__name__}"
+    if not isinstance(use_spawn_benchmark, bool):
+        return f"use_spawn_benchmark must be a boolean, got {type(use_spawn_benchmark).__name__}"
+    if not isinstance(use_chunking_benchmark, bool):
+        return f"use_chunking_benchmark must be a boolean, got {type(use_chunking_benchmark).__name__}"
+    if not isinstance(profile, bool):
+        return f"profile must be a boolean, got {type(profile).__name__}"
+    
+    return None
+
+
 def calculate_amdahl_speedup(
     total_compute_time: float,
     pickle_overhead_per_item: float,
@@ -372,19 +439,30 @@ def optimize(
     Args:
         func: The function to parallelize. Must accept a single argument and
               be picklable (no lambdas, no local functions with closures).
-        data: Iterable of input data (list, range, generator, etc.)
-        sample_size: Number of items to sample for timing (default: 5)
-                    Larger values = more accurate but slower analysis
-        target_chunk_duration: Target duration per chunk in seconds (default: 0.2)
-                              Higher values = fewer chunks, less overhead
-        verbose: If True, print detailed analysis information
+              Must be callable (not None).
+        data: Iterable of input data (list, range, generator, etc.).
+              Must be iterable (not None). Empty iterables are valid.
+        sample_size: Number of items to sample for timing (default: 5).
+                    Must be a positive integer (1 to 10000).
+                    Larger values = more accurate but slower analysis.
+        target_chunk_duration: Target duration per chunk in seconds (default: 0.2).
+                              Must be a positive number (> 0, ≤ 3600).
+                              Higher values = fewer chunks, less overhead.
+        verbose: If True, print detailed analysis information.
+                Must be a boolean.
         use_spawn_benchmark: If True, measure actual spawn cost instead of
-                            using OS-based estimate (slower but more accurate)
+                            using OS-based estimate (slower but more accurate).
+                            Must be a boolean.
         use_chunking_benchmark: If True, measure actual chunking overhead instead of
-                               using default estimate (slower but more accurate)
+                               using default estimate (slower but more accurate).
+                               Must be a boolean.
         profile: If True, capture detailed diagnostic information in result.profile
                 for in-depth analysis. Use result.explain() to view the diagnostic
-                report. (default: False)
+                report. (default: False). Must be a boolean.
+    
+    Raises:
+        ValueError: If any parameter fails validation (e.g., None func, negative
+                   sample_size, non-iterable data, invalid type for boolean params)
     
     Returns:
         OptimizationResult with:
@@ -415,6 +493,15 @@ def optimize(
         >>> result = optimize(expensive_function, data, profile=True)
         >>> print(result.explain())  # Shows comprehensive breakdown
     """
+    # Step 0: Validate input parameters
+    validation_error = _validate_optimize_parameters(
+        func, data, sample_size, target_chunk_duration,
+        verbose, use_spawn_benchmark, use_chunking_benchmark, profile
+    )
+    
+    if validation_error:
+        raise ValueError(f"Invalid parameter: {validation_error}")
+    
     result_warnings = []
     
     # Initialize diagnostic profile if requested
