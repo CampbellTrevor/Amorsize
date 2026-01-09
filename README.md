@@ -48,8 +48,10 @@ pip install -e ".[full]"
 
 ## Quick Start
 
+### Option 1: One-Line Execution (Recommended)
+
 ```python
-from amorsize import optimize
+from amorsize import execute
 
 def expensive_function(x):
     """Your CPU-intensive function"""
@@ -61,6 +63,19 @@ def expensive_function(x):
 # Generate data
 data = range(10000)
 
+# Optimize and execute in one line!
+results = execute(expensive_function, data, verbose=True)
+# That's it! Results contains the output for all 10,000 items
+```
+
+### Option 2: Manual Pool Management
+
+For more control, use `optimize()` to get parameters:
+
+```python
+from amorsize import optimize
+from multiprocessing import Pool
+
 # Get optimization recommendations
 result = optimize(expensive_function, data, verbose=True)
 
@@ -71,10 +86,8 @@ print(result)
 # Estimated speedup: 6.5x
 
 # Use with multiprocessing
-from multiprocessing import Pool
-
 with Pool(processes=result.n_jobs) as pool:
-    results = pool.map(expensive_function, data, chunksize=result.chunksize)
+    results = pool.map(expensive_function, result.data, chunksize=result.chunksize)
 ```
 
 ## How It Works
