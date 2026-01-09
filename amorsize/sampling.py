@@ -238,46 +238,6 @@ def detect_thread_activity(func: Callable, sample_item: Any) -> Dict[str, int]:
     }
 
 
-def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception]]:
-    """
-    Check if data items can be pickled (required for multiprocessing).
-    
-    This function tests a sample of data items to ensure they can be serialized
-    by pickle, which is necessary for multiprocessing.Pool.map() to work.
-    Common unpicklable objects include: thread locks, file handles, database
-    connections, lambdas, and objects with __getstate__ that raises errors.
-    
-    Args:
-        data_items: List of data items to check
-    
-    Returns:
-        Tuple of (all_picklable, first_unpicklable_index, exception)
-        - all_picklable: True if all items can be pickled, False otherwise
-        - first_unpicklable_index: Index of first unpicklable item, or None
-        - exception: The exception raised during pickling, or None
-        
-    Examples:
-        >>> data = [1, 2, 3, 4, 5]
-        >>> check_data_picklability(data)
-        (True, None, None)
-        
-        >>> import threading
-        >>> data_with_lock = [1, threading.Lock(), 3]
-        >>> picklable, idx, exc = check_data_picklability(data_with_lock)
-        >>> picklable
-        False
-        >>> idx
-        1
-    """
-    for idx, item in enumerate(data_items):
-        try:
-            pickle.dumps(item)
-        except (pickle.PicklingError, AttributeError, TypeError) as e:
-            return False, idx, e
-    
-    return True, None, None
-
-
 def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List, Union[List, Iterator], bool]:
     """
     Safely extract a sample from data, preserving iterators when possible.

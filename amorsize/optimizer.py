@@ -543,9 +543,10 @@ def optimize(
     if sampling_result.nested_parallelism_detected:
         nested_warning = "Nested parallelism detected: Function uses internal threading/parallelism"
         
-        # Provide specific details
-        if sampling_result.thread_activity['delta'] > 0:
-            nested_warning += f" (thread count increased by {sampling_result.thread_activity['delta']})"
+        # Provide specific details - use .get() to safely access dict keys
+        thread_delta = sampling_result.thread_activity.get('delta', 0)
+        if thread_delta > 0:
+            nested_warning += f" (thread count increased by {thread_delta})"
         
         if sampling_result.parallel_libraries:
             libs = ", ".join(sampling_result.parallel_libraries)
@@ -574,9 +575,14 @@ def optimize(
             print(f"WARNING: {nested_warning}")
             if sampling_result.parallel_libraries:
                 print(f"  Detected libraries: {', '.join(sampling_result.parallel_libraries)}")
-            print(f"  Thread activity: before={sampling_result.thread_activity['before']}, "
-                  f"during={sampling_result.thread_activity['during']}, "
-                  f"delta={sampling_result.thread_activity['delta']}")
+            # Use .get() with defaults for safe access
+            thread_before = sampling_result.thread_activity.get('before', 0)
+            thread_during = sampling_result.thread_activity.get('during', 0)
+            thread_delta = sampling_result.thread_activity.get('delta', 0)
+            print(f"  Thread activity: before={thread_before}, "
+                  f"during={thread_during}, "
+                  f"delta={thread_delta}")
+
 
     
     # Check for errors during sampling
