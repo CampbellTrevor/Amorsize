@@ -27,6 +27,7 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 - 🎯 **CLI Interface**: Analyze functions from command line without writing code
 - 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
 - 📊 **Diagnostic Profiling**: Deep insights into optimization decisions and trade-offs
+- ✅ **Benchmark Validation**: Empirically verify optimizer predictions with actual performance
 
 ## Installation
 
@@ -183,6 +184,51 @@ with Pool(result.n_jobs) as pool:
 - ✅ Functions with large return objects
 
 See [Streaming Optimization Guide](examples/README_streaming_optimization.md) for complete documentation.
+
+### Option 6: Benchmark Validation (Verify Predictions)
+
+Want to verify that optimizer recommendations are accurate for your specific system? Use benchmark validation:
+
+```python
+from amorsize import validate_optimization, quick_validate
+
+def expensive_func(x):
+    """Your computation."""
+    return sum(i**2 for i in range(x))
+
+data = range(100, 500)
+
+# Validate optimizer predictions with actual benchmarks
+result = validate_optimization(expensive_func, data, verbose=True)
+
+print(result)
+# Output:
+# === Benchmark Validation Results ===
+#
+# Performance Measurements:
+#   Serial execution time:   2.45s
+#   Parallel execution time: 1.32s
+#   Actual speedup:          1.85x
+#   Predicted speedup:       1.78x
+#
+# Prediction Accuracy:
+#   Accuracy:                96.2%
+#   Error:                   +3.9%
+#
+# ✅ Excellent prediction accuracy!
+
+# For large datasets, use quick validation
+result = quick_validate(expensive_func, large_data, sample_size=100)
+print(f"Accuracy: {result.accuracy_percent:.1f}%")
+```
+
+**When to use benchmark validation:**
+- ✅ Before production deployment
+- ✅ To verify optimizer accuracy for your system
+- ✅ When accuracy is critical
+- ✅ To understand system-specific factors
+
+See [Benchmark Validation Guide](examples/README_benchmark_validation.md) for complete documentation.
 
 ## How It Works
 
