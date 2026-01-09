@@ -170,7 +170,8 @@ class TestOptimizeWithProfiling:
         
         assert result.n_jobs == 1
         assert len(result.profile.rejection_reasons) > 0
-        assert any("fast" in reason.lower() or "1ms" in reason 
+        # Updated to match new speedup-based rejection logic
+        assert any("speedup" in reason.lower() or "workload too small" in reason.lower()
                   for reason in result.profile.rejection_reasons)
     
     def test_profile_with_memory_constraints(self):
