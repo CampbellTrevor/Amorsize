@@ -14,6 +14,7 @@ from typing import Any, Callable, List, Optional
 
 from . import optimize, execute, validate_system, __version__
 from .comparison import compare_strategies, compare_with_optimizer, ComparisonConfig
+from .tuning import tune_parameters, quick_tune
 from .history import (
     save_result, load_result, list_results, delete_result,
     compare_entries, clear_history
@@ -268,6 +269,104 @@ def cmd_validate(args: argparse.Namespace):
     # Exit with appropriate code
     if result.overall_health in ["poor", "critical"]:
         sys.exit(1)
+
+
+def cmd_tune(args: argparse.Namespace):
+    """Execute the 'tune' command."""
+    # Load function
+    func = load_function(args.function)
+    
+    # Load data
+    data = load_data(args)
+    
+    # Run tuning
+    if args.quick:
+        result = quick_tune(
+            func,
+            data,
+            verbose=args.verbose,
+            prefer_threads_for_io=args.threads
+        )
+    else:
+        result = tune_parameters(
+            func,
+            data,
+            n_jobs_range=args.n_jobs_range,
+            chunksize_range=args.chunksize_range,
+            use_optimizer_hint=not args.no_optimizer_hint,
+            verbose=args.verbose,
+            timeout_per_config=args.timeout_per_config,
+            prefer_threads_for_io=args.threads
+        )
+    
+    # Format and display output
+    if args.json:
+        # JSON output
+        output = {
+            "best_n_jobs": result.best_n_jobs,
+            "best_chunksize": result.best_chunksize,
+            "best_time": result.best_time,
+            "best_speedup": result.best_speedup,
+            "serial_time": result.serial_time,
+            "configurations_tested": result.configurations_tested,
+            "search_strategy": result.search_strategy,
+            "executor_type": result.executor_type,
+            "top_configurations": result.get_top_configurations(n=5)
+        }
+        
+        if result.optimization_hint:
+            output["optimizer_hint"] = {
+                "n_jobs": result.optimization_hint.n_jobs,
+                "chunksize": result.optimization_hint.chunksize,
+                "estimated_speedup": result.optimization_hint.estimated_speedup
+            }
+        
+        print(json.dumps(output, indent=2))
+    else:
+        # Human-readable output
+        print(result)
+    
+    # Save result to history if requested
+    if hasattr(args, 'save_result') and args.save_result:
+        try:
+            # For tuning, we'll convert it to a ComparisonResult-like format
+            # by creating a minimal comparison result
+            # Note: This is a simplified save - ideally we'd have a TuningEntry type
+            from .comparison import ComparisonResult, ComparisonConfig
+            
+            # Create a config for the best result
+            best_config = ComparisonConfig(
+                name=f"Tuned: {result.best_n_jobs}x{result.best_chunksize}",
+                n_jobs=result.best_n_jobs,
+                chunksize=result.best_chunksize,
+                executor_type=result.executor_type
+            )
+            
+            # Create a minimal comparison result for history
+            comparison_result = ComparisonResult(
+                best_config=best_config,
+                best_time=result.best_time,
+                serial_time=result.serial_time,
+                best_speedup=result.best_speedup,
+                configs=[best_config],
+                execution_times=[result.best_time],
+                speedups=[result.best_speedup],
+                timing_details={}
+            )
+            
+            # Extract function name
+            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            
+            # Get data size
+            data_size = len(data) if hasattr(data, '__len__') else 0
+            
+            entry_id = save_result(comparison_result, args.save_result, function_name=function_name, data_size=data_size)
+            print(f"\n✓ Tuning result saved to history as '{args.save_result}' (ID: {entry_id})")
+        except Exception as e:
+            print(f"\nWarning: Failed to save result to history: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
 
 
 def parse_strategy_config(config_str: str) -> ComparisonConfig:
@@ -906,6 +1005,96 @@ Examples:
         help='Save comparison result to history with given name'
     )
     
+    # ===== TUNE SUBCOMMAND =====
+    tune_parser = subparsers.add_parser(
+        'tune',
+        help='Auto-tune parameters through empirical benchmarking',
+        description='Automatically find optimal n_jobs and chunksize by benchmarking multiple configurations'
+    )
+    
+    tune_parser.add_argument(
+        'function',
+        help='Function to tune (format: module.function or module:function)'
+    )
+    
+    # Data source (mutually exclusive)
+    tune_data_group = tune_parser.add_mutually_exclusive_group(required=True)
+    tune_data_group.add_argument(
+        '--data-range',
+        type=int,
+        metavar='N',
+        help='Use range(N) as data source'
+    )
+    tune_data_group.add_argument(
+        '--data-file',
+        metavar='FILE',
+        help='Read data from file (one item per line)'
+    )
+    tune_data_group.add_argument(
+        '--data-stdin',
+        action='store_true',
+        help='Read data from stdin (one item per line)'
+    )
+    
+    # Tuning strategy
+    tune_parser.add_argument(
+        '--quick',
+        action='store_true',
+        help='Use quick tuning with minimal search space (faster but less thorough)'
+    )
+    
+    # Search space customization
+    tune_parser.add_argument(
+        '--n-jobs-range',
+        nargs='+',
+        type=int,
+        metavar='N',
+        help='List of n_jobs values to test (e.g., --n-jobs-range 1 2 4 8)'
+    )
+    tune_parser.add_argument(
+        '--chunksize-range',
+        nargs='+',
+        type=int,
+        metavar='N',
+        help='List of chunksize values to test (e.g., --chunksize-range 10 50 100)'
+    )
+    
+    # Options
+    tune_parser.add_argument(
+        '--no-optimizer-hint',
+        action='store_true',
+        help='Disable inclusion of optimizer hint in search space'
+    )
+    tune_parser.add_argument(
+        '--threads',
+        action='store_true',
+        help='Use ThreadPoolExecutor instead of multiprocessing.Pool'
+    )
+    tune_parser.add_argument(
+        '--timeout-per-config',
+        type=float,
+        metavar='SECONDS',
+        help='Maximum time per configuration in seconds'
+    )
+    
+    # Output options
+    tune_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    tune_parser.add_argument(
+        '--verbose',
+        '-v',
+        action='store_true',
+        help='Enable verbose output with progress information'
+    )
+    tune_parser.add_argument(
+        '--save-result',
+        metavar='NAME',
+        help='Save tuning result to history with given name'
+    )
+    
     # ===== HISTORY SUBCOMMAND =====
     history_parser = subparsers.add_parser(
         'history',
@@ -1015,6 +1204,8 @@ def main():
             cmd_execute(args)
         elif args.command == 'compare':
             cmd_compare(args)
+        elif args.command == 'tune':
+            cmd_tune(args)
         elif args.command == 'history':
             # Check history subcommand
             if not hasattr(args, 'history_command') or not args.history_command:
