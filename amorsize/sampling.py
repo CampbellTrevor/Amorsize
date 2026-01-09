@@ -6,7 +6,9 @@ import sys
 import time
 import pickle
 import tracemalloc
-from typing import Any, Callable, Iterator, List, Tuple, Union, Optional
+import threading
+import os
+from typing import Any, Callable, Iterator, List, Tuple, Union, Optional, Dict
 import itertools
 
 
@@ -30,7 +32,10 @@ class SamplingResult:
         unpicklable_data_index: Optional[int] = None,
         data_pickle_error: Optional[Exception] = None,
         time_variance: float = 0.0,
-        coefficient_of_variation: float = 0.0
+        coefficient_of_variation: float = 0.0,
+        nested_parallelism_detected: bool = False,
+        parallel_libraries: List[str] = None,
+        thread_activity: Dict[str, int] = None
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -47,6 +52,9 @@ class SamplingResult:
         self.data_pickle_error = data_pickle_error
         self.time_variance = time_variance
         self.coefficient_of_variation = coefficient_of_variation
+        self.nested_parallelism_detected = nested_parallelism_detected
+        self.parallel_libraries = parallel_libraries or []
+        self.thread_activity = thread_activity or {}
 
 
 def check_picklability(func: Callable) -> bool:
@@ -104,6 +112,130 @@ def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int],
             return False, idx, e
     
     return True, None, None
+
+
+def detect_parallel_libraries() -> List[str]:
+    """
+    Detect commonly used parallel computing libraries that are currently loaded.
+    
+    This helps identify potential nested parallelism issues where the function
+    being optimized may already use internal parallelism.
+    
+    Returns:
+        List of detected parallel library names
+        
+    Libraries detected:
+        - numpy (with MKL/OpenBLAS threading)
+        - scipy (often uses numpy's BLAS)
+        - numba (JIT compilation with threading)
+        - joblib (parallel computing)
+        - multiprocessing (nested pools)
+        - concurrent.futures (thread/process pools)
+        - tensorflow (GPU/CPU parallelism)
+        - torch/pytorch (GPU/CPU parallelism)
+        - dask (distributed computing)
+    """
+    detected = []
+    
+    # Check for loaded modules
+    parallel_libs = {
+        'numpy': 'numpy',
+        'scipy': 'scipy',
+        'numba': 'numba',
+        'joblib': 'joblib',
+        'multiprocessing.pool': 'multiprocessing.Pool',
+        'concurrent.futures': 'concurrent.futures',
+        'tensorflow': 'tensorflow',
+        'torch': 'torch/pytorch',
+        'dask': 'dask'
+    }
+    
+    for module_name, display_name in parallel_libs.items():
+        if module_name in sys.modules:
+            detected.append(display_name)
+    
+    return detected
+
+
+def check_parallel_environment_vars() -> Dict[str, str]:
+    """
+    Check environment variables that control parallel library behavior.
+    
+    Returns:
+        Dictionary of relevant environment variable names and their values
+        
+    Variables checked:
+        - OMP_NUM_THREADS: OpenMP thread count
+        - MKL_NUM_THREADS: Intel MKL thread count
+        - OPENBLAS_NUM_THREADS: OpenBLAS thread count
+        - NUMEXPR_NUM_THREADS: NumExpr thread count
+        - VECLIB_MAXIMUM_THREADS: macOS Accelerate framework
+        - NUMBA_NUM_THREADS: Numba JIT thread count
+    """
+    env_vars = {
+        'OMP_NUM_THREADS': os.getenv('OMP_NUM_THREADS'),
+        'MKL_NUM_THREADS': os.getenv('MKL_NUM_THREADS'),
+        'OPENBLAS_NUM_THREADS': os.getenv('OPENBLAS_NUM_THREADS'),
+        'NUMEXPR_NUM_THREADS': os.getenv('NUMEXPR_NUM_THREADS'),
+        'VECLIB_MAXIMUM_THREADS': os.getenv('VECLIB_MAXIMUM_THREADS'),
+        'NUMBA_NUM_THREADS': os.getenv('NUMBA_NUM_THREADS')
+    }
+    
+    # Return only variables that are set
+    return {k: v for k, v in env_vars.items() if v is not None}
+
+
+def detect_thread_activity(func: Callable, sample_item: Any) -> Dict[str, int]:
+    """
+    Detect threading activity by monitoring thread count before/during/after function execution.
+    
+    Args:
+        func: Function to test
+        sample_item: Sample data item to execute function on
+    
+    Returns:
+        Dictionary with thread count information:
+        - 'before': Thread count before execution
+        - 'during': Peak thread count during execution
+        - 'after': Thread count after execution
+        - 'delta': Maximum increase in thread count (during - before)
+        
+    If delta > 0, the function likely creates threads internally, indicating
+    potential nested parallelism issues.
+    """
+    # Get baseline thread count
+    threads_before = threading.active_count()
+    
+    try:
+        # Execute function and monitor thread count
+        # We sample multiple times during execution to catch transient threads
+        threads_during = threads_before
+        
+        # For very fast functions, we may not catch thread creation
+        # Execute and immediately check
+        _ = func(sample_item)
+        threads_peak = threading.active_count()
+        threads_during = max(threads_during, threads_peak)
+        
+        # Check again after a brief pause to catch cleanup
+        time.sleep(0.001)  # 1ms pause
+        threads_after = threading.active_count()
+        
+    except Exception:
+        # If execution fails, return baseline
+        return {
+            'before': threads_before,
+            'during': threads_before,
+            'after': threads_before,
+            'delta': 0
+        }
+    
+    return {
+        'before': threads_before,
+        'during': threads_during,
+        'after': threads_after,
+        'delta': threads_during - threads_before
+    }
 
 
 def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List, Union[List, Iterator], bool]:
@@ -210,6 +342,30 @@ def perform_dry_run(
     # Check if data items are picklable
     data_picklable, unpicklable_idx, pickle_err = check_data_picklability(sample)
     
+    # Detect nested parallelism
+    # 1. Check for parallel libraries loaded in memory
+    parallel_libs = detect_parallel_libraries()
+    
+    # 2. Check environment variables controlling thread counts
+    env_vars = check_parallel_environment_vars()
+    
+    # 3. Detect thread activity during function execution
+    # Test with first sample item to detect threading behavior
+    thread_info = detect_thread_activity(func, sample[0]) if sample else {
+        'before': 0, 'during': 0, 'after': 0, 'delta': 0
+    }
+    
+    # Determine if nested parallelism is detected
+    # Criteria: 
+    # - Thread count increases during execution (delta > 0)
+    # - OR parallel libraries are loaded AND thread env vars not set to 1
+    nested_parallelism = False
+    if thread_info['delta'] > 0:
+        nested_parallelism = True
+    elif parallel_libs and not any(v == '1' for v in env_vars.values()):
+        # Libraries present but no explicit thread limiting
+        nested_parallelism = True
+    
     # Start memory tracking
     tracemalloc.start()
     
@@ -282,7 +438,10 @@ def perform_dry_run(
             unpicklable_data_index=unpicklable_idx,
             data_pickle_error=pickle_err,
             time_variance=time_variance,
-            coefficient_of_variation=coefficient_of_variation
+            coefficient_of_variation=coefficient_of_variation,
+            nested_parallelism_detected=nested_parallelism,
+            parallel_libraries=parallel_libs,
+            thread_activity=thread_info
         )
     
     except Exception as e:

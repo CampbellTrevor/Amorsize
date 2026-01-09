@@ -539,6 +539,52 @@ def optimize(
         # CV > 0.7: highly heterogeneous (significant variance)
         diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
     
+    # Check for nested parallelism and add warnings
+    if sampling_result.nested_parallelism_detected:
+        nested_warning = "Nested parallelism detected: Function uses internal threading/parallelism"
+        
+        # Provide specific details - use .get() to safely access dict keys
+        thread_delta = sampling_result.thread_activity.get('delta', 0)
+        if thread_delta > 0:
+            nested_warning += f" (thread count increased by {thread_delta})"
+        
+        if sampling_result.parallel_libraries:
+            libs = ", ".join(sampling_result.parallel_libraries)
+            nested_warning += f". Detected libraries: {libs}"
+        
+        result_warnings.append(nested_warning)
+        
+        # Add recommendations
+        result_warnings.append(
+            "Consider setting thread limits (e.g., OMP_NUM_THREADS=1, MKL_NUM_THREADS=1) "
+            "to avoid thread oversubscription"
+        )
+        
+        if diag:
+            diag.constraints.append(nested_warning)
+            diag.recommendations.append(
+                "Set environment variables to limit internal threading: "
+                "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1"
+            )
+            diag.recommendations.append(
+                "Or reduce n_jobs to account for internal parallelism "
+                "(e.g., use n_jobs=cores/internal_threads)"
+            )
+        
+        if verbose:
+            print(f"WARNING: {nested_warning}")
+            if sampling_result.parallel_libraries:
+                print(f"  Detected libraries: {', '.join(sampling_result.parallel_libraries)}")
+            # Use .get() with defaults for safe access
+            thread_before = sampling_result.thread_activity.get('before', 0)
+            thread_during = sampling_result.thread_activity.get('during', 0)
+            thread_delta = sampling_result.thread_activity.get('delta', 0)
+            print(f"  Thread activity: before={thread_before}, "
+                  f"during={thread_during}, "
+                  f"delta={thread_delta}")
+
+
+    
     # Check for errors during sampling
     if sampling_result.error:
         if diag:
