@@ -14,6 +14,10 @@ from amorsize.system_info import (
     _clear_spawn_cost_cache
 )
 
+# Maximum expected per-worker spawn cost (500ms)
+# This is a generous upper bound to account for slow systems
+MAX_EXPECTED_PER_WORKER_COST = 0.5
+
 
 def test_get_physical_cores():
     """Test that get_physical_cores returns a positive integer."""
@@ -38,11 +42,30 @@ def test_get_spawn_cost_estimate():
 
 def test_measure_spawn_cost():
     """Test actual spawn cost measurement."""
+    # Clear cache to ensure fresh measurement
+    _clear_spawn_cost_cache()
+    
     cost = measure_spawn_cost(timeout=5.0)
     assert isinstance(cost, float)
     assert cost > 0
     # Should be reasonable (between 1ms and 5s)
     assert 0.001 < cost < 5.0
+
+
+def test_measure_spawn_cost_marginal():
+    """Test that spawn cost measures marginal per-worker cost."""
+    # Clear cache to ensure fresh measurement
+    _clear_spawn_cost_cache()
+    
+    # The marginal cost should generally be less than full pool creation
+    # since it removes fixed initialization overhead
+    cost = measure_spawn_cost(timeout=5.0)
+    
+    # On most systems, per-worker spawn should be under the maximum expected cost
+    assert cost < MAX_EXPECTED_PER_WORKER_COST
+    
+    # Should still be positive and measurable
+    assert cost > 0
 
 
 def test_spawn_cost_caching():
