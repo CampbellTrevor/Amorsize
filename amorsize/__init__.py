@@ -29,6 +29,11 @@ from .history import (
     clear_history,
     HistoryEntry
 )
+from .tuning import (
+    tune_parameters,
+    quick_tune,
+    TuningResult
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -54,6 +59,8 @@ __all__ = [
     "delete_result",
     "compare_entries",
     "clear_history",
+    "tune_parameters",
+    "quick_tune",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
@@ -61,5 +68,6 @@ __all__ = [
     "ValidationResult",
     "ComparisonConfig",
     "ComparisonResult",
-    "HistoryEntry"
+    "HistoryEntry",
+    "TuningResult"
 ]
