@@ -116,6 +116,51 @@ class TuningResult:
             (n_jobs, chunksize, exec_time, self.serial_time / exec_time if exec_time > 0 else 0)
             for (n_jobs, chunksize), exec_time in sorted_results[:n]
         ]
+    
+    def save_config(
+        self,
+        filepath: str,
+        function_name: Optional[str] = None,
+        notes: Optional[str] = None,
+        overwrite: bool = False
+    ) -> None:
+        """
+        Save the best tuning result as a reusable configuration file.
+        
+        Args:
+            filepath: Path to save configuration file
+            function_name: Optional name of the function
+            notes: Optional notes about this configuration
+            overwrite: If True, overwrite existing file
+        
+        Examples:
+            >>> result = tune_parameters(my_func, data)
+            >>> result.save_config('my_tuned_config.json', function_name='my_func')
+        """
+        from .config import save_config, ConfigData
+        
+        # Estimate data size from serial time and best time
+        # This is approximate since we don't store the exact data size
+        data_size = None  # Unknown from tuning alone
+        
+        # Calculate average execution time per item (approximate)
+        avg_execution_time = None
+        if data_size and data_size > 0:
+            avg_execution_time = self.serial_time / data_size
+        
+        config = ConfigData(
+            n_jobs=self.best_n_jobs,
+            chunksize=self.best_chunksize,
+            executor_type=self.executor_type,
+            estimated_speedup=self.best_speedup,
+            function_name=function_name,
+            data_size=data_size,
+            avg_execution_time=avg_execution_time,
+            notes=notes,
+            source="tune"
+        )
+        
+        save_config(config, filepath, overwrite=overwrite)
 
 
 def _benchmark_configuration(

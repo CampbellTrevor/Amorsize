@@ -34,6 +34,13 @@ from .tuning import (
     quick_tune,
     TuningResult
 )
+from .config import (
+    save_config,
+    load_config,
+    list_configs,
+    get_default_config_dir,
+    ConfigData
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -61,6 +68,10 @@ __all__ = [
     "clear_history",
     "tune_parameters",
     "quick_tune",
+    "save_config",
+    "load_config",
+    "list_configs",
+    "get_default_config_dir",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
@@ -69,5 +80,6 @@ __all__ = [
     "ComparisonConfig",
     "ComparisonResult",
     "HistoryEntry",
-    "TuningResult"
+    "TuningResult",
+    "ConfigData"
 ]

@@ -64,6 +64,30 @@ def load_function(function_path: str) -> Callable:
     return func
 
 
+def extract_function_name(function_path: str) -> str:
+    """
+    Extract the function name from a module path.
+    
+    Args:
+        function_path: Path in format "module.function" or "module:function"
+    
+    Returns:
+        Function name only (last component)
+    
+    Examples:
+        >>> extract_function_name("math.factorial")
+        'factorial'
+        >>> extract_function_name("mymodule:myfunc")
+        'myfunc'
+    """
+    if '.' in function_path:
+        return function_path.split('.')[-1]
+    elif ':' in function_path:
+        return function_path.split(':')[-1]
+    else:
+        return function_path
+
+
 def load_data(args: argparse.Namespace) -> List[Any]:
     """
     Load data based on command-line arguments.
@@ -214,6 +238,29 @@ def cmd_optimize(args: argparse.Namespace):
         format_output_json(result, "optimize")
     else:
         format_output_human(result, "optimize", show_profile=args.profile)
+    
+    # Save configuration if requested
+    if hasattr(args, 'save_config') and args.save_config:
+        try:
+            # Extract function name
+            function_name = extract_function_name(args.function)
+            
+            result.save_config(
+                args.save_config,
+                function_name=function_name,
+                overwrite=False
+            )
+            print(f"\n✓ Configuration saved to {args.save_config}")
+        except FileExistsError:
+            print(f"\n✗ Error: Configuration file already exists: {args.save_config}", file=sys.stderr)
+            print(f"  Use a different filename or delete the existing file.", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"\n✗ Error saving configuration: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
 
 
 def cmd_execute(args: argparse.Namespace):
@@ -224,7 +271,76 @@ def cmd_execute(args: argparse.Namespace):
     # Load data
     data = load_data(args)
     
-    # Run execution
+    # Check if we should load config instead of optimizing
+    if hasattr(args, 'load_config') and args.load_config:
+        try:
+            from .config import load_config
+            from multiprocessing import Pool
+            from concurrent.futures import ThreadPoolExecutor
+            import time
+            
+            config = load_config(args.load_config)
+            
+            if args.verbose:
+                print(f"\n{'='*70}")
+                print(f"LOADED CONFIGURATION")
+                print(f"{'='*70}")
+                print(config)
+                print(f"\n{'='*70}")
+                print(f"EXECUTING WITH LOADED CONFIG")
+                print(f"{'='*70}\n")
+            
+            # Execute with loaded configuration
+            start_time = time.perf_counter()
+            
+            if config.executor_type == "thread":
+                with ThreadPoolExecutor(max_workers=config.n_jobs) as executor:
+                    results = list(executor.map(func, data))
+            else:
+                with Pool(processes=config.n_jobs) as pool:
+                    results = pool.map(func, data, chunksize=config.chunksize)
+            
+            end_time = time.perf_counter()
+            execution_time = end_time - start_time
+            
+            # Format output
+            if args.json:
+                output = {
+                    "mode": "execute",
+                    "config_source": args.load_config,
+                    "n_jobs": config.n_jobs,
+                    "chunksize": config.chunksize,
+                    "executor_type": config.executor_type,
+                    "execution_time": execution_time,
+                    "results_count": len(results),
+                    "sample_results": results[:10]
+                }
+                print(json.dumps(output, indent=2))
+            else:
+                print(f"\n{'='*70}")
+                print("EXECUTION COMPLETE")
+                print(f"{'='*70}")
+                print(f"Configuration: {args.load_config}")
+                print(f"Processed {len(results)} items in {execution_time:.4f}s")
+                print(f"Sample results (first 5): {results[:5]}")
+                print(f"\nUsed configuration:")
+                print(f"  n_jobs:        {config.n_jobs}")
+                print(f"  chunksize:     {config.chunksize}")
+                print(f"  executor_type: {config.executor_type}")
+            
+            return
+            
+        except FileNotFoundError:
+            print(f"\n✗ Error: Configuration file not found: {args.load_config}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"\n✗ Error loading configuration: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
+    
+    # Normal execution path (optimize then execute)
     result = execute(
         func,
         data,
@@ -355,7 +471,7 @@ def cmd_tune(args: argparse.Namespace):
             )
             
             # Extract function name
-            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            function_name = extract_function_name(args.function)
             
             # Get data size
             data_size = len(data) if hasattr(data, '__len__') else 0
@@ -367,6 +483,29 @@ def cmd_tune(args: argparse.Namespace):
             if args.verbose:
                 import traceback
                 traceback.print_exc()
+    
+    # Save configuration if requested
+    if hasattr(args, 'save_config') and args.save_config:
+        try:
+            # Extract function name
+            function_name = extract_function_name(args.function)
+            
+            result.save_config(
+                args.save_config,
+                function_name=function_name,
+                overwrite=False
+            )
+            print(f"\n✓ Configuration saved to {args.save_config}")
+        except FileExistsError:
+            print(f"\n✗ Error: Configuration file already exists: {args.save_config}", file=sys.stderr)
+            print(f"  Use a different filename or delete the existing file.", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"\n✗ Error saving configuration: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
 
 
 def parse_strategy_config(config_str: str) -> ComparisonConfig:
@@ -571,7 +710,7 @@ def cmd_compare(args: argparse.Namespace):
     if hasattr(args, 'save_result') and args.save_result:
         try:
             # Extract function name from the function path
-            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            function_name = extract_function_name(args.function)
             
             # Get data size (use loaded data length)
             data_size = len(data) if hasattr(data, '__len__') else 0
@@ -878,12 +1017,22 @@ Examples:
         parents=[parent_parser],
         help='Analyze function and recommend optimal parameters'
     )
+    optimize_parser.add_argument(
+        '--save-config',
+        metavar='FILE',
+        help='Save optimization result as reusable configuration file (JSON/YAML)'
+    )
     
     # Execute subcommand
     execute_parser = subparsers.add_parser(
         'execute',
         parents=[parent_parser],
         help='Optimize and execute function on data'
+    )
+    execute_parser.add_argument(
+        '--load-config',
+        metavar='FILE',
+        help='Load configuration from file and use those parameters (skips optimization)'
     )
     
     # ===== COMPARE SUBCOMMAND =====
@@ -1093,6 +1242,11 @@ Examples:
         '--save-result',
         metavar='NAME',
         help='Save tuning result to history with given name'
+    )
+    tune_parser.add_argument(
+        '--save-config',
+        metavar='FILE',
+        help='Save best tuning result as reusable configuration file (JSON/YAML)'
     )
     
     # ===== HISTORY SUBCOMMAND =====
