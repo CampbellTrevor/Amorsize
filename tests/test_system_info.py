@@ -10,7 +10,8 @@ from amorsize.system_info import (
     measure_spawn_cost,
     get_available_memory,
     calculate_max_workers,
-    get_system_info
+    get_system_info,
+    _clear_spawn_cost_cache
 )
 
 
@@ -46,9 +47,8 @@ def test_measure_spawn_cost():
 
 def test_spawn_cost_caching():
     """Test that spawn cost measurement is cached."""
-    # Clear cache first
-    import amorsize.system_info as si
-    si._CACHED_SPAWN_COST = None
+    # Clear cache first using the public API
+    _clear_spawn_cost_cache()
     
     # First call should measure
     cost1 = measure_spawn_cost()

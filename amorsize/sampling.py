@@ -56,7 +56,18 @@ def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List
         sample_size: Number of items to sample
     
     Returns:
-        Tuple of (sample_list, reconstructed_data, is_generator)
+        Tuple of (sample_list, reconstructed_data, is_generator) where:
+        - sample_list: List of sampled items
+        - reconstructed_data: Original data (List) or remaining iterator (Iterator)
+        - is_generator: True if data was a generator/iterator, False otherwise
+        
+    Note on Return Type:
+        The second element type depends on input:
+        - If data is a list: returns the original list (unmodified)
+        - If data is an iterator: returns the remaining unconsumed iterator
+        
+        For iterators, use reconstruct_iterator(sample, remaining) to rebuild
+        the full sequence.
         
     Generator Handling:
         For generators/iterators, we consume items for sampling but return

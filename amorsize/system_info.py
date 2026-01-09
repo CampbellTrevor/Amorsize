@@ -18,6 +18,17 @@ except ImportError:
 _CACHED_SPAWN_COST: Optional[float] = None
 
 
+def _clear_spawn_cost_cache():
+    """
+    Clear the cached spawn cost measurement.
+    
+    This is primarily for testing purposes to ensure tests don't
+    interfere with each other's cached values.
+    """
+    global _CACHED_SPAWN_COST
+    _CACHED_SPAWN_COST = None
+
+
 def get_physical_cores() -> int:
     """
     Get the number of physical CPU cores.
@@ -82,8 +93,12 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         _CACHED_SPAWN_COST = measured_cost
         return measured_cost
         
-    except (Exception, TimeoutError):
+    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError) as e:
         # If measurement fails, fall back to OS-based estimate
+        # OSError: System-level issues (e.g., resource exhaustion)
+        # TimeoutError: Benchmark took too long
+        # ValueError: Invalid parameter values
+        # ProcessError: Multiprocessing-specific failures
         _CACHED_SPAWN_COST = get_spawn_cost_estimate()
         return _CACHED_SPAWN_COST
 
