@@ -28,6 +28,7 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 - 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
 - 📊 **Diagnostic Profiling**: Deep insights into optimization decisions and trade-offs
 - ✅ **Benchmark Validation**: Empirically verify optimizer predictions with actual performance
+- 💾 **Configuration Export/Import**: Save and reuse optimal parameters across runs
 
 ## Installation
 
@@ -229,6 +230,43 @@ print(f"Accuracy: {result.accuracy_percent:.1f}%")
 - ✅ To understand system-specific factors
 
 See [Benchmark Validation Guide](examples/README_benchmark_validation.md) for complete documentation.
+
+### Option 7: Configuration Export/Import (Save and Reuse)
+
+Save optimal configurations and reuse them across runs without re-optimizing:
+
+```python
+from amorsize import optimize, load_config
+from multiprocessing import Pool
+
+# One-time: Find and save optimal configuration
+result = optimize(expensive_func, sample_data)
+result.save_config('production_config.json', function_name='expensive_func')
+
+# Future runs: Load and use saved configuration (fast!)
+config = load_config('production_config.json')
+with Pool(config.n_jobs) as pool:
+    results = pool.map(expensive_func, data, chunksize=config.chunksize)
+```
+
+**CLI Usage:**
+```bash
+# Save configuration from optimization
+python -m amorsize optimize mymodule.func --data-range 1000 \
+    --save-config production.json
+
+# Execute with saved config (skips optimization - much faster!)
+python -m amorsize execute mymodule.func --data-range 10000 \
+    --load-config production.json
+```
+
+**When to use saved configurations:**
+- ✅ Running same workload repeatedly
+- ✅ Deploying to production with consistent hardware
+- ✅ Sharing optimal settings across team members
+- ✅ Skipping optimization overhead for faster execution
+
+See [Configuration Guide](examples/README_config.md) for complete documentation.
 
 ## How It Works
 
