@@ -936,6 +936,8 @@ def optimize(
         # If speedup is less than 1.2x, parallelization may not be worth it
         if estimated_speedup < 1.2:
             if diag:
+                # Reset speedup to 1.0 for serial execution (by definition)
+                diag.estimated_speedup = 1.0
                 diag.rejection_reasons.append(f"Estimated speedup ({estimated_speedup:.2f}x) below 1.2x threshold")
                 diag.rejection_reasons.append("Parallelization overhead exceeds performance gains")
                 diag.recommendations.append("Function needs to be slower or data size larger to benefit from parallelization")
@@ -959,6 +961,8 @@ def optimize(
     # Step 9: Final sanity check
     if optimal_n_jobs == 1:
         if diag:
+            # Reset speedup to 1.0 for serial execution (by definition)
+            diag.estimated_speedup = 1.0
             diag.rejection_reasons.append("Only 1 worker recommended due to constraints")
         return OptimizationResult(
             n_jobs=1,
