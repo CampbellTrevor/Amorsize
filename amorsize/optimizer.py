@@ -779,24 +779,8 @@ def optimize(
         if diag:
             diag.constraints.append("Generator size unknown - using conservative estimates")
     
-    # Step 3: Fast Fail - very quick functions
-    if avg_time < 0.001:
-        if diag:
-            diag.rejection_reasons.append(f"Function execution time ({avg_time * 1000:.3f}ms) is below 1ms threshold")
-            diag.rejection_reasons.append("Parallelization overhead would exceed computation time")
-            diag.recommendations.append("Function is too fast to benefit from parallelization")
-        _report_progress("Optimization complete", 1.0)
-        return OptimizationResult(
-            n_jobs=1,
-            chunksize=1,
-            reason="Function is too fast (< 1ms) - parallelization overhead would dominate",
-            estimated_speedup=1.0,
-            warnings=result_warnings,
-            data=reconstructed_data,
-            profile=diag
-        )
-    
-    # Step 4: Get system information (physical_cores already retrieved earlier for nested parallelism)
+    # Step 3: Get system information (physical_cores already retrieved earlier for nested parallelism)
+    # Note: We need spawn_cost for intelligent fast-fail decisions, so get system info before checking
     _report_progress("Analyzing system", 0.5)
     
     import os
@@ -829,20 +813,51 @@ def optimize(
         if is_mismatch:
             print(f"Warning: {mismatch_warning}")
     
-    # Step 5: Check if parallelization is worth it
-    if estimated_total_time is not None and estimated_total_time < spawn_cost * 2:
-        if diag:
-            diag.rejection_reasons.append(f"Total execution time ({estimated_total_time:.2f}s) is less than 2x spawn cost ({spawn_cost * 2:.2f}s)")
-            diag.rejection_reasons.append("Workload too small to overcome parallelization startup overhead")
-        _report_progress("Optimization complete", 1.0)
-        return OptimizationResult(
-            n_jobs=1,
-            chunksize=1,
-            reason=f"Total execution time ({estimated_total_time:.2f}s) too short for parallelization overhead",
-            estimated_speedup=1.0,
-            data=reconstructed_data,
-            profile=diag
+    # Step 5: Early rejection for very small workloads
+    # Only reject if even with 2 workers we can't get 1.2x speedup
+    # This is more intelligent than a fixed threshold
+    if estimated_total_time is not None and total_items > 0 and avg_time > 0:
+        # Calculate if 2 workers (minimum parallelization) would provide benefit
+        # Use a conservative chunksize estimate for this check
+        test_chunksize = max(1, int(target_chunk_duration / avg_time))
+        test_speedup = calculate_amdahl_speedup(
+            total_compute_time=total_items * avg_time,
+            pickle_overhead_per_item=sampling_result.avg_pickle_time,
+            spawn_cost_per_worker=spawn_cost,
+            chunking_overhead_per_chunk=chunking_overhead,
+            n_jobs=2,
+            chunksize=test_chunksize,
+            total_items=total_items
         )
+        
+        if test_speedup < 1.2:
+            # Even with 2 workers, can't achieve minimum speedup threshold
+            if diag:
+                diag.rejection_reasons.append(
+                    f"Even with 2 workers, estimated speedup is only {test_speedup:.2f}x (threshold: 1.2x)"
+                )
+                diag.rejection_reasons.append(
+                    f"Workload too small ({estimated_total_time:.3f}s) relative to overhead "
+                    f"(spawn: {spawn_cost*2:.3f}s, pickle: {sampling_result.avg_pickle_time*total_items:.3f}s)"
+                )
+                diag.estimated_speedup = 1.0
+            
+            if verbose:
+                print(f"Workload too small for parallelization:")
+                print(f"  Total work: {estimated_total_time:.3f}s")
+                print(f"  Best speedup (2 workers): {test_speedup:.2f}x")
+                print(f"  Threshold: 1.2x")
+            
+            _report_progress("Optimization complete", 1.0)
+            return OptimizationResult(
+                n_jobs=1,
+                chunksize=test_chunksize,
+                reason=f"Workload too small: best speedup with 2 workers is {test_speedup:.2f}x (threshold: 1.2x)",
+                estimated_speedup=1.0,
+                warnings=result_warnings,
+                data=reconstructed_data,
+                profile=diag
+            )
     
     # Step 6: Calculate optimal chunksize
     _report_progress("Calculating optimal parameters", 0.7)
