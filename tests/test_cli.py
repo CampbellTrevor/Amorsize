@@ -669,3 +669,245 @@ class TestCLIValidateCommand:
         assert "--verbose" in result.stdout or "verbose" in result.stdout.lower()
 
 
+class TestCLICompareCommand:
+    """Test the compare subcommand."""
+    
+    def test_compare_basic(self):
+        """Test basic compare command with multiple configs."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--configs", "2,10", "4,5"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        # Should show comparison results
+        assert "Strategy Comparison Results" in result.stdout or "Best Strategy:" in result.stdout
+        assert "Serial" in result.stdout  # Should have baseline
+    
+    def test_compare_with_json_output(self):
+        """Test compare command with JSON output."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--configs", "2,10", "4,5",
+                "--json"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        
+        # Parse JSON output
+        output = json.loads(result.stdout)
+        
+        # Verify structure
+        assert "strategies" in output
+        assert "best_strategy" in output
+        assert "recommendations" in output
+        
+        # Verify strategies list
+        assert isinstance(output["strategies"], list)
+        assert len(output["strategies"]) >= 3  # Serial + 2 configs
+        
+        # Verify each strategy has required fields
+        for strategy in output["strategies"]:
+            assert "name" in strategy
+            assert "n_jobs" in strategy
+            assert "chunksize" in strategy
+            assert "executor_type" in strategy
+            assert "time" in strategy
+            assert "speedup" in strategy
+        
+        # Verify best strategy
+        best = output["best_strategy"]
+        assert "name" in best
+        assert "n_jobs" in best
+        assert "time" in best
+        assert "speedup" in best
+    
+    def test_compare_with_optimizer(self):
+        """Test compare command with optimizer recommendation."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--include-optimizer",
+                "--configs", "2,10",
+                "--json"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        
+        output = json.loads(result.stdout)
+        
+        # Should have Serial + Optimizer + 1 custom config = 3 strategies
+        assert len(output["strategies"]) >= 3
+        
+        # Check that optimizer strategy is present
+        strategy_names = [s["name"] for s in output["strategies"]]
+        assert "Optimizer" in strategy_names
+        assert "Serial" in strategy_names
+    
+    def test_compare_with_custom_names(self):
+        """Test compare with custom strategy names."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--configs", "Low:2,10", "High:4,5",
+                "--json"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        
+        output = json.loads(result.stdout)
+        strategy_names = [s["name"] for s in output["strategies"]]
+        
+        # Check custom names are preserved
+        assert "Low" in strategy_names
+        assert "High" in strategy_names
+    
+    def test_compare_no_baseline(self):
+        """Test compare with --no-baseline flag."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--configs", "2,10", "4,5",
+                "--no-baseline",
+                "--json"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        
+        output = json.loads(result.stdout)
+        
+        # Should have exactly 2 strategies (no serial baseline)
+        assert len(output["strategies"]) == 2
+    
+    def test_compare_with_max_items(self):
+        """Test compare with --max-items to limit dataset."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "1000",
+                "--configs", "2,10",
+                "--max-items", "50",
+                "--json"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert len(output["strategies"]) >= 2
+    
+    def test_compare_error_no_configs(self):
+        """Test compare error when no configs provided."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--no-baseline"  # Remove baseline, no configs = error
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        # Should fail with error
+        assert result.returncode != 0
+        assert "at least 2 configurations" in result.stderr.lower() or "need at least 2" in result.stderr.lower()
+    
+    def test_compare_error_invalid_config(self):
+        """Test compare error with invalid config format."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "50",
+                "--configs", "invalid"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        # Should fail with parsing error
+        assert result.returncode != 0
+        assert "Error parsing config" in result.stderr or "Invalid config" in result.stderr
+    
+    def test_compare_help_message(self):
+        """Test compare command help message."""
+        result = subprocess.run(
+            [sys.executable, "-m", "amorsize", "compare", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        assert "compare" in result.stdout.lower()
+        assert "--configs" in result.stdout
+        assert "--include-optimizer" in result.stdout
+        assert "--json" in result.stdout
+    
+    def test_compare_verbose_output(self):
+        """Test compare command with verbose output."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "compare",
+                "tests.test_cli_functions.square",
+                "--data-range", "30",
+                "--configs", "2,10",
+                "--verbose"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        # Verbose mode should show progress
+        assert "Comparing" in result.stdout or "Testing" in result.stdout
+
+

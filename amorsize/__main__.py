@@ -13,6 +13,7 @@ import sys
 from typing import Any, Callable, List, Optional
 
 from . import optimize, execute, validate_system, __version__
+from .comparison import compare_strategies, compare_with_optimizer, ComparisonConfig
 
 
 def load_function(function_path: str) -> Callable:
@@ -265,6 +266,173 @@ def cmd_validate(args: argparse.Namespace):
         sys.exit(1)
 
 
+def parse_strategy_config(config_str: str) -> ComparisonConfig:
+    """
+    Parse a strategy config from command line string.
+    
+    Format: "name:n_jobs,chunksize,executor" or "n_jobs,chunksize"
+    
+    Args:
+        config_str: Strategy specification string
+        
+    Returns:
+        ComparisonConfig object
+        
+    Examples:
+        "2,50" -> ComparisonConfig("2 workers", n_jobs=2, chunksize=50)
+        "Custom:4,25,thread" -> ComparisonConfig("Custom", n_jobs=4, chunksize=25, executor_type="thread")
+        "8,10,process" -> ComparisonConfig("8 workers", n_jobs=8, chunksize=10, executor_type="process")
+    """
+    # Check if config has a name prefix
+    if ':' in config_str:
+        name, rest = config_str.split(':', 1)
+        name = name.strip()
+    else:
+        name = None
+        rest = config_str
+    
+    # Parse the parameters
+    parts = [p.strip() for p in rest.split(',')]
+    
+    if len(parts) < 2:
+        raise ValueError(
+            f"Invalid config format '{config_str}'. "
+            "Expected format: 'n_jobs,chunksize[,executor]' or 'name:n_jobs,chunksize[,executor]'"
+        )
+    
+    try:
+        n_jobs = int(parts[0])
+        chunksize = int(parts[1])
+    except ValueError:
+        raise ValueError(
+            f"Invalid n_jobs or chunksize in '{config_str}'. "
+            "Both must be integers."
+        )
+    
+    # Parse executor type if provided
+    executor_type = "process"  # default
+    if len(parts) >= 3:
+        executor_type = parts[2].lower()
+        if executor_type not in ["process", "thread", "serial"]:
+            raise ValueError(
+                f"Invalid executor type '{executor_type}' in '{config_str}'. "
+                "Must be 'process', 'thread', or 'serial'."
+            )
+    
+    # Generate default name if not provided
+    if name is None:
+        if n_jobs == 1 or executor_type == "serial":
+            name = "Serial"
+        else:
+            name = f"{n_jobs} {executor_type}s"
+    
+    return ComparisonConfig(name, n_jobs, chunksize, executor_type)
+
+
+def cmd_compare(args: argparse.Namespace):
+    """Execute the 'compare' command."""
+    # Load function
+    func = load_function(args.function)
+    
+    # Load data
+    data = load_data(args)
+    
+    # Parse strategy configs
+    configs = []
+    
+    # Always include serial baseline unless explicitly disabled
+    if not args.no_baseline:
+        configs.append(ComparisonConfig("Serial", n_jobs=1))
+    
+    # Add optimizer recommendation if requested
+    if args.include_optimizer:
+        if args.verbose:
+            print("Computing optimizer recommendation...")
+        
+        opt_result = optimize(
+            func,
+            data,
+            sample_size=args.sample_size,
+            target_chunk_duration=args.target_chunk_duration,
+            verbose=args.verbose,
+            use_spawn_benchmark=not args.no_spawn_benchmark,
+            use_chunking_benchmark=not args.no_chunking_benchmark,
+            auto_adjust_for_nested_parallelism=not args.no_auto_adjust
+        )
+        
+        configs.append(
+            ComparisonConfig(
+                "Optimizer",
+                n_jobs=opt_result.n_jobs,
+                chunksize=opt_result.chunksize,
+                executor_type=opt_result.executor_type
+            )
+        )
+        
+        if args.verbose:
+            print(f"Optimizer recommends: n_jobs={opt_result.n_jobs}, "
+                  f"chunksize={opt_result.chunksize}, executor={opt_result.executor_type}\n")
+    
+    # Parse user-provided configs
+    if args.configs:
+        for config_str in args.configs:
+            try:
+                config = parse_strategy_config(config_str)
+                configs.append(config)
+            except ValueError as e:
+                print(f"Error parsing config '{config_str}': {e}", file=sys.stderr)
+                sys.exit(1)
+    
+    # Validate we have at least 2 configs to compare
+    if len(configs) < 2:
+        print("Error: Need at least 2 configurations to compare.", file=sys.stderr)
+        print("Use --configs to specify strategies or --include-optimizer", file=sys.stderr)
+        sys.exit(1)
+    
+    if args.verbose:
+        print(f"Comparing {len(configs)} strategies...\n")
+    
+    # Run comparison
+    result = compare_strategies(
+        func,
+        data,
+        configs,
+        max_items=args.max_items,
+        timeout=args.timeout,
+        verbose=args.verbose
+    )
+    
+    # Format and display output
+    if args.json:
+        # JSON output
+        output = {
+            "strategies": [
+                {
+                    "name": config.name,
+                    "n_jobs": config.n_jobs,
+                    "chunksize": config.chunksize,
+                    "executor_type": config.executor_type,
+                    "time": time,
+                    "speedup": speedup
+                }
+                for config, time, speedup in zip(result.configs, result.execution_times, result.speedups)
+            ],
+            "best_strategy": {
+                "name": result.best_config.name,
+                "n_jobs": result.best_config.n_jobs,
+                "chunksize": result.best_config.chunksize,
+                "executor_type": result.best_config.executor_type,
+                "time": result.best_time,
+                "speedup": result.speedups[result.best_config_index]
+            },
+            "recommendations": result.recommendations
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        # Human-readable output
+        print(result)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
@@ -281,6 +449,12 @@ Examples:
   
   # Execute with optimization
   python -m amorsize execute mymodule.process_item --data-file input.txt
+  
+  # Compare multiple strategies
+  python -m amorsize compare math.factorial --data-range 100 --configs "2,50" "4,25" "8,10"
+  
+  # Compare with optimizer recommendation
+  python -m amorsize compare mymodule.func --data-range 500 --include-optimizer --configs "4,20"
   
   # Get detailed profiling
   python -m amorsize optimize math.factorial --data-range 100 --profile
@@ -411,6 +585,115 @@ Examples:
         help='Optimize and execute function on data'
     )
     
+    # ===== COMPARE SUBCOMMAND =====
+    compare_parser = subparsers.add_parser(
+        'compare',
+        help='Compare multiple parallelization strategies'
+    )
+    
+    compare_parser.add_argument(
+        'function',
+        help='Function to analyze (format: module.function or module:function)'
+    )
+    
+    # Data source (mutually exclusive)
+    compare_data_group = compare_parser.add_mutually_exclusive_group(required=True)
+    compare_data_group.add_argument(
+        '--data-range',
+        type=int,
+        metavar='N',
+        help='Use range(N) as data source'
+    )
+    compare_data_group.add_argument(
+        '--data-file',
+        metavar='FILE',
+        help='Read data from file (one item per line)'
+    )
+    compare_data_group.add_argument(
+        '--data-stdin',
+        action='store_true',
+        help='Read data from stdin (one item per line)'
+    )
+    
+    # Strategy configurations
+    compare_parser.add_argument(
+        '--configs',
+        nargs='+',
+        metavar='CONFIG',
+        help='Strategy configs to compare (format: "n_jobs,chunksize" or "name:n_jobs,chunksize,executor")'
+    )
+    compare_parser.add_argument(
+        '--include-optimizer',
+        action='store_true',
+        help='Include optimizer recommendation in comparison'
+    )
+    compare_parser.add_argument(
+        '--no-baseline',
+        action='store_true',
+        help='Skip serial baseline (first config is used as baseline)'
+    )
+    
+    # Comparison parameters
+    compare_parser.add_argument(
+        '--max-items',
+        type=int,
+        metavar='N',
+        help='Limit benchmark to first N items (for large datasets)'
+    )
+    compare_parser.add_argument(
+        '--timeout',
+        type=float,
+        default=120.0,
+        metavar='SECONDS',
+        help='Maximum time per benchmark in seconds (default: 120)'
+    )
+    
+    # Optimization parameters (for --include-optimizer)
+    compare_parser.add_argument(
+        '--sample-size',
+        type=int,
+        default=5,
+        metavar='N',
+        help='Number of items to sample for optimizer (default: 5)'
+    )
+    compare_parser.add_argument(
+        '--target-chunk-duration',
+        type=float,
+        default=0.2,
+        metavar='SECONDS',
+        help='Target duration per chunk for optimizer (default: 0.2)'
+    )
+    
+    # Benchmarking options (for --include-optimizer)
+    compare_parser.add_argument(
+        '--no-spawn-benchmark',
+        action='store_true',
+        help='Disable spawn cost benchmarking (use estimate)'
+    )
+    compare_parser.add_argument(
+        '--no-chunking-benchmark',
+        action='store_true',
+        help='Disable chunking overhead benchmarking (use estimate)'
+    )
+    compare_parser.add_argument(
+        '--no-auto-adjust',
+        action='store_true',
+        help='Disable automatic n_jobs adjustment for nested parallelism'
+    )
+    
+    # Output options
+    compare_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    compare_parser.add_argument(
+        '--verbose',
+        '-v',
+        action='store_true',
+        help='Enable verbose output'
+    )
+    
     return parser
 
 
@@ -432,6 +715,8 @@ def main():
             cmd_optimize(args)
         elif args.command == 'execute':
             cmd_execute(args)
+        elif args.command == 'compare':
+            cmd_compare(args)
         else:
             parser.print_help()
             sys.exit(1)
