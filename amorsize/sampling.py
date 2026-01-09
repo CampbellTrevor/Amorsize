@@ -21,7 +21,10 @@ class SamplingResult:
         sample_count: int,
         is_picklable: bool,
         avg_pickle_time: float = 0.0,
-        error: Exception = None
+        error: Exception = None,
+        sample: List[Any] = None,
+        remaining_data: Union[List, Iterator, range, None] = None,
+        is_generator: bool = False
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -30,6 +33,9 @@ class SamplingResult:
         self.is_picklable = is_picklable
         self.avg_pickle_time = avg_pickle_time
         self.error = error
+        self.sample = sample or []
+        self.remaining_data = remaining_data
+        self.is_generator = is_generator
 
 
 def check_picklability(func: Callable) -> bool:
@@ -108,19 +114,20 @@ def perform_dry_run(
         sample_size: Number of items to sample (default: 5)
     
     Returns:
-        SamplingResult with timing and memory information
+        SamplingResult with timing and memory information, plus sample and
+        remaining data for generator reconstruction
         
     Important:
-        This function consumes sample_size items from generators.
-        Callers should use the reconstructed data from safe_slice_data
-        if they need to preserve the full iterator.
+        For generators, this function stores the consumed sample and the
+        remaining iterator, allowing callers to reconstruct the full dataset
+        using itertools.chain(sample, remaining_data).
     """
     # Check if function is picklable
     is_picklable = check_picklability(func)
     
     # Get sample data
     try:
-        sample, _, is_gen = safe_slice_data(data, sample_size)
+        sample, remaining_data, is_gen = safe_slice_data(data, sample_size)
     except Exception as e:
         return SamplingResult(
             avg_time=0.0,
@@ -129,7 +136,10 @@ def perform_dry_run(
             sample_count=0,
             is_picklable=is_picklable,
             avg_pickle_time=0.0,
-            error=e
+            error=e,
+            sample=[],
+            remaining_data=None,
+            is_generator=False
         )
     
     if not sample:
@@ -140,7 +150,10 @@ def perform_dry_run(
             sample_count=0,
             is_picklable=is_picklable,
             avg_pickle_time=0.0,
-            error=ValueError("Empty data sample")
+            error=ValueError("Empty data sample"),
+            sample=[],
+            remaining_data=remaining_data,
+            is_generator=is_gen
         )
     
     # Start memory tracking
@@ -189,7 +202,10 @@ def perform_dry_run(
             sample_count=len(sample),
             is_picklable=is_picklable,
             avg_pickle_time=avg_pickle_time,
-            error=None
+            error=None,
+            sample=sample,
+            remaining_data=remaining_data,
+            is_generator=is_gen
         )
     
     except Exception as e:
@@ -201,7 +217,10 @@ def perform_dry_run(
             sample_count=len(sample),
             is_picklable=is_picklable,
             avg_pickle_time=0.0,
-            error=e
+            error=e,
+            sample=sample,
+            remaining_data=remaining_data,
+            is_generator=is_gen
         )
 
 
@@ -223,7 +242,7 @@ def estimate_total_items(data: Union[List, Iterator], sample_consumed: bool) -> 
         return -1
 
 
-def reconstruct_iterator(sample: List, remaining_data: Iterator) -> Iterator:
+def reconstruct_iterator(sample: List[Any], remaining_data: Union[Iterator, List, range]) -> Iterator:
     """
     Reconstruct an iterator by chaining the sample back with remaining data.
     
@@ -232,7 +251,7 @@ def reconstruct_iterator(sample: List, remaining_data: Iterator) -> Iterator:
     
     Args:
         sample: Items that were consumed during sampling
-        remaining_data: The rest of the iterator
+        remaining_data: The rest of the iterator, or full list/range
     
     Returns:
         Iterator that yields sample items first, then remaining items
