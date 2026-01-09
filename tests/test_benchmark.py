@@ -190,16 +190,19 @@ class TestValidationAccuracy:
     """Tests for prediction accuracy calculations."""
     
     def test_accuracy_calculation_perfect(self):
-        """Test accuracy when prediction is perfect."""
+        """Test accuracy when prediction is reasonable."""
         def func(x):
-            time.sleep(0.001)  # 1ms per item
-            return x ** 2
+            # Computational workload instead of sleep
+            result = 0
+            for i in range(x):
+                result += i ** 2
+            return result
         
-        data = range(20)
+        data = range(100, 120)  # 20 items with moderate work
         
         result = validate_optimization(func, data)
         
-        # With controlled timing, accuracy should be reasonable
+        # With controlled computational load, accuracy should be reasonable
         # Not expecting 100% due to system variance, but should be high
         assert result.accuracy_percent > 50  # Reasonable threshold
     

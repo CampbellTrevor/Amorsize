@@ -186,7 +186,9 @@ def validate_optimization(
         
         start = time.perf_counter()
         try:
-            results = [func(item) for item in data]
+            # Just time the execution, don't store results
+            for item in data:
+                _ = func(item)
         except Exception as e:
             raise RuntimeError(f"Function execution failed during benchmark: {e}")
         end = time.perf_counter()
@@ -211,7 +213,9 @@ def validate_optimization(
         
         start = time.perf_counter()
         try:
-            results_serial = [func(item) for item in data]
+            # Just time the execution, don't store results
+            for item in data:
+                _ = func(item)
         except Exception as e:
             raise RuntimeError(f"Serial execution failed during benchmark: {e}")
         end = time.perf_counter()
@@ -232,9 +236,11 @@ def validate_optimization(
         start = time.perf_counter()
         try:
             with Pool(processes=optimization.n_jobs) as pool:
+                # Use the local data variable (converted to list, limited by max_items)
+                # NOT optimization.data which may be original structure/size
                 results_parallel = pool.map(
                     func,
-                    optimization.data,  # Use reconstructed data from optimization
+                    data,  # Use local processed data
                     chunksize=optimization.chunksize
                 )
         except Exception as e:
