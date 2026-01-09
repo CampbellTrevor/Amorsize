@@ -78,13 +78,14 @@ def test_memory_warning_content():
     warning = memory_warnings[0]
     
     # Should mention memory amounts
-    assert "GB" in warning
+    assert "GB" in warning, f"Warning should mention GB: {warning}"
     
     # Should provide actionable advice
-    assert "imap_unordered" in warning or "batches" in warning
+    assert any(term in warning for term in ["imap_unordered", "batches", "batch"]), \
+        f"Warning should suggest alternatives: {warning}"
     
     # Should mention available memory
-    assert "available" in warning
+    assert "available" in warning, f"Warning should mention available memory: {warning}"
 
 
 def test_verbose_mode_shows_memory_estimates():
@@ -110,12 +111,13 @@ def test_verbose_mode_shows_memory_estimates():
         
         # The verbose output should mention estimated items or serial execution time
         # (even if function is fast, we should see SOME output)
-        has_estimate_info = any([
-            "estimated total items" in output.lower(),
-            "estimated serial execution time" in output.lower(),
-            "estimated result memory" in output.lower(),
-            "average execution time" in output.lower(),
-        ])
+        expected_terms = [
+            "estimated total items",
+            "estimated serial execution time",
+            "estimated result memory",
+            "average execution time",
+        ]
+        has_estimate_info = any(term in output.lower() for term in expected_terms)
         assert has_estimate_info, f"Expected timing/size estimates in verbose output: {output}"
         
     finally:
@@ -202,13 +204,8 @@ def test_warning_suggests_alternatives():
     warning = memory_warnings[0].lower()
     
     # Should suggest at least one alternative approach
-    has_suggestion = any(keyword in warning for keyword in [
-        "imap_unordered",
-        "batches",
-        "batch",
-        "chunk",
-        "streaming"
-    ])
+    suggestion_keywords = ["imap_unordered", "batch", "streaming"]
+    has_suggestion = any(keyword in warning for keyword in suggestion_keywords)
     assert has_suggestion, f"Warning should suggest alternatives: {warning}"
 
 

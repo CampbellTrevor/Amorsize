@@ -258,11 +258,12 @@ def optimize(
         if estimated_result_memory > memory_threshold:
             memory_gb = estimated_result_memory / (1024**3)
             available_gb = available_memory / (1024**3)
-            result_warnings.append(
+            warning_message = (
                 f"Large return objects detected: Results will consume ~{memory_gb:.2f}GB "
                 f"(available: {available_gb:.2f}GB). Consider using imap_unordered() or "
                 f"processing in batches to avoid memory exhaustion."
             )
+            result_warnings.append(warning_message)
             
             if verbose:
                 print(f"WARNING: Result memory ({memory_gb:.2f}GB) exceeds safety threshold "
