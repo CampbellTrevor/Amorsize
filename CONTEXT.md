@@ -1,5 +1,137 @@
 # Amorsize Development Context
 
+## Completed: Generator Safety with itertools.chain (Iteration 7)
+
+### What Was Done
+
+This iteration focused on **implementing safe generator handling using itertools.chain** to prevent data loss during sampling. This was identified as a high priority SAFETY & ACCURACY task from the Strategic Priorities.
+
+### The Problem
+
+When users passed generators to `optimize()`, the dry run sampling consumed items from the generator. These consumed items were lost because generators can only be iterated once. This violated the critical engineering constraint: "Iterator Preservation: NEVER consume a generator without restoring it."
+
+**Example of the bug:**
+```python
+gen = (x for x in range(100))
+result = optimize(func, gen, sample_size=5)
+# gen now only has 95 items - first 5 were consumed and lost!
+remaining = list(gen)  # Only [5, 6, ..., 99] - missing [0, 1, 2, 3, 4]
+```
+
+### Changes Made
+
+1. **Enhanced `SamplingResult` class** (`amorsize/sampling.py`):
+   - Added `sample` field to store consumed items
+   - Added `remaining_data` field to store unconsumed iterator
+   - Added `is_generator` flag to identify generator inputs
+   - Enables reconstruction via `itertools.chain(sample, remaining_data)`
+
+2. **Updated `perform_dry_run()` function** (`amorsize/sampling.py`):
+   - Now captures and returns the consumed sample
+   - Returns remaining iterator for reconstruction
+   - Properly tracks whether input is a generator
+
+3. **Enhanced `OptimizationResult` class** (`amorsize/optimizer.py`):
+   - Added `data` field containing reconstructed data
+   - For generators: `itertools.chain(sample, remaining)` 
+   - For lists/ranges: original data unchanged
+   - Non-breaking API addition (backward compatible)
+
+4. **Modified `optimize()` function** (`amorsize/optimizer.py`):
+   - Imports `reconstruct_iterator` from sampling module
+   - Reconstructs generators after sampling using `itertools.chain`
+   - All return paths include `data=reconstructed_data`
+   - Updated docstring with clear guidance and examples
+
+5. **Comprehensive Test Suite** (`tests/test_generator_safety.py`):
+   - 11 new tests covering all generator safety aspects
+   - Tests verify data preservation across all code paths
+   - Tests confirm multiprocessing.Pool compatibility
+   - Tests validate error handling preserves data
+   - Tests ensure generators consumed only once
+
+6. **Example and Documentation**:
+   - Created `examples/generator_safety_demo.py` with real-world scenarios
+   - Created `examples/README_generator_safety.md` explaining the feature
+   - Updated `examples/basic_usage.py` to demonstrate safe usage
+   - Clear "wrong way" vs "right way" examples
+
+### Test Results
+
+All 95 tests pass (84 existing + 11 new):
+- ✅ All existing functionality preserved
+- ✅ Generator data fully preserved after sampling
+- ✅ Lists and ranges work unchanged
+- ✅ Works correctly with multiprocessing.Pool
+- ✅ Error cases still preserve data
+- ✅ Empty generators handled gracefully
+- ✅ Generators consumed exactly once (verified)
+- ✅ Documentation examples all work as specified
+
+### What This Fixes
+
+**Before**: Silent data loss when using generators
+```python
+gen = data_source()  # 100 items
+result = optimize(func, gen, sample_size=5)
+with Pool(result.n_jobs) as pool:
+    results = pool.map(func, gen)  # Only processes 95 items!
+# User loses first 5 items with no warning
+```
+
+**After**: Complete data preservation
+```python
+gen = data_source()  # 100 items
+result = optimize(func, gen, sample_size=5)
+with Pool(result.n_jobs) as pool:
+    results = pool.map(func, result.data)  # Processes all 100 items!
+# All data preserved via result.data
+```
+
+### Why This Matters
+
+This is a **critical safety guardrail** addressing a fundamental engineering constraint:
+
+1. **Prevents Silent Data Loss**: Users no longer lose items during optimization
+2. **Real-world Use Cases**: Essential for file/database/network streaming
+3. **Zero Performance Cost**: Reconstruction uses `itertools.chain` (lazy evaluation)
+4. **Backward Compatible**: Existing code works unchanged (lists/ranges unaffected)
+5. **Clear API**: `result.data` is intuitive and self-documenting
+
+Real-world scenarios:
+- Reading large CSV files line by line
+- Processing database cursors that can't be rewound
+- Streaming data from network APIs or message queues
+- Processing log files or data pipelines
+
+In all these cases, losing data during optimization would be catastrophic. The generator safety feature ensures users can safely optimize their streaming workflows.
+
+### Performance Characteristics
+
+- Zero overhead for list/range inputs (original data returned as-is)
+- Minimal overhead for generators (itertools.chain is lazy)
+- No additional memory allocation (chain doesn't materialize items)
+- No impact on sampling time or accuracy
+
+### API Changes
+
+**Non-breaking addition**: `OptimizationResult.data` field
+- Contains reconstructed data (generators) or original data (lists)
+- Users should use `result.data` instead of original generator
+- Existing code continues to work (but may lose data with generators)
+- New code is safer and more predictable
+
+### Integration Notes
+
+- No breaking changes to existing API
+- `result.data` is always populated, never None
+- For lists: `result.data is data` (same object)
+- For generators: `result.data` is a chained iterator
+- The `reconstruct_iterator()` helper was already in codebase, now actually used
+- Documented in function docstrings with clear examples
+
+---
+
 ## Completed: Robust Physical Core Detection Without psutil (Iteration 6)
 
 ### What Was Done

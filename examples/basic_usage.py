@@ -79,18 +79,37 @@ def main():
         print(f"Serial execution time: {serial_time:.2f}s")
         print(f"Processed {len(results)} items")
     
-    # Example 5: Generator input
-    print("\n5. Generator Input")
+    # Example 5: Generator input with safe data preservation
+    print("\n5. Generator Input (Safe Data Preservation)")
     print("-" * 70)
     
     def data_generator():
+        """
+        Simulates reading from a file, database, or network stream.
+        Generators can only be consumed once!
+        """
         for i in range(1000):
             yield i
     
-    result5 = optimize(cpu_intensive_task, data_generator(), verbose=False)
+    # IMPORTANT: When using generators, always use result.data
+    gen = data_generator()
+    result5 = optimize(cpu_intensive_task, gen, verbose=False)
     print(f"\n{result5}\n")
     
-    print("=" * 70)
+    # Demonstrate safe usage: use result.data instead of original generator
+    print("Safe generator usage: Using result.data ensures no data loss")
+    print(f"result.data contains all items (not just remaining after sampling)")
+    
+    # If we want to actually process the data
+    if result5.n_jobs > 1:
+        print(f"Would process with {result5.n_jobs} workers using result.data")
+        # with Pool(processes=result5.n_jobs) as pool:
+        #     results = pool.map(cpu_intensive_task, result.data, chunksize=result5.chunksize)
+    else:
+        print("Would process serially using result.data")
+        # results = list(map(cpu_intensive_task, result.data))
+    
+    print("\n" + "=" * 70)
     print("Examples completed!")
     print("=" * 70)
 
