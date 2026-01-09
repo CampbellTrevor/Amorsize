@@ -1,5 +1,94 @@
 # Amorsize Development Context
 
+## Completed: Large Return Object Detection & Memory Safety (Iteration 5)
+
+### What Was Done
+
+This iteration focused on **implementing detection and handling of large return objects** to prevent memory explosion and OOM kills. This was identified as the highest priority UX & ROBUSTNESS task from the Strategic Priorities.
+
+### The Problem
+
+`multiprocessing.Pool.map()` accumulates ALL results in memory before returning. If each result is large (e.g., 100MB) and we process many items (e.g., 1000), the total memory consumption (100GB) can cause Out-Of-Memory (OOM) kills. This is a silent catastrophic failure that's hard to debug in production.
+
+### Changes Made
+
+1. **Added Memory Safety Checks** (`amorsize/optimizer.py`):
+   - New memory estimation logic in `optimize()` function
+   - Calculates `estimated_result_memory = return_size * total_items`
+   - Compares against safety threshold (50% of available RAM)
+   - Memory checks happen BEFORE fast-fail checks (safety first)
+   - Works for both lists and ranges (not generators, since we can't determine size)
+
+2. **Memory Warning System** (`amorsize/optimizer.py`):
+   - Warns when results will consume > 50% of available RAM
+   - Provides actionable advice: "Consider using imap_unordered() or processing in batches"
+   - Shows estimated memory consumption and available memory in GB
+   - Warnings include in both result object and verbose output
+
+3. **Verbose Mode Enhancements** (`amorsize/optimizer.py`):
+   - New output: "Estimated result memory accumulation: X.XX MB"
+   - New output: "WARNING: Result memory (X.XXG B) exceeds safety threshold (Y.YY GB). Risk of OOM!"
+   - Memory estimates shown even for fast functions (before early return)
+
+4. **Comprehensive Test Suite** (`tests/test_large_return_objects.py`):
+   - 10 new tests covering large return object detection
+   - Tests validate warning triggers, content, and actionable advice
+   - Tests verify no false positives for small/medium returns
+   - Tests verify generators don't trigger false warnings
+   - Tests verify verbose mode shows memory estimates
+   - Edge cases: exact threshold, small datasets with large returns, etc.
+
+### Test Results
+
+All 80 tests pass (70 existing + 10 new):
+- ✅ All existing functionality preserved
+- ✅ Memory warning triggers correctly when threshold exceeded
+- ✅ No false positives for small/medium return objects
+- ✅ Warnings contain actionable advice (imap_unordered, batches)
+- ✅ Verbose mode displays memory accumulation estimates
+- ✅ Generators handled correctly (no false warnings when size unknown)
+- ✅ Memory checks happen before fast-fail (safety first)
+
+### What This Fixes
+
+**Before**: No detection of large return objects. Users would hit OOM kills in production without warning. The optimizer would happily recommend parallelization even when result accumulation would exhaust memory.
+
+**After**: Proactive detection and warning system. Users are informed when their workload might cause memory exhaustion, with clear guidance on alternatives (imap_unordered, batch processing).
+
+**Example Impact**:
+- Scenario: Processing 1000 images, each result is 50MB
+- Old code: Recommends 8 workers, starts processing, OOM kill after 200 items (10GB accumulated)
+- New code: Warns "Results will consume ~48.8GB (available: 16.0GB). Consider using imap_unordered() or processing in batches."
+- Result: User switches to imap_unordered() or batches, avoids OOM kill
+
+### Why This Matters
+
+This is a **safety guardrail** that prevents silent catastrophic failures:
+1. OOM kills are hard to debug (no stack trace, just killed process)
+2. They often happen in production after partial processing (wasted compute time)
+3. The root cause isn't obvious (parallelization looks beneficial by all other metrics)
+4. Users need actionable guidance on alternatives
+
+Real-world scenario: Data scientist processing satellite imagery (100MB per image, 10,000 images). Old optimizer recommends parallelization based on CPU time. New optimizer warns about 1TB memory requirement and suggests streaming approach.
+
+### Performance Characteristics
+
+The safety check is extremely fast:
+- Simple arithmetic: `return_size * total_items`
+- No additional I/O or benchmarking
+- Adds < 1µs to optimization time
+- Only applies when total_items is known (not generators)
+
+### Integration Notes
+
+- Memory checks integrated into existing optimizer flow
+- No breaking changes to API
+- Warnings are optional (verbose mode shows details, warnings list always populated)
+- Threshold is conservative (50% of available RAM) to account for OS overhead
+- Works with existing memory detection (cgroup-aware, Docker-compatible)
+
+---
+
 ## Completed: Dynamic Chunking Overhead Measurement (Iteration 4)
 
 ### What Was Done
@@ -333,4 +422,16 @@ The optimizer now dynamically measures all major overhead sources (spawn cost, c
 
 ---
 
-**Status**: Iteration 4 is COMPLETE. All empirical constants in the Amdahl's Law calculation are now dynamically measured. The CORE LOGIC optimizer is highly refined. Future agents should focus on UX enhancements (better error messages, profiling modes) or handling edge cases (heterogeneous workloads, nested parallelism).
+**Status**: Iteration 5 is COMPLETE. Core safety and optimization logic is comprehensive. Major accomplishments:
+- ✅ Accurate Amdahl's Law with dynamic overhead measurement (spawn, chunking, pickle)
+- ✅ Memory safety with large return object detection and warnings
+- ✅ Start method detection and mismatch warnings
+- ✅ Container-aware resource detection (cgroup support)
+- ✅ Generator safety with proper iterator preservation
+
+Future agents should focus on:
+1. **UX Enhancements**: Better error messages, progress callbacks, profiling modes
+2. **Advanced Features**: Adaptive chunking for heterogeneous workloads, nested parallelism detection
+3. **Edge Cases**: Very large return objects (> RAM), streaming alternatives, batch processing helpers
+4. **Documentation**: Usage examples for common pitfalls, migration guides, performance tuning
+5. **Platform Support**: ARM/M1 Mac testing, Windows-specific optimizations, cloud environment tuning

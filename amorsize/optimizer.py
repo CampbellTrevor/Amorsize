@@ -11,7 +11,8 @@ from .system_info import (
     get_chunking_overhead,
     calculate_max_workers,
     check_start_method_mismatch,
-    get_multiprocessing_start_method
+    get_multiprocessing_start_method,
+    get_available_memory
 )
 from .sampling import perform_dry_run, estimate_total_items
 
@@ -234,28 +235,52 @@ def optimize(
         print(f"Peak memory: {peak_memory} bytes")
         print(f"Average pickle overhead: {avg_pickle_time:.6f}s")
     
-    # Step 2: Fast Fail - very quick functions
+    # Step 2: Estimate total workload and check for memory safety
+    # This must happen BEFORE fast-fail checks because memory explosion
+    # is a safety issue regardless of function speed
+    total_items = estimate_total_items(data, False)
+    available_memory = get_available_memory()
+    memory_threshold = available_memory * 0.5
+    
+    if total_items > 0:
+        estimated_total_time = avg_time * total_items
+        
+        # Estimate total memory for accumulated results
+        # pool.map() keeps all results in memory until completion
+        estimated_result_memory = return_size * total_items
+        
+        if verbose:
+            print(f"Estimated total items: {total_items}")
+            print(f"Estimated serial execution time: {estimated_total_time:.2f}s")
+            print(f"Estimated result memory accumulation: {estimated_result_memory / (1024**2):.2f} MB")
+        
+        # Check if result accumulation might cause OOM
+        if estimated_result_memory > memory_threshold:
+            memory_gb = estimated_result_memory / (1024**3)
+            available_gb = available_memory / (1024**3)
+            result_warnings.append(
+                f"Large return objects detected: Results will consume ~{memory_gb:.2f}GB "
+                f"(available: {available_gb:.2f}GB). Consider using imap_unordered() or "
+                f"processing in batches to avoid memory exhaustion."
+            )
+            
+            if verbose:
+                print(f"WARNING: Result memory ({memory_gb:.2f}GB) exceeds safety threshold "
+                      f"({available_gb * 0.5:.2f}GB). Risk of OOM!")
+    else:
+        # Can't determine size for generators
+        estimated_total_time = None
+        result_warnings.append("Cannot determine data size - using heuristics")
+    
+    # Step 3: Fast Fail - very quick functions
     if avg_time < 0.001:
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason="Function is too fast (< 1ms) - parallelization overhead would dominate",
-            estimated_speedup=1.0
+            estimated_speedup=1.0,
+            warnings=result_warnings
         )
-    
-    # Step 3: Estimate total workload
-    total_items = estimate_total_items(data, False)
-    
-    if total_items > 0:
-        estimated_total_time = avg_time * total_items
-        
-        if verbose:
-            print(f"Estimated total items: {total_items}")
-            print(f"Estimated serial execution time: {estimated_total_time:.2f}s")
-    else:
-        # Can't determine size for generators
-        estimated_total_time = None
-        result_warnings.append("Cannot determine data size - using heuristics")
     
     # Step 4: Get system information
     physical_cores = get_physical_cores()
