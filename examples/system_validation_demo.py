@@ -304,27 +304,53 @@ def example_7_comparing_systems():
 
 
 if __name__ == "__main__":
+    import sys
+    
+    # Check for non-interactive mode
+    non_interactive = "--no-pause" in sys.argv or "-n" in sys.argv
+    
     # Run all examples
     example_1_basic_validation()
-    input("Press Enter to continue to Example 2...\n")
+    if not non_interactive:
+        input("Press Enter to continue to Example 2...\n")
+    else:
+        print("\n")
     
     example_2_verbose_validation()
-    input("Press Enter to continue to Example 3...\n")
+    if not non_interactive:
+        input("Press Enter to continue to Example 3...\n")
+    else:
+        print("\n")
     
     example_3_programmatic_health_check()
-    input("Press Enter to continue to Example 4...\n")
+    if not non_interactive:
+        input("Press Enter to continue to Example 4...\n")
+    else:
+        print("\n")
     
     example_4_inspect_specific_measurements()
-    input("Press Enter to continue to Example 5...\n")
+    if not non_interactive:
+        input("Press Enter to continue to Example 5...\n")
+    else:
+        print("\n")
     
     example_5_ci_cd_integration()
-    input("Press Enter to continue to Example 6...\n")
+    if not non_interactive:
+        input("Press Enter to continue to Example 6...\n")
+    else:
+        print("\n")
     
     example_6_troubleshooting_guide()
-    input("Press Enter to continue to Example 7...\n")
+    if not non_interactive:
+        input("Press Enter to continue to Example 7...\n")
+    else:
+        print("\n")
     
     example_7_comparing_systems()
     
     print("=" * 70)
     print("All examples completed!")
     print("=" * 70)
+    
+    if non_interactive:
+        print("\nRun without --no-pause flag for interactive mode with pauses between examples.")
