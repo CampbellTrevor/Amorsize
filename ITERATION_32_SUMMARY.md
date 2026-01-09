@@ -75,7 +75,7 @@ All tests use subprocess to test actual CLI invocation, ensuring end-to-end func
 The parser supports flexible formats:
 ```bash
 # Simple format (auto-generated name)
-"2,50"              → "2 processs" with n_jobs=2, chunksize=50
+"2,50"              → "2 processes" with n_jobs=2, chunksize=50
 
 # Named format
 "Low:2,50"          → "Low" with n_jobs=2, chunksize=50
