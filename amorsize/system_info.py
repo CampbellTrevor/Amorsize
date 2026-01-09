@@ -17,6 +17,10 @@ except ImportError:
 # Global cache for spawn cost measurement
 _CACHED_SPAWN_COST: Optional[float] = None
 
+# Minimum reasonable marginal cost threshold (1ms)
+# Below this, we assume measurement noise and fall back to single-worker measurement
+MIN_REASONABLE_MARGINAL_COST = 0.001
+
 
 def _clear_spawn_cost_cache():
     """
@@ -110,7 +114,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         
         # Ensure we have a reasonable positive value
         # If marginal cost is negative or tiny, fall back to the 1-worker measurement
-        if marginal_cost > 0.001:
+        if marginal_cost > MIN_REASONABLE_MARGINAL_COST:
             per_worker_cost = marginal_cost
         else:
             # Fallback: use the single worker measurement
