@@ -23,6 +23,7 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 - ⚡ **CPU Detection**: Uses physical cores (not hyperthreaded) for best performance
 - 🛡️ **Safety Checks**: Validates function picklability and handles edge cases gracefully
 - 📦 **Batch Processing**: Memory-safe processing for workloads with large return objects
+- 🌊 **Streaming Optimization**: imap/imap_unordered helper for continuous data streams
 - 🎯 **CLI Interface**: Analyze functions from command line without writing code
 - 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
 - 📊 **Diagnostic Profiling**: Deep insights into optimization decisions and trade-offs
@@ -147,6 +148,41 @@ results = process_in_batches(
 ```
 
 See [Batch Processing Guide](examples/README_batch_processing.md) for complete documentation.
+
+### Option 5: Streaming Optimization for Large/Infinite Datasets
+
+For very large datasets or infinite streams, use streaming optimization with `imap`/`imap_unordered`:
+
+```python
+from amorsize import optimize_streaming
+from multiprocessing import Pool
+
+def process_log_entry(entry):
+    """Process log entry with expensive computation"""
+    return analyze_and_extract(entry)
+
+# Optimize for streaming (no memory accumulation)
+result = optimize_streaming(process_log_entry, log_stream, verbose=True)
+
+# Process with imap/imap_unordered
+with Pool(result.n_jobs) as pool:
+    if result.use_ordered:
+        iterator = pool.imap(process_log_entry, result.data, chunksize=result.chunksize)
+    else:
+        iterator = pool.imap_unordered(process_log_entry, result.data, chunksize=result.chunksize)
+    
+    # Process results as they become available (no memory accumulation)
+    for item in iterator:
+        save_to_database(item)
+```
+
+**When to use streaming:**
+- ✅ Very large datasets that don't fit in memory
+- ✅ Infinite generators or data streams  
+- ✅ Processing results incrementally
+- ✅ Functions with large return objects
+
+See [Streaming Optimization Guide](examples/README_streaming_optimization.md) for complete documentation.
 
 ## How It Works
 
