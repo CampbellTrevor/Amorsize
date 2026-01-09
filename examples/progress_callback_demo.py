@@ -6,6 +6,7 @@ the optimization process in real-time.
 """
 
 import time
+import math
 from amorsize import optimize
 
 
@@ -125,7 +126,6 @@ def example_4_gui_style_callback():
     
     def scientific_computation(x):
         """Complex scientific computation."""
-        import math
         result = 0
         for i in range(3000):
             result += math.sin(x + i) * math.cos(x - i)
