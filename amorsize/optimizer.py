@@ -815,15 +815,15 @@ def optimize(
     
     # Step 5: Early rejection for very small workloads
     # Only reject if even with 2 workers we can't get 1.2x speedup
-    # This is more intelligent than a fixed threshold
+    # This is more intelligent than a fixed threshold and uses actual overhead measurements
     if estimated_total_time is not None and total_items > 0 and avg_time > 0:
         # Calculate if 2 workers (minimum parallelization) would provide benefit
-        # Use a conservative chunksize estimate for this check
+        # Use target_chunk_duration (function parameter) to estimate chunksize
         test_chunksize = max(1, int(target_chunk_duration / avg_time))
         test_speedup = calculate_amdahl_speedup(
             total_compute_time=total_items * avg_time,
             pickle_overhead_per_item=sampling_result.avg_pickle_time,
-            spawn_cost_per_worker=spawn_cost,
+            spawn_cost_per_worker=spawn_cost,  # Per-worker spawn cost measured above
             chunking_overhead_per_chunk=chunking_overhead,
             n_jobs=2,
             chunksize=test_chunksize,
