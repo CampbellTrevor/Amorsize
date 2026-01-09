@@ -10,6 +10,7 @@ from .executor import execute
 from .batch import process_in_batches, estimate_safe_batch_size
 from .streaming import optimize_streaming, StreamingOptimizationResult
 from .benchmark import validate_optimization, quick_validate, BenchmarkResult
+from .validation import validate_system, ValidationResult
 
 __version__ = "0.1.0"
 __all__ = [
@@ -20,8 +21,10 @@ __all__ = [
     "optimize_streaming",
     "validate_optimization",
     "quick_validate",
+    "validate_system",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
-    "BenchmarkResult"
+    "BenchmarkResult",
+    "ValidationResult"
 ]
