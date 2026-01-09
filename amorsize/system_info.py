@@ -374,13 +374,14 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
         return DEFAULT_CHUNKING_OVERHEAD
 
 
-def get_chunking_overhead(use_benchmark: bool = False) -> float:
+def get_chunking_overhead(use_benchmark: bool = True) -> float:
     """
     Get the per-chunk overhead, either measured or estimated.
     
     Args:
         use_benchmark: If True, measures actual chunking overhead. If False,
-                      uses default estimate (default: False for speed)
+                      uses default estimate. Default is True for accuracy
+                      as measurements are fast (~10ms) and cached globally.
     
     Returns:
         Chunking overhead in seconds per chunk
@@ -487,13 +488,15 @@ def get_spawn_cost_estimate() -> float:
         return (SPAWN_COST_FORK + SPAWN_COST_SPAWN) / 2
 
 
-def get_spawn_cost(use_benchmark: bool = False) -> float:
+def get_spawn_cost(use_benchmark: bool = True) -> float:
     """
     Get the process spawn cost, either measured or estimated.
     
     Args:
         use_benchmark: If True, measures actual spawn cost. If False,
-                      uses start-method-based estimate (default: False for speed)
+                      uses start-method-based estimate. Default is True
+                      for accuracy as measurements are fast (~15ms) and
+                      cached globally.
     
     Returns:
         Spawn cost in seconds

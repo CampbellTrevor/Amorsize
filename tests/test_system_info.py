@@ -107,7 +107,8 @@ def test_get_spawn_cost():
     """Test that get_spawn_cost returns a reasonable value."""
     cost = get_spawn_cost()
     assert isinstance(cost, float)
-    assert 0.01 < cost < 1.0  # Should be between 10ms and 1s
+    # With default benchmarking enabled, actual measurement can be as low as 5-7ms on fast systems
+    assert 0.001 < cost < 1.0  # Should be between 1ms and 1s
 
 
 def test_get_spawn_cost_estimate():

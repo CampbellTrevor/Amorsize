@@ -398,8 +398,8 @@ def optimize(
     sample_size: int = 5,
     target_chunk_duration: float = 0.2,
     verbose: bool = False,
-    use_spawn_benchmark: bool = False,
-    use_chunking_benchmark: bool = False,
+    use_spawn_benchmark: bool = True,
+    use_chunking_benchmark: bool = True,
     profile: bool = False
 ) -> OptimizationResult:
     """
@@ -451,10 +451,14 @@ def optimize(
         verbose: If True, print detailed analysis information.
                 Must be a boolean.
         use_spawn_benchmark: If True, measure actual spawn cost instead of
-                            using OS-based estimate (slower but more accurate).
+                            using OS-based estimate. Default is True for accuracy.
+                            Measurements are fast (~15ms) and cached globally.
+                            Set to False for fastest startup if estimates are acceptable.
                             Must be a boolean.
         use_chunking_benchmark: If True, measure actual chunking overhead instead of
-                               using default estimate (slower but more accurate).
+                               using default estimate. Default is True for accuracy.
+                               Measurements are fast (~10ms) and cached globally.
+                               Set to False for fastest startup if estimates are acceptable.
                                Must be a boolean.
         profile: If True, capture detailed diagnostic information in result.profile
                 for in-depth analysis. Use result.explain() to view the diagnostic
