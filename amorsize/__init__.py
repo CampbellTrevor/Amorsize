@@ -11,6 +11,7 @@ from .batch import process_in_batches, estimate_safe_batch_size
 from .streaming import optimize_streaming, StreamingOptimizationResult
 from .benchmark import validate_optimization, quick_validate, BenchmarkResult
 from .validation import validate_system, ValidationResult
+from .comparison import compare_strategies, compare_with_optimizer, ComparisonConfig, ComparisonResult
 
 __version__ = "0.1.0"
 __all__ = [
@@ -22,9 +23,13 @@ __all__ = [
     "validate_optimization",
     "quick_validate",
     "validate_system",
+    "compare_strategies",
+    "compare_with_optimizer",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
     "BenchmarkResult",
-    "ValidationResult"
+    "ValidationResult",
+    "ComparisonConfig",
+    "ComparisonResult"
 ]
