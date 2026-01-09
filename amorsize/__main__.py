@@ -324,7 +324,8 @@ def parse_strategy_config(config_str: str) -> ComparisonConfig:
         if n_jobs == 1 or executor_type == "serial":
             name = "Serial"
         else:
-            name = f"{n_jobs} {executor_type}s"
+            executor_label = "processes" if executor_type == "process" else f"{executor_type}s"
+            name = f"{n_jobs} {executor_label}"
     
     return ComparisonConfig(name, n_jobs, chunksize, executor_type)
 

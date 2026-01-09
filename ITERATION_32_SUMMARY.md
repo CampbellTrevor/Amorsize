@@ -93,8 +93,8 @@ The parser supports flexible formats:
 Strategy                       Time (s)     Speedup    Status         
 ----------------------------------------------------------------------
 Serial                         0.0000       1.00x      ⭐ FASTEST      
-2 workers                      0.0078       0.00x      ⚠️  Slower     
-4 workers                      0.0062       0.00x      ⚠️  Slower     
+2 processes                    0.0078       0.00x      ⚠️  Slower     
+4 processes                    0.0062       0.00x      ⚠️  Slower     
 
 Best Strategy: Serial
 Best Time: 0.0000s
