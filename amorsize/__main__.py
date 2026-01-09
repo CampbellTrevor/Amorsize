@@ -279,9 +279,9 @@ def parse_strategy_config(config_str: str) -> ComparisonConfig:
         ComparisonConfig object
         
     Examples:
-        "2,50" -> ComparisonConfig("2 workers", n_jobs=2, chunksize=50)
+        "2,50" -> ComparisonConfig("2 processes", n_jobs=2, chunksize=50)
         "Custom:4,25,thread" -> ComparisonConfig("Custom", n_jobs=4, chunksize=25, executor_type="thread")
-        "8,10,process" -> ComparisonConfig("8 workers", n_jobs=8, chunksize=10, executor_type="process")
+        "8,10,process" -> ComparisonConfig("8 processes", n_jobs=8, chunksize=10, executor_type="process")
     """
     # Check if config has a name prefix
     if ':' in config_str:
