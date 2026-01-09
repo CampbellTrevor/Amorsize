@@ -14,6 +14,10 @@ from typing import Any, Callable, List, Optional
 
 from . import optimize, execute, validate_system, __version__
 from .comparison import compare_strategies, compare_with_optimizer, ComparisonConfig
+from .history import (
+    save_result, load_result, list_results, delete_result,
+    compare_entries, clear_history
+)
 
 
 def load_function(function_path: str) -> Callable:
@@ -463,6 +467,172 @@ def cmd_compare(args: argparse.Namespace):
             if args.verbose:
                 import traceback
                 traceback.print_exc()
+    
+    # Save result to history if requested
+    if hasattr(args, 'save_result') and args.save_result:
+        try:
+            # Extract function name from the function path
+            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            
+            # Get data size (use loaded data length)
+            data_size = len(data) if hasattr(data, '__len__') else 0
+            
+            entry_id = save_result(result, args.save_result, function_name=function_name, data_size=data_size)
+            print(f"\n✓ Result saved to history as '{args.save_result}' (ID: {entry_id})")
+        except Exception as e:
+            print(f"\nWarning: Failed to save result to history: {e}", file=sys.stderr)
+
+
+def cmd_history_list(args: argparse.Namespace):
+    """Execute the 'history list' command."""
+    entries = list_results(name_filter=args.filter, limit=args.limit)
+    
+    if not entries:
+        print("No history entries found.")
+        return
+    
+    if args.json:
+        # JSON output
+        output = [
+            {
+                "id": entry.id,
+                "name": entry.name,
+                "timestamp": entry.timestamp,
+                "function": entry.function_name,
+                "data_size": entry.data_size,
+                "best_strategy": entry.result.best_config.name,
+                "system": entry.system_info
+            }
+            for entry in entries
+        ]
+        print(json.dumps(output, indent=2))
+    else:
+        # Human-readable output
+        print(f"Found {len(entries)} history entries:\n")
+        print(f"{'ID':<14} {'Name':<25} {'Date':<20} {'Function':<30}")
+        print("-" * 90)
+        for entry in entries:
+            # Format timestamp
+            timestamp = entry.timestamp.replace('T', ' ').replace('Z', '')
+            if '.' in timestamp:
+                timestamp = timestamp.split('.')[0]  # Remove microseconds
+            
+            # Truncate long names
+            name = entry.name[:24] if len(entry.name) > 24 else entry.name
+            func_name = entry.function_name[:29] if len(entry.function_name) > 29 else entry.function_name
+            
+            print(f"{entry.id:<14} {name:<25} {timestamp:<20} {func_name:<30}")
+
+
+def cmd_history_show(args: argparse.Namespace):
+    """Execute the 'history show' command."""
+    entry = load_result(args.id)
+    
+    if entry is None:
+        print(f"Error: History entry '{args.id}' not found.", file=sys.stderr)
+        sys.exit(1)
+    
+    if args.json:
+        # JSON output
+        print(json.dumps(entry.to_dict(), indent=2))
+    else:
+        # Human-readable output
+        print("=" * 70)
+        print(f"History Entry: {entry.name}")
+        print("=" * 70)
+        print(f"ID:        {entry.id}")
+        print(f"Timestamp: {entry.timestamp}")
+        print(f"Function:  {entry.function_name}")
+        print(f"Data size: {entry.data_size}")
+        print()
+        
+        print("System Information:")
+        print(f"  Platform:       {entry.system_info.get('platform', 'N/A')}")
+        print(f"  Physical cores: {entry.system_info.get('physical_cores', 'N/A')}")
+        print(f"  Memory:         {entry.system_info.get('available_memory_gb', 'N/A'):.2f} GB")
+        print(f"  Start method:   {entry.system_info.get('multiprocessing_start_method', 'N/A')}")
+        print()
+        
+        print("Results:")
+        print(f"  Best strategy:  {entry.result.best_config.name}")
+        print(f"  Best time:      {entry.result.best_time:.4f}s")
+        print(f"  Best speedup:   {entry.result.speedups[entry.result.best_config_index]:.2f}x")
+        print()
+        
+        print(f"{'Strategy':<25} {'Workers':<10} {'Chunk':<10} {'Time (s)':<12} {'Speedup':<10}")
+        print("-" * 70)
+        for i, config in enumerate(entry.result.configs):
+            print(f"{config.name:<25} {config.n_jobs:<10} {config.chunksize:<10} "
+                  f"{entry.result.execution_times[i]:<12.4f} {entry.result.speedups[i]:<10.2f}x")
+
+
+def cmd_history_compare(args: argparse.Namespace):
+    """Execute the 'history compare' command."""
+    comparison = compare_entries(args.id1, args.id2)
+    
+    if comparison is None:
+        print(f"Error: One or both history entries not found.", file=sys.stderr)
+        sys.exit(1)
+    
+    if args.json:
+        # JSON output
+        print(json.dumps(comparison, indent=2))
+    else:
+        # Human-readable output
+        e1 = comparison["entry1"]
+        e2 = comparison["entry2"]
+        comp = comparison["comparison"]
+        
+        print("=" * 70)
+        print("History Comparison")
+        print("=" * 70)
+        
+        print(f"\nEntry 1: {e1['name']} (ID: {e1['id']})")
+        print(f"  Timestamp:     {e1['timestamp']}")
+        print(f"  Best strategy: {e1['best_strategy']}")
+        print(f"  Speedup:       {e1['speedup']:.2f}x")
+        print(f"  Time:          {e1['execution_time']:.4f}s")
+        
+        print(f"\nEntry 2: {e2['name']} (ID: {e2['id']})")
+        print(f"  Timestamp:     {e2['timestamp']}")
+        print(f"  Best strategy: {e2['best_strategy']}")
+        print(f"  Speedup:       {e2['speedup']:.2f}x")
+        print(f"  Time:          {e2['execution_time']:.4f}s")
+        
+        print("\nComparison:")
+        print(f"  Time delta:    {comp['time_delta_seconds']:+.4f}s ({comp['time_delta_percent']:+.1f}%)")
+        print(f"  Speedup delta: {comp['speedup_delta']:+.2f}x")
+        print(f"  Same system:   {'Yes' if comp['same_system'] else 'No'}")
+        
+        if comp['is_regression']:
+            print(f"  ⚠ REGRESSION DETECTED: Entry 2 is slower than Entry 1")
+        else:
+            print(f"  ✓ Performance improved or stable")
+        
+        if not comp['same_system']:
+            print("\n  Note: Results are from different systems. Direct comparison may not be meaningful.")
+
+
+def cmd_history_delete(args: argparse.Namespace):
+    """Execute the 'history delete' command."""
+    if delete_result(args.id):
+        print(f"✓ Deleted history entry '{args.id}'")
+    else:
+        print(f"Error: History entry '{args.id}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_history_clear(args: argparse.Namespace):
+    """Execute the 'history clear' command."""
+    if not args.yes:
+        # Ask for confirmation
+        response = input("Are you sure you want to delete ALL history entries? (yes/no): ")
+        if response.lower() not in ['yes', 'y']:
+            print("Cancelled.")
+            return
+    
+    count = clear_history()
+    print(f"✓ Deleted {count} history entries")
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -730,6 +900,97 @@ Examples:
         metavar='DIR',
         help='Generate visualization plots and save to directory (requires matplotlib)'
     )
+    compare_parser.add_argument(
+        '--save-result',
+        metavar='NAME',
+        help='Save comparison result to history with given name'
+    )
+    
+    # ===== HISTORY SUBCOMMAND =====
+    history_parser = subparsers.add_parser(
+        'history',
+        help='Manage historical comparison results'
+    )
+    
+    history_subparsers = history_parser.add_subparsers(dest='history_command', help='History command to execute')
+    
+    # history list
+    history_list_parser = history_subparsers.add_parser(
+        'list',
+        help='List all saved results'
+    )
+    history_list_parser.add_argument(
+        '--filter',
+        metavar='NAME',
+        help='Filter results by name (case-insensitive substring match)'
+    )
+    history_list_parser.add_argument(
+        '--limit',
+        type=int,
+        metavar='N',
+        help='Limit number of results shown'
+    )
+    history_list_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    
+    # history show
+    history_show_parser = history_subparsers.add_parser(
+        'show',
+        help='Show details of a specific result'
+    )
+    history_show_parser.add_argument(
+        'id',
+        help='ID of the history entry to show'
+    )
+    history_show_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    
+    # history compare
+    history_compare_parser = history_subparsers.add_parser(
+        'compare',
+        help='Compare two historical results'
+    )
+    history_compare_parser.add_argument(
+        'id1',
+        help='ID of first history entry'
+    )
+    history_compare_parser.add_argument(
+        'id2',
+        help='ID of second history entry'
+    )
+    history_compare_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    
+    # history delete
+    history_delete_parser = history_subparsers.add_parser(
+        'delete',
+        help='Delete a specific result'
+    )
+    history_delete_parser.add_argument(
+        'id',
+        help='ID of the history entry to delete'
+    )
+    
+    # history clear
+    history_clear_parser = history_subparsers.add_parser(
+        'clear',
+        help='Delete all history entries'
+    )
+    history_clear_parser.add_argument(
+        '--yes',
+        '-y',
+        action='store_true',
+        help='Skip confirmation prompt'
+    )
     
     return parser
 
@@ -754,12 +1015,31 @@ def main():
             cmd_execute(args)
         elif args.command == 'compare':
             cmd_compare(args)
+        elif args.command == 'history':
+            # Check history subcommand
+            if not hasattr(args, 'history_command') or not args.history_command:
+                print("Error: History subcommand required. Use 'list', 'show', 'compare', 'delete', or 'clear'.", file=sys.stderr)
+                sys.exit(1)
+            
+            if args.history_command == 'list':
+                cmd_history_list(args)
+            elif args.history_command == 'show':
+                cmd_history_show(args)
+            elif args.history_command == 'compare':
+                cmd_history_compare(args)
+            elif args.history_command == 'delete':
+                cmd_history_delete(args)
+            elif args.history_command == 'clear':
+                cmd_history_clear(args)
+            else:
+                print(f"Error: Unknown history subcommand: {args.history_command}", file=sys.stderr)
+                sys.exit(1)
         else:
             parser.print_help()
             sys.exit(1)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
-        if args.verbose:
+        if hasattr(args, 'verbose') and args.verbose:
             import traceback
             traceback.print_exc()
         sys.exit(1)

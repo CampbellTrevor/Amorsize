@@ -20,6 +20,15 @@ from .visualization import (
     visualize_comparison_result,
     check_matplotlib
 )
+from .history import (
+    save_result,
+    load_result,
+    list_results,
+    delete_result,
+    compare_entries,
+    clear_history,
+    HistoryEntry
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -39,11 +48,18 @@ __all__ = [
     "plot_scaling_curve",
     "visualize_comparison_result",
     "check_matplotlib",
+    "save_result",
+    "load_result",
+    "list_results",
+    "delete_result",
+    "compare_entries",
+    "clear_history",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
     "BenchmarkResult",
     "ValidationResult",
     "ComparisonConfig",
-    "ComparisonResult"
+    "ComparisonResult",
+    "HistoryEntry"
 ]
