@@ -35,7 +35,9 @@ class SamplingResult:
         coefficient_of_variation: float = 0.0,
         nested_parallelism_detected: bool = False,
         parallel_libraries: List[str] = None,
-        thread_activity: Dict[str, int] = None
+        thread_activity: Dict[str, int] = None,
+        workload_type: str = "cpu_bound",
+        cpu_time_ratio: float = 1.0
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -55,6 +57,8 @@ class SamplingResult:
         self.nested_parallelism_detected = nested_parallelism_detected
         self.parallel_libraries = parallel_libraries or []
         self.thread_activity = thread_activity or {}
+        self.workload_type = workload_type
+        self.cpu_time_ratio = cpu_time_ratio
 
 
 def check_picklability(func: Callable) -> bool:
@@ -239,6 +243,99 @@ def estimate_internal_threads(parallel_libraries: List[str], thread_activity: Di
     
     # No libraries detected - shouldn't happen but handle gracefully
     return 1
+
+
+def detect_workload_type(func: Callable, sample_items: List[Any]) -> Tuple[str, float]:
+    """
+    Detect if a workload is CPU-bound, I/O-bound, or mixed.
+    
+    This function measures CPU time vs wall-clock time to determine workload characteristics.
+    CPU-bound tasks use CPU constantly, while I/O-bound tasks wait for external resources.
+    
+    Args:
+        func: Function to analyze
+        sample_items: Sample data items to test with
+    
+    Returns:
+        Tuple of (workload_type, cpu_time_ratio) where:
+        - workload_type: 'cpu_bound', 'io_bound', or 'mixed'
+        - cpu_time_ratio: Ratio of CPU time to wall-clock time (0.0 to 1.0+)
+    
+    Classification:
+        - cpu_bound: cpu_time_ratio >= 0.7 (70%+ CPU utilization)
+        - mixed: 0.3 <= cpu_time_ratio < 0.7 (30-70% CPU utilization)
+        - io_bound: cpu_time_ratio < 0.3 (<30% CPU utilization)
+    
+    Rationale:
+        - CPU-bound: Benefits from multiprocessing (parallel computation)
+        - I/O-bound: Benefits from threading or asyncio (no GIL during I/O)
+        - Mixed: May benefit from either, depends on workload balance
+    """
+    if not sample_items:
+        # No data to analyze, assume CPU-bound (conservative)
+        return "cpu_bound", 1.0
+    
+    try:
+        import resource
+        has_getrusage = True
+    except ImportError:
+        # Windows doesn't have resource module
+        # Fall back to process_time measurement
+        has_getrusage = False
+    
+    total_wall_time = 0.0
+    total_cpu_time = 0.0
+    
+    for item in sample_items:
+        try:
+            # Measure wall-clock time
+            wall_start = time.perf_counter()
+            
+            if has_getrusage:
+                # Measure CPU time (user + system) on Unix systems
+                rusage_start = resource.getrusage(resource.RUSAGE_SELF)
+                cpu_start = rusage_start.ru_utime + rusage_start.ru_stime
+            else:
+                # Windows: use process_time (measures CPU time)
+                cpu_start = time.process_time()
+            
+            # Execute function
+            _ = func(item)
+            
+            # Measure end times
+            wall_end = time.perf_counter()
+            
+            if has_getrusage:
+                rusage_end = resource.getrusage(resource.RUSAGE_SELF)
+                cpu_end = rusage_end.ru_utime + rusage_end.ru_stime
+            else:
+                cpu_end = time.process_time()
+            
+            # Accumulate times
+            total_wall_time += (wall_end - wall_start)
+            total_cpu_time += (cpu_end - cpu_start)
+            
+        except Exception:
+            # If measurement fails for this item, skip it
+            continue
+    
+    # Calculate CPU time ratio
+    if total_wall_time > 0:
+        cpu_time_ratio = total_cpu_time / total_wall_time
+    else:
+        # No successful measurements, assume CPU-bound
+        cpu_time_ratio = 1.0
+    
+    # Classify workload based on CPU utilization
+    # Note: cpu_time_ratio can exceed 1.0 for multi-threaded functions
+    if cpu_time_ratio >= 0.7:
+        workload_type = "cpu_bound"
+    elif cpu_time_ratio >= 0.3:
+        workload_type = "mixed"
+    else:
+        workload_type = "io_bound"
+    
+    return workload_type, cpu_time_ratio
 
 
 def detect_thread_activity(func: Callable, sample_item: Any) -> Dict[str, int]:
@@ -434,6 +531,9 @@ def perform_dry_run(
             # Libraries present but no explicit thread limiting
             nested_parallelism = True
     
+    # Detect workload type (CPU-bound vs I/O-bound)
+    workload_type, cpu_time_ratio = detect_workload_type(func, sample)
+    
     # Start memory tracking
     tracemalloc.start()
     
@@ -509,7 +609,9 @@ def perform_dry_run(
             coefficient_of_variation=coefficient_of_variation,
             nested_parallelism_detected=nested_parallelism,
             parallel_libraries=parallel_libs,
-            thread_activity=thread_info
+            thread_activity=thread_info,
+            workload_type=workload_type,
+            cpu_time_ratio=cpu_time_ratio
         )
     
     except Exception as e:
@@ -527,7 +629,9 @@ def perform_dry_run(
             is_generator=is_gen,
             data_items_picklable=data_picklable,
             unpicklable_data_index=unpicklable_idx,
-            data_pickle_error=pickle_err
+            data_pickle_error=pickle_err,
+            workload_type="cpu_bound",
+            cpu_time_ratio=1.0
         )
 
 
