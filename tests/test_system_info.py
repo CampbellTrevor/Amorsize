@@ -3,6 +3,7 @@ Tests for system_info module.
 """
 
 import pytest
+import sys
 import multiprocessing
 import platform
 from amorsize.system_info import (
@@ -149,7 +150,6 @@ def test_get_default_start_method():
         assert default == "spawn"
     elif system == "Darwin":
         # macOS defaults to spawn in Python 3.8+
-        import sys
         if sys.version_info >= (3, 8):
             assert default == "spawn"
         else:

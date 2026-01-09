@@ -4,6 +4,7 @@ System information module for detecting hardware and OS constraints.
 
 import os
 import platform
+import sys
 import time
 import multiprocessing
 from typing import Tuple, Optional
@@ -177,7 +178,6 @@ def _get_default_start_method() -> str:
         return "spawn"
     elif system == "Darwin":
         # macOS changed default from fork to spawn in Python 3.8
-        import sys
         if sys.version_info >= (3, 8):
             return "spawn"
         else:
