@@ -5,7 +5,7 @@ A Python utility that analyzes the cost-benefit ratio of parallelization
 and returns optimal n_jobs and chunksize parameters.
 """
 
-from .optimizer import optimize
+from .optimizer import optimize, DiagnosticProfile, OptimizationResult
 
 __version__ = "0.1.0"
-__all__ = ["optimize"]
+__all__ = ["optimize", "OptimizationResult", "DiagnosticProfile"]
