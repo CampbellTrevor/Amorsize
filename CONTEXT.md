@@ -1,42 +1,42 @@
 # Context for Next Agent
 
-## What Was Accomplished (Iteration 34)
+## What Was Accomplished (Iteration 35)
 
-Successfully implemented **complete historical tracking support** - enabling users to save, query, and compare optimization results over time to monitor performance and detect regressions.
+Successfully implemented **complete auto-tuning support** - enabling users to empirically find optimal n_jobs and chunksize parameters through intelligent grid search benchmarking.
 
 ### Deliverables
 
-1. **History Module**: Created `amorsize/history.py` with 7 functions
-   - `save_result()` - Save comparison results with metadata
-   - `load_result()` - Load specific result by ID
-   - `list_results()` - Query results with filtering
-   - `delete_result()` - Remove specific result
-   - `compare_entries()` - Compare two results with regression detection
-   - `clear_history()` - Clear all history
-   - `get_system_fingerprint()` - System metadata capture
-   - JSON storage in `~/.amorsize/history/`
-   - Cross-system comparison with warnings
+1. **Tuning Module**: Created `amorsize/tuning.py` with core functionality
+   - `tune_parameters()` - Full grid search with customizable ranges
+   - `quick_tune()` - Fast tuning with minimal search space
+   - `TuningResult` class with comprehensive result information
+   - Support for both process and thread executors
+   - Integration with optimizer hints for intelligent search
+   - Configurable timeouts and search space
+   - Automatic serial baseline benchmarking
 
-2. **CLI Integration**: Extended `amorsize/__main__.py` with `history` subcommand
-   - `history list` - List all saved results
-   - `history show <id>` - Display detailed information
-   - `history compare <id1> <id2>` - Compare two results
-   - `history delete <id>` - Remove a result
-   - `history clear` - Clear all history
-   - `--save-result NAME` flag on compare command
-   - Human-readable and JSON output modes
+2. **CLI Integration**: Extended `amorsize/__main__.py` with `tune` command
+   - `python -m amorsize tune function --data-range N`
+   - `--quick` flag for fast tuning
+   - `--n-jobs-range` and `--chunksize-range` for custom search
+   - `--threads` flag for ThreadPoolExecutor
+   - `--timeout-per-config` for safety
+   - `--save-result NAME` for history integration
+   - JSON and verbose output modes
 
-3. **Tests**: Added 21 comprehensive tests in `tests/test_history.py`
-   - All tests passing (567 total tests now, up from 546)
-   - Tests cover: save/load, filtering, comparison, regression detection
+3. **Tests**: Added 31 comprehensive tests in `tests/test_tuning.py`
+   - All tests passing (598 total tests now, up from 567)
+   - Tests cover: basic tuning, quick tune, search spaces, threads, edge cases
+   - Integration tests with optimizer
 
 4. **Documentation**: Complete guide with examples
-   - `examples/README_history.md` - 400+ line comprehensive guide
-   - `examples/history_demo.py` - Working demos of all features
+   - `examples/README_tuning.md` - 600+ line comprehensive guide
+   - `examples/tuning_demo.py` - Working demos of all features
+   - Comparison with optimizer, best practices, troubleshooting
 
 ### Status
 
-- ✅ All 567 tests passing
+- ✅ All 598 tests passing (31 new tuning tests)
 - ✅ Documentation complete
 - ✅ Ready for production use
 
@@ -53,27 +53,36 @@ Successfully implemented **complete historical tracking support** - enabling use
 7. **CLI Support** - Complete CLI with all commands
 8. **System Validation** - System capability checks
 9. **Visualization** - Chart generation from results
-10. **Historical Tracking** - Track results over time ← NEW
+10. **Historical Tracking** - Track results over time
+11. **Auto-Tuning** - Empirical parameter optimization ← NEW
 
 ## Recommended Next Steps
 
-### 1. Auto-Tuning (3-4 hours) - **HIGHEST PRIORITY**
-Automatically find optimal configuration through intelligent parameter search:
-- Grid search over n_jobs/chunksize space
-- Bayesian optimization for faster convergence
-- CLI: `python -m amorsize tune mymodule.func --data-range 1000`
-- Save best configuration to history automatically
-
-### 2. Export/Import Configuration (1-2 hours)
+### 1. Configuration Export/Import (1-2 hours) - **HIGHEST PRIORITY**
 Save and reuse optimal configurations:
-- Save configs to YAML/JSON file
-- Load configs from file
-- CLI: `--save-config` and `--load-config`
+- Export tuning results to config file (YAML/JSON)
+- Import and apply saved configurations
+- CLI: `--save-config` and `--load-config` flags
+- Shareable configs between team members
+
+### 2. Advanced Tuning Strategies (2-3 hours)
+Implement more sophisticated search algorithms:
+- Bayesian optimization for faster convergence
+- Random search for large search spaces
+- Early stopping for obviously poor configs
+- Adaptive search space refinement
 
 ### 3. Performance Profiling Integration (2-3 hours)
 Deep integration with Python profilers:
-- cProfile integration
-- Memory profiling
+- cProfile integration for bottleneck detection
+- Memory profiling with memory_profiler
 - Flame graph generation
+- Hotspot identification
+
+### 4. Multi-Function Optimization (2-3 hours)
+Optimize across multiple related functions:
+- Pipeline optimization
+- DAG-based workload optimization
+- Resource allocation across functions
 
 Good luck! Build something awesome! 🚀
