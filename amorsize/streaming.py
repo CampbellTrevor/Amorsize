@@ -368,6 +368,7 @@ def optimize_streaming(
     if sampling_result.avg_time > 0:
         optimal_chunksize = max(1, int(target_chunk_duration / sampling_result.avg_time))
     else:
+        # If avg_time is zero or negative (error), use conservative default
         optimal_chunksize = 1
     
     # Adaptive chunking for heterogeneous workloads
@@ -513,7 +514,9 @@ def optimize_streaming(
     else:
         # Unknown dataset size or duration - use heuristic
         optimal_n_jobs = max_workers_cpu
-        best_speedup = float(optimal_n_jobs) * 0.8  # Assume 80% efficiency
+        # Assume 80% efficiency for heuristic (conservative estimate)
+        HEURISTIC_EFFICIENCY = 0.8
+        best_speedup = float(optimal_n_jobs) * HEURISTIC_EFFICIENCY
         
         if verbose:
             print("ℹ Dataset size unknown - using heuristic estimation")

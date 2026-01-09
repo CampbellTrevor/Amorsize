@@ -117,7 +117,7 @@ def example_3_ordered_vs_unordered():
     )
     
     with Pool(ordered_result.n_jobs) as pool:
-        iterator = pool.imap(expensive_computation, data, chunksize=ordered_result.chunksize)
+        iterator = pool.imap(expensive_computation, ordered_result.data, chunksize=ordered_result.chunksize)
         results = []
         for item in iterator:
             results.append(item)
@@ -134,7 +134,7 @@ def example_3_ordered_vs_unordered():
     )
     
     with Pool(unordered_result.n_jobs) as pool:
-        iterator = pool.imap_unordered(expensive_computation, data, chunksize=unordered_result.chunksize)
+        iterator = pool.imap_unordered(expensive_computation, unordered_result.data, chunksize=unordered_result.chunksize)
         results = []
         for item in iterator:
             results.append(item)

@@ -124,14 +124,15 @@ def data_generator():
     while True:
         yield fetch_from_api()
 
-# Optimize for streaming
+# Optimize for streaming (generator is consumed for sampling)
 result = optimize_streaming(process_item, data_generator(), sample_size=10)
 
 # Process infinite stream
+# IMPORTANT: Use result.data (reconstructed generator), not original
 with Pool(result.n_jobs) as pool:
     iterator = pool.imap_unordered(
         process_item,
-        result.data,
+        result.data,  # Use result.data, not original generator!
         chunksize=result.chunksize
     )
     
@@ -139,6 +140,8 @@ with Pool(result.n_jobs) as pool:
         handle_result(item)
         # Process continuously, never accumulates in memory
 ```
+
+**Note:** For generators, always use `result.data` instead of the original generator. The sampling process consumes items from the generator, but `result.data` contains the reconstructed stream with all items intact.
 
 ### Example 3: Ordered vs Unordered
 
