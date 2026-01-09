@@ -42,6 +42,86 @@ class OptimizationResult:
         return result
 
 
+def calculate_amdahl_speedup(
+    total_compute_time: float,
+    pickle_overhead_per_item: float,
+    spawn_cost_per_worker: float,
+    n_jobs: int,
+    chunksize: int,
+    total_items: int
+) -> float:
+    """
+    Calculate realistic speedup using Amdahl's Law with overhead accounting.
+    
+    This implements a refined version of Amdahl's Law that accounts for:
+    1. Process spawn overhead (one-time cost per worker)
+    2. Pickle/IPC overhead (per-item serialization cost)
+    3. Chunking overhead (per-chunk communication cost)
+    
+    The formula breaks execution into:
+    - Serial portion: spawn costs + data distribution overhead
+    - Parallel portion: actual computation time divided across workers
+    - IPC overhead: pickle time for results (happens per item)
+    
+    Args:
+        total_compute_time: Total serial computation time (seconds)
+        pickle_overhead_per_item: Time to pickle one result (seconds)
+        spawn_cost_per_worker: Time to spawn one worker process (seconds)
+        n_jobs: Number of parallel workers
+        chunksize: Items per chunk
+        total_items: Total number of items to process
+    
+    Returns:
+        Estimated speedup factor (>1.0 means parallelization helps)
+        
+    Mathematical Model:
+        Serial Time = T_compute
+        
+        Parallel Time = T_spawn + T_parallel_compute + T_ipc
+        where:
+            T_spawn = spawn_cost * n_jobs (one-time startup)
+            T_parallel_compute = T_compute / n_jobs (ideal parallelization)
+            T_ipc = pickle_overhead * total_items (serialization overhead)
+        
+        The IPC overhead is unavoidable and happens regardless of parallelization,
+        but it represents the "serial fraction" in Amdahl's Law because results
+        must be collected sequentially.
+    """
+    if n_jobs <= 0 or total_compute_time <= 0:
+        return 1.0
+    
+    # Serial execution time (baseline)
+    serial_time = total_compute_time
+    
+    # Parallel execution breakdown:
+    # 1. Spawn overhead (one-time cost to start all workers)
+    spawn_overhead = spawn_cost_per_worker * n_jobs
+    
+    # 2. Parallel computation (ideal speedup)
+    parallel_compute_time = total_compute_time / n_jobs
+    
+    # 3. IPC overhead (pickle/unpickle for inter-process communication)
+    # This is per-item and largely serial (results collected sequentially)
+    ipc_overhead = pickle_overhead_per_item * total_items
+    
+    # 4. Chunking overhead (additional cost per chunk for task distribution)
+    # Each chunk requires queue operations, context switches, etc.
+    # Empirically, this is ~0.1-1ms per chunk
+    num_chunks = max(1, (total_items + chunksize - 1) // chunksize)
+    chunking_overhead = 0.0005 * num_chunks  # 0.5ms per chunk
+    
+    # Total parallel execution time
+    parallel_time = spawn_overhead + parallel_compute_time + ipc_overhead + chunking_overhead
+    
+    # Calculate speedup
+    if parallel_time > 0:
+        speedup = serial_time / parallel_time
+        # Speedup cannot exceed n_jobs (theoretical maximum)
+        return min(speedup, float(n_jobs))
+    
+    return 1.0
+
+
 def optimize(
     func: Callable[[Any], Any],
     data: Union[List, Iterator],
@@ -133,11 +213,13 @@ def optimize(
     avg_time = sampling_result.avg_time
     return_size = sampling_result.return_size
     peak_memory = sampling_result.peak_memory
+    avg_pickle_time = sampling_result.avg_pickle_time
     
     if verbose:
         print(f"Average execution time: {avg_time:.4f}s")
         print(f"Average return size: {return_size} bytes")
         print(f"Peak memory: {peak_memory} bytes")
+        print(f"Average pickle overhead: {avg_pickle_time:.6f}s")
     
     # Step 2: Fast Fail - very quick functions
     if avg_time < 0.001:
@@ -212,15 +294,33 @@ def optimize(
     if verbose:
         print(f"Optimal n_jobs: {optimal_n_jobs}")
     
-    # Step 8: Estimate speedup
-    if estimated_total_time and optimal_n_jobs > 1:
-        # Simplified Amdahl's law calculation
-        parallel_fraction = 1.0  # Assume fully parallelizable
-        serial_time = estimated_total_time
-        parallel_time = (spawn_cost * optimal_n_jobs) + (serial_time / optimal_n_jobs)
-        estimated_speedup = serial_time / parallel_time
+    # Step 8: Estimate speedup using proper Amdahl's Law
+    if estimated_total_time and optimal_n_jobs > 1 and total_items > 0:
+        # Use refined Amdahl's Law calculation with overhead accounting
+        estimated_speedup = calculate_amdahl_speedup(
+            total_compute_time=estimated_total_time,
+            pickle_overhead_per_item=avg_pickle_time,
+            spawn_cost_per_worker=spawn_cost,
+            n_jobs=optimal_n_jobs,
+            chunksize=optimal_chunksize,
+            total_items=total_items
+        )
+        
+        if verbose:
+            print(f"Estimated speedup: {estimated_speedup:.2f}x")
+        
+        # If speedup is less than 1.2x, parallelization may not be worth it
+        if estimated_speedup < 1.2:
+            return OptimizationResult(
+                n_jobs=1,
+                chunksize=1,
+                reason=f"Parallelization provides minimal benefit (estimated speedup: {estimated_speedup:.2f}x)",
+                estimated_speedup=1.0,
+                warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"]
+            )
     else:
-        estimated_speedup = float(optimal_n_jobs)
+        # Fallback for cases where we don't have enough info
+        estimated_speedup = float(optimal_n_jobs) * 0.7  # Conservative estimate
     
     # Step 9: Final sanity check
     if optimal_n_jobs == 1:
