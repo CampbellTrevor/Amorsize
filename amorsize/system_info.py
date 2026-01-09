@@ -148,7 +148,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         _CACHED_SPAWN_COST = per_worker_cost
         return per_worker_cost
         
-    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError) as e:
+    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
         # If measurement fails, fall back to OS-based estimate
         # OSError: System-level issues (e.g., resource exhaustion)
         # TimeoutError: Benchmark took too long
@@ -244,7 +244,7 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
         _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
         return DEFAULT_CHUNKING_OVERHEAD
         
-    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError) as e:
+    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
         # If measurement fails, fall back to default estimate
         _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
         return DEFAULT_CHUNKING_OVERHEAD
