@@ -35,6 +35,8 @@ class DiagnosticProfile:
         self.is_picklable: bool = False
         self.coefficient_of_variation: float = 0.0
         self.is_heterogeneous: bool = False
+        self.workload_type: str = "cpu_bound"
+        self.cpu_time_ratio: float = 1.0
         
         # System information
         self.physical_cores: int = 1
@@ -124,6 +126,7 @@ class DiagnosticProfile:
         lines.append(f"  Peak memory per call:     {self.format_bytes(self.peak_memory_bytes)}")
         if self.coefficient_of_variation > 0:
             lines.append(f"  Workload variability:     CV={self.coefficient_of_variation:.2f} ({'heterogeneous' if self.is_heterogeneous else 'homogeneous'})")
+        lines.append(f"  Workload type:            {self.workload_type.replace('_', '-')} (CPU utilization: {self.cpu_time_ratio*100:.1f}%)")
         lines.append(f"  Total items to process:   {self.total_items if self.total_items > 0 else 'Unknown'}")
         if self.estimated_serial_time > 0:
             lines.append(f"  Estimated serial time:    {self.format_time(self.estimated_serial_time)}")
@@ -578,6 +581,8 @@ def optimize(
         # CV 0.3-0.7: moderately heterogeneous
         # CV > 0.7: highly heterogeneous (significant variance)
         diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
+        diag.workload_type = sampling_result.workload_type
+        diag.cpu_time_ratio = sampling_result.cpu_time_ratio
     
     # Get physical cores early for nested parallelism adjustment calculations
     physical_cores = get_physical_cores()
@@ -660,6 +665,39 @@ def optimize(
                   f"delta={thread_delta}")
             print(f"  Estimated internal threads: {estimated_internal_threads}")
 
+    # Check workload type and provide recommendations for I/O-bound or mixed workloads
+    if sampling_result.workload_type in ("io_bound", "mixed"):
+        workload_warning = (
+            f"Workload appears to be {sampling_result.workload_type.replace('_', '-')}: "
+            f"CPU utilization is {sampling_result.cpu_time_ratio*100:.1f}%"
+        )
+        result_warnings.append(workload_warning)
+        
+        if sampling_result.workload_type == "io_bound":
+            # Strongly recommend threading for I/O-bound tasks
+            recommendation = (
+                "For I/O-bound workloads, consider using threading "
+                "(concurrent.futures.ThreadPoolExecutor) or asyncio instead of multiprocessing. "
+                "Multiprocessing has higher overhead and doesn't benefit I/O operations that release the GIL."
+            )
+        else:  # mixed
+            # For mixed workloads, provide both options
+            recommendation = (
+                "For mixed CPU/I/O workloads, consider: "
+                "(1) threading if I/O dominates, or "
+                "(2) multiprocessing if CPU computation is significant. "
+                "Current recommendation uses multiprocessing but may be suboptimal."
+            )
+        
+        result_warnings.append(recommendation)
+        
+        if diag:
+            diag.constraints.append(workload_warning)
+            diag.recommendations.append(recommendation)
+        
+        if verbose:
+            print(f"WARNING: {workload_warning}")
+            print(f"  {recommendation}")
 
     
     # Check for errors during sampling
