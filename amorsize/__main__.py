@@ -12,7 +12,7 @@ import json
 import sys
 from typing import Any, Callable, List, Optional
 
-from . import optimize, execute, __version__
+from . import optimize, execute, validate_system, __version__
 
 
 def load_function(function_path: str) -> Callable:
@@ -239,6 +239,32 @@ def cmd_execute(args: argparse.Namespace):
         format_output_human(result, "execute", show_profile=args.profile)
 
 
+def cmd_validate(args: argparse.Namespace):
+    """Execute the 'validate' command."""
+    # Run system validation
+    result = validate_system(verbose=args.verbose)
+    
+    # Format and display output
+    if args.json:
+        # JSON output for programmatic use
+        output = {
+            "checks_passed": result.checks_passed,
+            "checks_failed": result.checks_failed,
+            "overall_health": result.overall_health,
+            "warnings": result.warnings,
+            "errors": result.errors,
+            "details": result.details
+        }
+        print(json.dumps(output, indent=2, default=str))
+    else:
+        # Human-readable output
+        print(result)
+    
+    # Exit with appropriate code
+    if result.overall_health in ["poor", "critical"]:
+        sys.exit(1)
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
@@ -247,6 +273,9 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Validate system health and measurements
+  python -m amorsize validate
+  
   # Analyze optimal parameters for a function
   python -m amorsize optimize math.sqrt --data-range 1000
   
@@ -272,6 +301,23 @@ Examples:
     
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
+    # ===== VALIDATE SUBCOMMAND =====
+    validate_parser = subparsers.add_parser(
+        'validate',
+        help='Validate system health and measurement accuracy'
+    )
+    validate_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    validate_parser.add_argument(
+        '--verbose',
+        '-v',
+        action='store_true',
+        help='Enable verbose output with progress information'
+    )
+
     # Shared arguments for both commands
     parent_parser = argparse.ArgumentParser(add_help=False)
     
@@ -380,7 +426,9 @@ def main():
     
     try:
         # Execute command
-        if args.command == 'optimize':
+        if args.command == 'validate':
+            cmd_validate(args)
+        elif args.command == 'optimize':
             cmd_optimize(args)
         elif args.command == 'execute':
             cmd_execute(args)

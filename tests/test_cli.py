@@ -420,6 +420,7 @@ class TestCLIErrorHandling:
         )
         
         assert result.returncode == 0
+        assert "validate" in result.stdout
         assert "optimize" in result.stdout
         assert "execute" in result.stdout
         assert "Dynamic Parallelism Optimizer" in result.stdout
@@ -560,4 +561,111 @@ class TestCLIParameterPassing:
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output["n_jobs"] >= 1
+
+
+class TestCLIValidateCommand:
+    """Test the validate subcommand."""
+    
+    def test_validate_basic(self):
+        """Test basic validate command."""
+        result = subprocess.run(
+            [sys.executable, "-m", "amorsize", "validate"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        # Should succeed (exit code 0) on healthy system
+        assert result.returncode == 0
+        # Should show validation report
+        assert "VALIDATION REPORT" in result.stdout or "Health:" in result.stdout
+        assert "checks" in result.stdout.lower() or "passed" in result.stdout.lower()
+    
+    def test_validate_with_json_output(self):
+        """Test validate command with JSON output."""
+        result = subprocess.run(
+            [sys.executable, "-m", "amorsize", "validate", "--json"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        
+        # Parse JSON output
+        output = json.loads(result.stdout)
+        
+        # Verify structure
+        assert "checks_passed" in output
+        assert "checks_failed" in output
+        assert "overall_health" in output
+        assert "warnings" in output
+        assert "errors" in output
+        assert "details" in output
+        
+        # Verify types
+        assert isinstance(output["checks_passed"], int)
+        assert isinstance(output["checks_failed"], int)
+        assert isinstance(output["overall_health"], str)
+        assert isinstance(output["warnings"], list)
+        assert isinstance(output["errors"], list)
+        assert isinstance(output["details"], dict)
+        
+        # On a healthy system, should have checks passed
+        assert output["checks_passed"] > 0
+    
+    def test_validate_with_verbose(self):
+        """Test validate command with verbose output."""
+        result = subprocess.run(
+            [sys.executable, "-m", "amorsize", "validate", "--verbose"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        # Should succeed
+        assert result.returncode == 0
+        # Should show validation output (verbose may add more details)
+        assert "VALIDATION REPORT" in result.stdout or "Health:" in result.stdout
+    
+    def test_validate_json_structure_details(self):
+        """Test validate JSON output contains expected details."""
+        result = subprocess.run(
+            [sys.executable, "-m", "amorsize", "validate", "--json"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        
+        # Check for expected validation checks in details
+        details = output["details"]
+        expected_checks = [
+            "multiprocessing_basic",
+            "system_resources",
+            "spawn_cost_measurement",
+            "chunking_overhead_measurement",
+            "pickle_overhead_measurement"
+        ]
+        
+        # At least some of these checks should be present
+        present_checks = sum(1 for check in expected_checks if check in details)
+        assert present_checks > 0, "Expected validation checks not found in details"
+    
+    def test_validate_help_message(self):
+        """Test validate command help message."""
+        result = subprocess.run(
+            [sys.executable, "-m", "amorsize", "validate", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        assert "validate" in result.stdout.lower()
+        assert "--json" in result.stdout or "json" in result.stdout.lower()
+        assert "--verbose" in result.stdout or "verbose" in result.stdout.lower()
+
 
