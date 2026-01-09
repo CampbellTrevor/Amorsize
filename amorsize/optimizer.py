@@ -14,7 +14,7 @@ from .system_info import (
     get_multiprocessing_start_method,
     get_available_memory
 )
-from .sampling import perform_dry_run, estimate_total_items
+from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator
 
 
 class OptimizationResult:
@@ -26,13 +26,15 @@ class OptimizationResult:
         chunksize: int,
         reason: str,
         estimated_speedup: float = 1.0,
-        warnings: List[str] = None
+        warnings: List[str] = None,
+        data: Union[List, Iterator, None] = None
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
         self.reason = reason
         self.estimated_speedup = estimated_speedup
         self.warnings = warnings or []
+        self.data = data
     
     def __repr__(self):
         return (
@@ -161,9 +163,20 @@ def optimize(
         Safety over speed is the priority.
     
     Generator Handling:
-        When data is a generator, sampling consumes the first sample_size items.
-        These items are NOT returned to the generator. If you need to preserve
-        the full dataset, pass a list or use itertools.tee before calling.
+        When data is a generator, the sampling process consumes items from it.
+        To preserve the full dataset, the consumed items are automatically
+        reconstructed using itertools.chain. The reconstructed data is available
+        in the result.data attribute. For list inputs, result.data will contain
+        the original list unchanged.
+        
+        IMPORTANT: When using generators, always use result.data instead of
+        the original generator to ensure no data is lost:
+        
+        >>> gen = (x for x in range(1000))
+        >>> result = optimize(func, gen)
+        >>> # Use result.data, NOT gen!
+        >>> with Pool(result.n_jobs) as pool:
+        ...     results = pool.map(func, result.data, chunksize=result.chunksize)
     
     Args:
         func: The function to parallelize. Must accept a single argument and
@@ -180,7 +193,13 @@ def optimize(
                                using default estimate (slower but more accurate)
     
     Returns:
-        OptimizationResult with recommended n_jobs and chunksize
+        OptimizationResult with:
+            - n_jobs: Recommended number of workers
+            - chunksize: Recommended chunk size
+            - data: Reconstructed data (important for generators!)
+            - reason: Explanation of recommendation
+            - estimated_speedup: Expected performance improvement
+            - warnings: List of constraints or issues
     
     Example:
         >>> def expensive_function(x):
@@ -194,7 +213,8 @@ def optimize(
         >>> # Now use with multiprocessing.Pool:
         >>> from multiprocessing import Pool
         >>> with Pool(result.n_jobs) as pool:
-        ...     results = pool.map(expensive_function, data, chunksize=result.chunksize)
+        ...     # Use result.data to ensure generators are properly reconstructed
+        ...     results = pool.map(expensive_function, result.data, chunksize=result.chunksize)
     """
     result_warnings = []
     
@@ -204,6 +224,13 @@ def optimize(
     
     sampling_result = perform_dry_run(func, data, sample_size)
     
+    # Reconstruct data for generators to preserve consumed items
+    # For lists, use original data. For generators, chain sample with remaining.
+    if sampling_result.is_generator and sampling_result.remaining_data is not None:
+        reconstructed_data = reconstruct_iterator(sampling_result.sample, sampling_result.remaining_data)
+    else:
+        reconstructed_data = sampling_result.remaining_data if sampling_result.remaining_data is not None else data
+    
     # Check for errors during sampling
     if sampling_result.error:
         return OptimizationResult(
@@ -211,7 +238,8 @@ def optimize(
             chunksize=1,
             reason=f"Error during sampling: {str(sampling_result.error)}",
             estimated_speedup=1.0,
-            warnings=[f"Sampling failed: {str(sampling_result.error)}"]
+            warnings=[f"Sampling failed: {str(sampling_result.error)}"],
+            data=reconstructed_data
         )
     
     # Check picklability
@@ -221,7 +249,8 @@ def optimize(
             chunksize=1,
             reason="Function is not picklable - cannot use multiprocessing",
             estimated_speedup=1.0,
-            warnings=["Function cannot be pickled. Use serial execution."]
+            warnings=["Function cannot be pickled. Use serial execution."],
+            data=reconstructed_data
         )
     
     avg_time = sampling_result.avg_time
@@ -280,7 +309,8 @@ def optimize(
             chunksize=1,
             reason="Function is too fast (< 1ms) - parallelization overhead would dominate",
             estimated_speedup=1.0,
-            warnings=result_warnings
+            warnings=result_warnings,
+            data=reconstructed_data
         )
     
     # Step 4: Get system information
@@ -307,7 +337,8 @@ def optimize(
             n_jobs=1,
             chunksize=1,
             reason=f"Total execution time ({estimated_total_time:.2f}s) too short for parallelization overhead",
-            estimated_speedup=1.0
+            estimated_speedup=1.0,
+            data=reconstructed_data
         )
     
     # Step 6: Calculate optimal chunksize
@@ -366,7 +397,8 @@ def optimize(
                 chunksize=1,
                 reason=f"Parallelization provides minimal benefit (estimated speedup: {estimated_speedup:.2f}x)",
                 estimated_speedup=1.0,
-                warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"]
+                warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"],
+                data=reconstructed_data
             )
     else:
         # Fallback for cases where we don't have enough info
@@ -379,7 +411,8 @@ def optimize(
             chunksize=optimal_chunksize,
             reason="Serial execution recommended based on constraints",
             estimated_speedup=1.0,
-            warnings=result_warnings
+            warnings=result_warnings,
+            data=reconstructed_data
         )
     
     return OptimizationResult(
@@ -387,5 +420,6 @@ def optimize(
         chunksize=optimal_chunksize,
         reason=f"Parallelization beneficial: {optimal_n_jobs} workers with chunks of {optimal_chunksize}",
         estimated_speedup=estimated_speedup,
-        warnings=result_warnings
+        warnings=result_warnings,
+        data=reconstructed_data
     )
