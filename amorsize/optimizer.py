@@ -5,7 +5,13 @@ Main optimizer module that coordinates the analysis and returns optimal paramete
 from typing import Any, Callable, Iterator, List, Union, Tuple, Optional
 import warnings
 
-from .system_info import get_physical_cores, get_spawn_cost, calculate_max_workers
+from .system_info import (
+    get_physical_cores,
+    get_spawn_cost,
+    calculate_max_workers,
+    check_start_method_mismatch,
+    get_multiprocessing_start_method
+)
 from .sampling import perform_dry_run, estimate_total_items
 
 
@@ -248,9 +254,17 @@ def optimize(
     physical_cores = get_physical_cores()
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     
+    # Check for non-default start method
+    is_mismatch, mismatch_warning = check_start_method_mismatch()
+    if is_mismatch:
+        result_warnings.append(mismatch_warning)
+    
     if verbose:
         print(f"Physical cores: {physical_cores}")
+        print(f"Multiprocessing start method: {get_multiprocessing_start_method()}")
         print(f"Estimated spawn cost: {spawn_cost}s")
+        if is_mismatch:
+            print(f"Warning: {mismatch_warning}")
     
     # Step 5: Check if parallelization is worth it
     if estimated_total_time is not None and estimated_total_time < spawn_cost * 2:

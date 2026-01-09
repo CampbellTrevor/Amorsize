@@ -1,5 +1,79 @@
 # Amorsize Development Context
 
+## Completed: Multiprocessing Start Method Detection (Iteration 3)
+
+### What Was Done
+
+This iteration focused on **detecting the actual multiprocessing start method** being used, rather than just assuming OS defaults. This was identified as a high priority item from the Strategic Priorities - specifically "SAFETY & ACCURACY (The Guardrails)".
+
+### Changes Made
+
+1. **Added Start Method Detection** (`amorsize/system_info.py`):
+   - New `get_multiprocessing_start_method()` function to detect actual start method
+   - New `_get_default_start_method()` helper to determine OS defaults
+   - Handles RuntimeError gracefully when context not initialized
+   - Correctly identifies 'fork', 'spawn', or 'forkserver'
+
+2. **Updated Spawn Cost Estimation** (`amorsize/system_info.py`):
+   - `get_spawn_cost_estimate()` now uses **actual start method**, not OS
+   - Critical fix: User can override with `multiprocessing.set_start_method()`
+   - Spawn cost estimates:
+     * fork: 15ms (fast Copy-on-Write)
+     * spawn: 200ms (full interpreter initialization)
+     * forkserver: 75ms (middle ground)
+
+3. **Added Start Method Mismatch Detection** (`amorsize/system_info.py`):
+   - New `check_start_method_mismatch()` function
+   - Detects when start method differs from OS default
+   - Returns descriptive warning messages explaining the performance impact
+   - Example: "Using 'spawn' on Linux increases cost from ~15ms to ~200ms"
+
+4. **Integrated into Optimizer** (`amorsize/optimizer.py`):
+   - Added start method info to verbose output
+   - Automatically adds warnings when non-default method detected
+   - Users are informed about performance implications
+   - No breaking changes to API
+
+5. **Comprehensive Test Suite** (`tests/test_system_info.py`):
+   - 5 new tests covering start method detection
+   - Tests validate correct OS defaults
+   - Tests verify spawn cost matches start method
+   - Tests confirm mismatch detection logic
+   - Tests ensure warning messages are appropriate
+
+### Test Results
+
+All 64 tests pass (59 existing + 5 new):
+- ✅ All existing functionality preserved
+- ✅ Start method detection validated across platforms
+- ✅ Spawn cost estimates correctly match start method
+- ✅ Mismatch detection works correctly
+- ✅ Integration with optimizer validated
+
+### What This Fixes
+
+**Before**: Spawn cost was estimated based only on OS (Linux=15ms, Windows/macOS=200ms). If a user set `multiprocessing.set_start_method('spawn')` on Linux, the estimate would be 13x too low.
+
+**After**: Spawn cost is based on the **actual start method** being used. This prevents catastrophic optimization errors.
+
+**Example Impact**:
+- User sets 'spawn' on Linux for thread-safety
+- Old code: Estimates 15ms spawn cost → recommends 8 workers
+- New code: Detects 'spawn' → estimates 200ms → recommends 2 workers
+- Result: 4x fewer workers, but actually faster execution due to spawn overhead
+
+### Why This Matters
+
+The multiprocessing start method has a **13x performance difference**:
+1. User can override OS default with `set_start_method()`
+2. Old code assumed OS defaults, causing wrong estimates
+3. New code detects actual method and adjusts estimates
+4. Critical for accurate Amdahl's Law calculations
+
+Real-world scenario: User on Linux uses 'spawn' for compatibility with threaded libraries (like PyTorch). Old optimizer would massively under-estimate spawn cost and recommend too many workers, making parallel execution slower than serial.
+
+---
+
 ## Completed: Refined Per-Worker Spawn Cost Measurement (Iteration 2)
 
 ### What Was Done
@@ -108,24 +182,30 @@ Based on the Strategic Priorities, consider these high-value tasks:
 
 1. **SAFETY & ACCURACY** (Measurement improvements):
    - ✅ DONE: Per-worker spawn cost now measured accurately (Iteration 2)
-   - Consider measuring the actual multiprocessing start method (fork vs spawn vs forkserver)
+   - ✅ DONE: Actual multiprocessing start method detection (Iteration 3)
    - Validate measurements across different OS configurations
+   - Consider measuring actual chunking overhead per system
 
 2. **CORE LOGIC** (Potential refinements):
-   - The chunking overhead (0.5ms per chunk) is empirical - could be measured
+   - The chunking overhead (0.5ms per chunk) is empirical - could be measured dynamically
    - Consider adaptive chunking based on data characteristics
    - Implement dynamic adjustment for heterogeneous workloads
 
 3. **UX & ROBUSTNESS**:
-   - Add validation for `multiprocessing.get_start_method()` 
    - Handle edge cases with very large return objects
    - Improve error messages when parallelization is rejected
+   - Add more detailed profiling information in verbose mode
 
 4. **INFRASTRUCTURE**:
    - Everything is solid here, but could add cgroup v2 detection improvements
    - Consider ARM/M1 Mac-specific optimizations
 
 ### Key Files Modified
+
+**Iteration 3:**
+- `amorsize/system_info.py` - Added start method detection and mismatch warnings
+- `amorsize/optimizer.py` - Integrated start method info into verbose output
+- `tests/test_system_info.py` - Added 5 tests for start method detection
 
 **Iteration 2:**
 - `amorsize/system_info.py` - Refined spawn cost measurement to use marginal cost approach
@@ -139,14 +219,20 @@ Based on the Strategic Priorities, consider these high-value tasks:
 
 ### Engineering Notes
 
-**Critical Decisions Made**:
+**Critical Decisions Made (Iteration 3)**:
+1. Check actual start method, not just OS defaults - prevents 13x estimation errors
+2. Provide descriptive warnings when non-default method detected
+3. Adjust spawn costs based on fork/spawn/forkserver (15ms/200ms/75ms)
+4. No breaking changes to API - backward compatible
+
+**Critical Decisions Made (Iterations 1-2)**:
 1. Used 1.2x speedup threshold (20% improvement required) - this is conservative but prevents marginal cases
 2. Chunking overhead set to 0.5ms empirically - could be system-dependent
 3. Pickle overhead measured during dry run - adds minimal time to analysis
 
 **Why This Matters**:
-The old calculation would recommend parallelization for many workloads where overhead actually makes things slower. This implementation is production-ready and mathematically sound.
+The optimizer now correctly handles all common multiprocessing configurations. Users who override start methods for safety/compatibility reasons will get accurate recommendations instead of catastrophically wrong ones.
 
 ---
 
-**Status**: Iteration 2 is COMPLETE. The spawn cost measurement is now accurate and measures true per-worker cost. The SAFETY & ACCURACY foundation is significantly improved. Future agents should focus on measuring other empirical constants (like chunking overhead) or UX enhancements.
+**Status**: Iteration 3 is COMPLETE. Start method detection eliminates a major source of estimation errors. The SAFETY & ACCURACY guardrails are now comprehensive. Future agents should focus on dynamic measurement of empirical constants (chunking overhead) or UX enhancements.
