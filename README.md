@@ -48,7 +48,24 @@ pip install -e ".[full]"
 
 ## Quick Start
 
-### Option 1: One-Line Execution (Recommended)
+### Option 1: Command-Line Interface (Fastest to Try)
+
+Analyze or execute functions without writing code:
+
+```bash
+# Analyze optimal parameters
+python -m amorsize optimize math.factorial --data-range 100
+
+# Execute with automatic optimization
+python -m amorsize execute mymodule.process --data-range 1000 --json
+
+# Get detailed profiling
+python -m amorsize optimize mymodule.func --data-range 1000 --profile
+```
+
+See [CLI Documentation](examples/README_cli.md) for complete guide.
+
+### Option 2: One-Line Execution (Recommended for Python)
 
 ```python
 from amorsize import execute
@@ -68,7 +85,7 @@ results = execute(expensive_function, data, verbose=True)
 # That's it! Results contains the output for all 10,000 items
 ```
 
-### Option 2: Manual Pool Management
+### Option 3: Manual Pool Management
 
 For more control, use `optimize()` to get parameters:
 
