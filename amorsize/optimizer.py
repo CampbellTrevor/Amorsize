@@ -246,6 +246,49 @@ class OptimizationResult:
         if self.profile is None:
             return "Diagnostic profiling not enabled. Use optimize(..., profile=True) for detailed analysis."
         return self.profile.explain_decision()
+    
+    def save_config(
+        self,
+        filepath: str,
+        function_name: Optional[str] = None,
+        notes: Optional[str] = None,
+        overwrite: bool = False
+    ) -> None:
+        """
+        Save this optimization result as a reusable configuration file.
+        
+        Args:
+            filepath: Path to save configuration file
+            function_name: Optional name of the function
+            notes: Optional notes about this configuration
+            overwrite: If True, overwrite existing file
+        
+        Examples:
+            >>> result = optimize(my_func, data)
+            >>> result.save_config('my_config.json', function_name='my_func')
+        """
+        from .config import save_config, ConfigData
+        
+        # Extract metadata from profile if available
+        data_size = None
+        avg_execution_time = None
+        if self.profile:
+            data_size = self.profile.total_items if self.profile.total_items > 0 else None
+            avg_execution_time = self.profile.avg_execution_time
+        
+        config = ConfigData(
+            n_jobs=self.n_jobs,
+            chunksize=self.chunksize,
+            executor_type=self.executor_type,
+            estimated_speedup=self.estimated_speedup,
+            function_name=function_name,
+            data_size=data_size,
+            avg_execution_time=avg_execution_time,
+            notes=notes,
+            source="optimize"
+        )
+        
+        save_config(config, filepath, overwrite=overwrite)
 
 
 def _validate_optimize_parameters(
