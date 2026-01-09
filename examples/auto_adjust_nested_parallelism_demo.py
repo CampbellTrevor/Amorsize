@@ -48,19 +48,21 @@ print("=" * 70)
 # Simulate numpy being loaded with MKL threading
 # In reality, this would be: import numpy as np
 # For demonstration, we set the environment variable
-os.environ['MKL_NUM_THREADS'] = '4'
+try:
+    os.environ['MKL_NUM_THREADS'] = '4'
 
-# Note: In a real scenario, the library detection would find numpy in sys.modules
-# For this demo, we're showing what would happen if detected
+    # Note: In a real scenario, the library detection would find numpy in sys.modules
+    # For this demo, we're showing what would happen if detected
 
-data2 = list(range(1000))
-result2 = optimize(simple_computation, data2, verbose=False, profile=True)
+    data2 = list(range(1000))
+    result2 = optimize(simple_computation, data2, verbose=False, profile=True)
 
-print(f"With MKL_NUM_THREADS=4 set:")
-print(f"Recommendation: n_jobs={result2.n_jobs}, chunksize={result2.chunksize}")
-
-# Clean up
-del os.environ['MKL_NUM_THREADS']
+    print(f"With MKL_NUM_THREADS=4 set:")
+    print(f"Recommendation: n_jobs={result2.n_jobs}, chunksize={result2.chunksize}")
+finally:
+    # Clean up environment variable
+    if 'MKL_NUM_THREADS' in os.environ:
+        del os.environ['MKL_NUM_THREADS']
 print()
 
 

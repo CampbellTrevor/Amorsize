@@ -587,7 +587,7 @@ def optimize(
                 diag.constraints.append(adjustment_msg)
                 diag.recommendations.append(
                     f"n_jobs will be reduced to physical_cores/{estimated_internal_threads} "
-                    f"to prevent thread oversubscription"
+                    f"= {adjusted_max_workers} to prevent thread oversubscription"
                 )
             
             if verbose:
@@ -853,6 +853,16 @@ def optimize(
         # Reduce max_workers to account for internal threading
         # Formula: n_jobs = physical_cores / internal_threads
         adjusted_max_workers = max(1, physical_cores // estimated_internal_threads)
+        
+        # Warn if internal threads exceed physical cores (unusual but possible)
+        if estimated_internal_threads > physical_cores:
+            warning_msg = (
+                f"Internal thread count ({estimated_internal_threads}) exceeds physical cores ({physical_cores}). "
+                f"This may indicate overly aggressive internal parallelism settings."
+            )
+            result_warnings.append(warning_msg)
+            if diag:
+                diag.constraints.append(warning_msg)
         
         if adjusted_max_workers < max_workers:
             adjustment_info = (

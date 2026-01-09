@@ -69,7 +69,8 @@ class TestEstimateInternalThreads:
         parallel_libraries = []
         
         result = estimate_internal_threads(parallel_libraries, thread_activity, env_vars)
-        # delta=3 means 3 additional threads created, plus main thread = 4 total
+        # delta=3 means 3 additional threads beyond baseline
+        # Total threads used by function = delta + 1 (the worker thread) = 4
         assert result == 4
     
     def test_library_based_default(self):

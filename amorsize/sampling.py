@@ -224,8 +224,9 @@ def estimate_internal_threads(parallel_libraries: List[str], thread_activity: Di
     # Check observed thread activity
     thread_delta = thread_activity.get('delta', 0)
     if thread_delta > 0:
-        # Actual threads created - use this as estimate
-        # Add 1 because delta doesn't count the main thread
+        # Delta represents additional threads created beyond the baseline
+        # We add 1 to estimate total threads used by the function
+        # (the worker thread that runs the function + additional threads it creates)
         return thread_delta + 1
     
     # No explicit limits and no observed threads
