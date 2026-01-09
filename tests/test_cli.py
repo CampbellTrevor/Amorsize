@@ -560,3 +560,4 @@ class TestCLIParameterPassing:
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output["n_jobs"] >= 1
+
