@@ -20,6 +20,7 @@ class SamplingResult:
         peak_memory: int,
         sample_count: int,
         is_picklable: bool,
+        avg_pickle_time: float = 0.0,
         error: Exception = None
     ):
         self.avg_time = avg_time
@@ -27,6 +28,7 @@ class SamplingResult:
         self.peak_memory = peak_memory
         self.sample_count = sample_count
         self.is_picklable = is_picklable
+        self.avg_pickle_time = avg_pickle_time
         self.error = error
 
 
@@ -126,6 +128,7 @@ def perform_dry_run(
             peak_memory=0,
             sample_count=0,
             is_picklable=is_picklable,
+            avg_pickle_time=0.0,
             error=e
         )
     
@@ -136,6 +139,7 @@ def perform_dry_run(
             peak_memory=0,
             sample_count=0,
             is_picklable=is_picklable,
+            avg_pickle_time=0.0,
             error=ValueError("Empty data sample")
         )
     
@@ -145,6 +149,7 @@ def perform_dry_run(
     try:
         times = []
         return_sizes = []
+        pickle_times = []
         
         for item in sample:
             # Measure execution time
@@ -154,14 +159,19 @@ def perform_dry_run(
             
             times.append(end_time - start_time)
             
-            # Measure return object size
+            # Measure return object size and pickle time
             try:
-                # Try to pickle the result to get realistic size
+                # Measure pickle serialization time (IPC overhead)
+                pickle_start = time.perf_counter()
                 pickled = pickle.dumps(result)
+                pickle_end = time.perf_counter()
+                
+                pickle_times.append(pickle_end - pickle_start)
                 return_sizes.append(len(pickled))
             except:
-                # Fallback to sys.getsizeof
+                # Fallback to sys.getsizeof if pickling fails
                 return_sizes.append(sys.getsizeof(result))
+                pickle_times.append(0.0)
         
         # Get peak memory usage
         current, peak = tracemalloc.get_traced_memory()
@@ -170,6 +180,7 @@ def perform_dry_run(
         # Calculate averages
         avg_time = sum(times) / len(times) if times else 0.0
         avg_return_size = sum(return_sizes) // len(return_sizes) if return_sizes else 0
+        avg_pickle_time = sum(pickle_times) / len(pickle_times) if pickle_times else 0.0
         
         return SamplingResult(
             avg_time=avg_time,
@@ -177,6 +188,7 @@ def perform_dry_run(
             peak_memory=peak,
             sample_count=len(sample),
             is_picklable=is_picklable,
+            avg_pickle_time=avg_pickle_time,
             error=None
         )
     
@@ -188,6 +200,7 @@ def perform_dry_run(
             peak_memory=0,
             sample_count=len(sample),
             is_picklable=is_picklable,
+            avg_pickle_time=0.0,
             error=e
         )
 
