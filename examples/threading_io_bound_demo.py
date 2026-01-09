@@ -4,16 +4,24 @@ Demonstration of threading support for I/O-bound workloads in Amorsize.
 This example shows how Amorsize automatically detects I/O-bound workloads
 and uses ThreadPoolExecutor instead of multiprocessing.Pool for better
 performance.
+
+Note: The `requests` library is used in one example but is optional.
+      All other examples work without external dependencies.
 """
 
 import time
-import requests
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
+    
 from amorsize import optimize, execute
 
 
-def io_bound_function(url):
+def io_bound_function_with_requests(url):
     """
-    Simulate an I/O-bound function that makes HTTP requests.
+    I/O-bound function that makes HTTP requests (requires requests library).
     
     This function spends most of its time waiting for I/O (network),
     not doing CPU computation. Such functions benefit more from threading
@@ -22,10 +30,21 @@ def io_bound_function(url):
     2. GIL is released during I/O operations
     3. Better resource utilization
     """
+    if not HAS_REQUESTS:
+        # Skip if requests not available
+        time.sleep(0.01)
+        return 100
+    
     try:
         response = requests.get(url, timeout=5)
         return len(response.content)
+    except requests.exceptions.RequestException as e:
+        # Log specific request errors
+        print(f"Request failed: {e}")
+        return 0
     except Exception as e:
+        # Catch other unexpected errors
+        print(f"Unexpected error: {e}")
         return 0
 
 
