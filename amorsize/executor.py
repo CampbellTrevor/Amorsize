@@ -7,7 +7,6 @@ and execution in a single call, making it easier to use Amorsize.
 
 from typing import Any, Callable, Iterator, List, Union, Optional
 from multiprocessing import Pool
-from concurrent.futures import ThreadPoolExecutor
 from .optimizer import optimize
 
 
@@ -118,6 +117,8 @@ def execute(
         results = [func(item) for item in opt_result.data]
     elif opt_result.executor_type == "thread":
         # Threading execution for I/O-bound workloads
+        # Lazy import to avoid loading concurrent.futures at module level
+        from concurrent.futures import ThreadPoolExecutor
         if verbose:
             print(f"Creating ThreadPoolExecutor with {opt_result.n_jobs} workers")
         with ThreadPoolExecutor(max_workers=opt_result.n_jobs) as executor:
