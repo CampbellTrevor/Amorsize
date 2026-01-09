@@ -550,6 +550,9 @@ def optimize(
         # CV > 0.7: highly heterogeneous (significant variance)
         diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
     
+    # Get physical cores early for nested parallelism adjustment calculations
+    physical_cores = get_physical_cores()
+    
     # Check for nested parallelism and add warnings
     estimated_internal_threads = 1  # Default: no internal parallelism
     
@@ -577,6 +580,9 @@ def optimize(
         
         # Auto-adjust n_jobs if enabled
         if auto_adjust_for_nested_parallelism and estimated_internal_threads > 1:
+            # Calculate what the adjusted value will be
+            adjusted_max_workers = max(1, physical_cores // estimated_internal_threads)
+            
             adjustment_msg = (
                 f"Auto-adjusting n_jobs to account for {estimated_internal_threads} "
                 f"estimated internal threads per worker"
@@ -757,9 +763,8 @@ def optimize(
             profile=diag
         )
     
-    # Step 4: Get system information
+    # Step 4: Get system information (physical_cores already retrieved earlier for nested parallelism)
     import os
-    physical_cores = get_physical_cores()
     logical_cores = os.cpu_count() or 1
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
