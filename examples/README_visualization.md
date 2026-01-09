@@ -13,10 +13,10 @@ Amorsize includes powerful visualization capabilities to help you understand par
 
 ## Installation
 
-Visualization features require matplotlib:
+Visualization features require matplotlib (version 3.0 or higher recommended):
 
 ```bash
-pip install matplotlib
+pip install "matplotlib>=3.0"
 ```
 
 Or install with the full Amorsize package:

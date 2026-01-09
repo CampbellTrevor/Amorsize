@@ -428,7 +428,8 @@ def visualize_comparison_result(
     """
     if not HAS_MATPLOTLIB:
         warnings.warn(
-            "Matplotlib is not available. Install it with: pip install matplotlib"
+            "Matplotlib is not available. Install it with: pip install matplotlib",
+            UserWarning
         )
         return {}
     
