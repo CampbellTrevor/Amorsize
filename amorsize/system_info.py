@@ -156,7 +156,10 @@ def get_multiprocessing_start_method() -> str:
         return multiprocessing.get_start_method()
     except RuntimeError:
         # Fallback if context not yet initialized
-        return multiprocessing.get_start_method(allow_none=True) or _get_default_start_method()
+        method = multiprocessing.get_start_method(allow_none=True)
+        if method is None:
+            return _get_default_start_method()
+        return method
 
 
 def _get_default_start_method() -> str:
