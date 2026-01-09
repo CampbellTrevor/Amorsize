@@ -199,8 +199,8 @@ def test_compare_entries(temp_history_dir):
     """Test comparing two historical results."""
     # Create two different results
     configs1 = [
-        ComparisonConfig("Serial", 1, 1),
-        ComparisonConfig("Parallel", 4, 25)
+        ComparisonConfig("Serial", 1, 1, "serial"),
+        ComparisonConfig("Parallel", 4, 25, "process")
     ]
     result1 = ComparisonResult(
         configs=configs1,
@@ -210,8 +210,8 @@ def test_compare_entries(temp_history_dir):
     )
     
     configs2 = [
-        ComparisonConfig("Serial", 1, 1),
-        ComparisonConfig("Parallel", 4, 25)
+        ComparisonConfig("Serial", 1, 1, "serial"),
+        ComparisonConfig("Parallel", 4, 25, "process")
     ]
     result2 = ComparisonResult(
         configs=configs2,
@@ -249,8 +249,8 @@ def test_compare_entries_regression(temp_history_dir):
     """Test detecting performance regression."""
     # Create result with good performance
     configs1 = [
-        ComparisonConfig("Serial", 1, 1),
-        ComparisonConfig("Parallel", 4, 25)
+        ComparisonConfig("Serial", 1, 1, "serial"),
+        ComparisonConfig("Parallel", 4, 25, "process")
     ]
     result1 = ComparisonResult(
         configs=configs1,
@@ -261,8 +261,8 @@ def test_compare_entries_regression(temp_history_dir):
     
     # Create result with worse performance (regression)
     configs2 = [
-        ComparisonConfig("Serial", 1, 1),
-        ComparisonConfig("Parallel", 4, 25)
+        ComparisonConfig("Serial", 1, 1, "serial"),
+        ComparisonConfig("Parallel", 4, 25, "process")
     ]
     result2 = ComparisonResult(
         configs=configs2,
@@ -416,8 +416,8 @@ def test_compare_entries_same_system_detection(temp_history_dir):
     """Test detection of whether entries are from the same system."""
     # This test uses the actual system, so both entries will be from same system
     configs = [
-        ComparisonConfig("Serial", 1, 1),
-        ComparisonConfig("Parallel", 4, 25)
+        ComparisonConfig("Serial", 1, 1, "serial"),
+        ComparisonConfig("Parallel", 4, 25, "process")
     ]
     result = ComparisonResult(
         configs=configs,
