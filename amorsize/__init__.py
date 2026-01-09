@@ -1,0 +1,11 @@
+"""
+Amorsize: Dynamic Parallelism Optimizer & Overhead Calculator
+
+A Python utility that analyzes the cost-benefit ratio of parallelization
+and returns optimal n_jobs and chunksize parameters.
+"""
+
+from .optimizer import optimize
+
+__version__ = "0.1.0"
+__all__ = ["optimize"]

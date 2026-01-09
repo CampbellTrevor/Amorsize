@@ -1,0 +1,152 @@
+# Amorsize
+
+**Dynamic Parallelism Optimizer & Overhead Calculator**
+
+Amorsize analyzes your Python functions and data to determine the optimal parallelization parameters (`n_jobs` and `chunksize`), preventing "Negative Scaling" where parallelism becomes slower than serial execution.
+
+## Why Amorsize?
+
+**The Problem:** Blindly using `multiprocessing.Pool` with `n_jobs=-1` can make your code *slower* due to overhead from process spawning, memory copying, and inter-process communication.
+
+**The Solution:** Amorsize performs intelligent analysis to tell you:
+- ✅ Whether parallelization will help (or hurt)
+- ✅ The optimal number of workers for your system
+- ✅ The ideal chunk size for your workload
+- ✅ Expected speedup vs serial execution
+
+## Features
+
+- 🚀 **Automatic Optimization**: Analyzes function+data and recommends optimal parameters
+- 🔍 **Intelligent Sampling**: Quick dry-run analysis without executing full workload
+- 💾 **Memory-Aware**: Prevents OOM by considering RAM constraints
+- 🖥️ **OS-Aware**: Adjusts for Linux (`fork`) vs Windows/macOS (`spawn`) overhead
+- ⚡ **CPU Detection**: Uses physical cores (not hyperthreaded) for best performance
+- 🛡️ **Safety Checks**: Validates function picklability and handles edge cases gracefully
+
+## Installation
+
+### From source (development)
+
+```bash
+git clone https://github.com/CampbellTrevor/Amorsize.git
+cd Amorsize
+pip install -e .
+```
+
+### With optional dependencies
+
+For enhanced physical core detection:
+
+```bash
+pip install -e ".[full]"
+```
+
+### Requirements
+
+- Python 3.7+
+- Optional: `psutil` for accurate physical core detection (included in `[full]`)
+
+## Quick Start
+
+```python
+from amorsize import optimize
+
+def expensive_function(x):
+    """Your CPU-intensive function"""
+    result = 0
+    for i in range(1000):
+        result += x ** 2
+    return result
+
+# Generate data
+data = range(10000)
+
+# Get optimization recommendations
+result = optimize(expensive_function, data, verbose=True)
+
+print(result)
+# Output:
+# Recommended: n_jobs=8, chunksize=50
+# Reason: Parallelization beneficial: 8 workers with chunks of 50
+# Estimated speedup: 6.5x
+
+# Use with multiprocessing
+from multiprocessing import Pool
+
+with Pool(processes=result.n_jobs) as pool:
+    results = pool.map(expensive_function, data, chunksize=result.chunksize)
+```
+
+## How It Works
+
+Amorsize uses a 3-step process based on Amdahl's Law:
+
+1. **Dry Run Sampling**: Executes function on small sample (default: 5 items) to measure timing, memory, and serialization costs
+2. **Overhead Estimation**: Calculates process spawn costs (OS-dependent) and performs fast-fail checks  
+3. **Optimization**: Determines optimal `chunksize` (targets 0.2s/chunk) and `n_jobs` (physical cores, adjusted for memory)
+
+Result: `n_jobs = min(physical_cores, available_RAM / estimated_job_RAM)`
+
+## API Reference
+
+### `optimize(func, data, sample_size=5, target_chunk_duration=0.2, verbose=False)`
+
+Analyzes a function and data to determine optimal parallelization parameters.
+
+**Parameters:**
+- `func` (Callable): Function to parallelize (must accept single argument)
+- `data` (Iterable): Input data (list, generator, or iterator)
+- `sample_size` (int): Items to sample for timing (default: 5)
+- `target_chunk_duration` (float): Target seconds per chunk (default: 0.2)
+- `verbose` (bool): Print detailed analysis (default: False)
+
+**Returns:**
+- `OptimizationResult` with attributes:
+  - `n_jobs`: Recommended number of workers
+  - `chunksize`: Recommended chunk size
+  - `reason`: Explanation of recommendation
+  - `estimated_speedup`: Expected performance improvement
+  - `warnings`: List of constraints or issues
+
+## Examples & Use Cases
+
+Amorsize includes comprehensive examples in the `examples/` directory:
+
+- **Quick Start**: `basic_usage.py` - Simple examples for common use cases
+- **Interactive**: `amorsize_quickstart.ipynb` - Jupyter notebook with drop-in template
+- **Real-World**: `dns_entropy_analysis.py` - 120MB log file analysis for security
+- **Memory-Constrained**: Multiple examples showing intermediate `n_jobs` values
+
+See [examples/README.md](examples/README.md) for complete documentation.
+
+## Testing
+
+Run the test suite:
+
+```bash
+pytest tests/ -v
+```
+
+All 44 tests cover core functionality, edge cases, and expensive computational scenarios.
+
+## How It Works
+
+Amorsize uses a 3-step process based on Amdahl's Law:
+
+1. **Dry Run Sampling**: Executes function on small sample (default: 5 items) to measure timing, memory, and serialization costs
+2. **Overhead Estimation**: Calculates process spawn costs (OS-dependent) and performs fast-fail checks
+3. **Optimization**: Determines optimal `chunksize` (targets 0.2s/chunk) and `n_jobs` (physical cores, adjusted for memory)
+
+Result: `n_jobs = min(physical_cores, available_RAM / estimated_job_RAM)`
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions welcome! Please feel free to submit a Pull Request.
+
+## Design Document
+
+See [Writeup.md](Writeup.md) for the complete design specification and implementation checklist.
