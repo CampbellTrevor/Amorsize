@@ -185,6 +185,61 @@ def check_parallel_environment_vars() -> Dict[str, str]:
     return {k: v for k, v in env_vars.items() if v is not None}
 
 
+def estimate_internal_threads(parallel_libraries: List[str], thread_activity: Dict[str, int], env_vars: Dict[str, str]) -> int:
+    """
+    Estimate the number of internal threads used by the function.
+    
+    This function attempts to determine how many threads the function
+    uses internally for parallel computation. This is important for
+    avoiding thread oversubscription when combining multiprocessing
+    with internally-threaded functions.
+    
+    Args:
+        parallel_libraries: List of detected parallel libraries
+        thread_activity: Dict with thread count before/during/after execution
+        env_vars: Environment variables controlling thread counts
+    
+    Returns:
+        Estimated number of internal threads per worker (minimum 1)
+        
+    Algorithm:
+        1. Check explicit thread count from environment variables
+        2. Use observed thread delta if available
+        3. Use library-specific defaults:
+           - NumPy/SciPy with MKL: 4 threads default
+           - OpenBLAS: number of cores
+           - Other libraries: 2-4 threads typical
+        4. Conservative default: 4 threads if libraries detected
+    """
+    # Check for explicit thread limits in environment
+    for var_name, var_value in env_vars.items():
+        try:
+            threads = int(var_value)
+            if threads > 0:
+                # User has explicitly set thread limit
+                return threads
+        except (ValueError, TypeError):
+            pass
+    
+    # Check observed thread activity
+    thread_delta = thread_activity.get('delta', 0)
+    if thread_delta > 0:
+        # Actual threads created - use this as estimate
+        # Add 1 because delta doesn't count the main thread
+        return thread_delta + 1
+    
+    # No explicit limits and no observed threads
+    # Use library-specific heuristics
+    if parallel_libraries:
+        # Libraries detected but not explicitly limited
+        # Most BLAS libraries default to 4-8 threads on modern systems
+        # Conservative estimate: 4 threads
+        return 4
+    
+    # No libraries detected - shouldn't happen but handle gracefully
+    return 1
+
+
 def detect_thread_activity(func: Callable, sample_item: Any) -> Dict[str, int]:
     """
     Detect threading activity by monitoring thread count before/during/after function execution.

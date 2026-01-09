@@ -14,7 +14,7 @@ from .system_info import (
     get_multiprocessing_start_method,
     get_available_memory
 )
-from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator
+from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator, estimate_internal_threads, check_parallel_environment_vars
 
 
 class DiagnosticProfile:
@@ -250,7 +250,8 @@ def _validate_optimize_parameters(
     verbose: bool,
     use_spawn_benchmark: bool,
     use_chunking_benchmark: bool,
-    profile: bool
+    profile: bool,
+    auto_adjust_for_nested_parallelism: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -264,6 +265,7 @@ def _validate_optimize_parameters(
         use_spawn_benchmark: Spawn benchmark flag to validate
         use_chunking_benchmark: Chunking benchmark flag to validate
         profile: Profile flag to validate
+        auto_adjust_for_nested_parallelism: Auto-adjust flag to validate
     
     Returns:
         None if all parameters are valid, error message string otherwise
@@ -305,6 +307,8 @@ def _validate_optimize_parameters(
         return f"use_chunking_benchmark must be a boolean, got {type(use_chunking_benchmark).__name__}"
     if not isinstance(profile, bool):
         return f"profile must be a boolean, got {type(profile).__name__}"
+    if not isinstance(auto_adjust_for_nested_parallelism, bool):
+        return f"auto_adjust_for_nested_parallelism must be a boolean, got {type(auto_adjust_for_nested_parallelism).__name__}"
     
     return None
 
@@ -400,7 +404,8 @@ def optimize(
     verbose: bool = False,
     use_spawn_benchmark: bool = True,
     use_chunking_benchmark: bool = True,
-    profile: bool = False
+    profile: bool = False,
+    auto_adjust_for_nested_parallelism: bool = True
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -463,6 +468,11 @@ def optimize(
         profile: If True, capture detailed diagnostic information in result.profile
                 for in-depth analysis. Use result.explain() to view the diagnostic
                 report. (default: False). Must be a boolean.
+        auto_adjust_for_nested_parallelism: If True, automatically reduce n_jobs
+                when nested parallelism is detected to avoid thread oversubscription.
+                Calculates optimal n_jobs = physical_cores / estimated_internal_threads.
+                (default: True). Set to False to disable auto-adjustment and only
+                receive warnings. Must be a boolean.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -500,7 +510,8 @@ def optimize(
     # Step 0: Validate input parameters
     validation_error = _validate_optimize_parameters(
         func, data, sample_size, target_chunk_duration,
-        verbose, use_spawn_benchmark, use_chunking_benchmark, profile
+        verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
+        auto_adjust_for_nested_parallelism
     )
     
     if validation_error:
@@ -540,6 +551,8 @@ def optimize(
         diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
     
     # Check for nested parallelism and add warnings
+    estimated_internal_threads = 1  # Default: no internal parallelism
+    
     if sampling_result.nested_parallelism_detected:
         nested_warning = "Nested parallelism detected: Function uses internal threading/parallelism"
         
@@ -554,22 +567,50 @@ def optimize(
         
         result_warnings.append(nested_warning)
         
-        # Add recommendations
-        result_warnings.append(
-            "Consider setting thread limits (e.g., OMP_NUM_THREADS=1, MKL_NUM_THREADS=1) "
-            "to avoid thread oversubscription"
+        # Estimate internal threads used by the function
+        env_vars = check_parallel_environment_vars()
+        estimated_internal_threads = estimate_internal_threads(
+            sampling_result.parallel_libraries,
+            sampling_result.thread_activity,
+            env_vars
         )
+        
+        # Auto-adjust n_jobs if enabled
+        if auto_adjust_for_nested_parallelism and estimated_internal_threads > 1:
+            adjustment_msg = (
+                f"Auto-adjusting n_jobs to account for {estimated_internal_threads} "
+                f"estimated internal threads per worker"
+            )
+            result_warnings.append(adjustment_msg)
+            
+            if diag:
+                diag.constraints.append(adjustment_msg)
+                diag.recommendations.append(
+                    f"n_jobs will be reduced to physical_cores/{estimated_internal_threads} "
+                    f"to prevent thread oversubscription"
+                )
+            
+            if verbose:
+                print(f"INFO: {adjustment_msg}")
+        else:
+            # Not auto-adjusting, provide manual recommendations
+            result_warnings.append(
+                "Consider setting thread limits (e.g., OMP_NUM_THREADS=1, MKL_NUM_THREADS=1) "
+                "to avoid thread oversubscription"
+            )
+            
+            if diag:
+                diag.recommendations.append(
+                    "Set environment variables to limit internal threading: "
+                    "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1"
+                )
+                diag.recommendations.append(
+                    "Or reduce n_jobs to account for internal parallelism "
+                    "(e.g., use n_jobs=cores/internal_threads)"
+                )
         
         if diag:
             diag.constraints.append(nested_warning)
-            diag.recommendations.append(
-                "Set environment variables to limit internal threading: "
-                "OMP_NUM_THREADS=1, MKL_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1"
-            )
-            diag.recommendations.append(
-                "Or reduce n_jobs to account for internal parallelism "
-                "(e.g., use n_jobs=cores/internal_threads)"
-            )
         
         if verbose:
             print(f"WARNING: {nested_warning}")
@@ -582,6 +623,7 @@ def optimize(
             print(f"  Thread activity: before={thread_before}, "
                   f"during={thread_during}, "
                   f"delta={thread_delta}")
+            print(f"  Estimated internal threads: {estimated_internal_threads}")
 
 
     
@@ -805,6 +847,27 @@ def optimize(
     # Consider memory constraints
     estimated_job_ram = peak_memory if peak_memory > 0 else 0
     max_workers = calculate_max_workers(physical_cores, estimated_job_ram)
+    
+    # Apply nested parallelism adjustment if enabled
+    if auto_adjust_for_nested_parallelism and estimated_internal_threads > 1:
+        # Reduce max_workers to account for internal threading
+        # Formula: n_jobs = physical_cores / internal_threads
+        adjusted_max_workers = max(1, physical_cores // estimated_internal_threads)
+        
+        if adjusted_max_workers < max_workers:
+            adjustment_info = (
+                f"Reducing max_workers from {max_workers} to {adjusted_max_workers} "
+                f"to account for {estimated_internal_threads} internal threads per worker"
+            )
+            result_warnings.append(adjustment_info)
+            
+            if diag:
+                diag.constraints.append(adjustment_info)
+            
+            if verbose:
+                print(f"INFO: {adjustment_info}")
+            
+            max_workers = adjusted_max_workers
     
     if diag:
         diag.max_workers_cpu = physical_cores
