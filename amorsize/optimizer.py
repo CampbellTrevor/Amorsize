@@ -2,7 +2,7 @@
 Main optimizer module that coordinates the analysis and returns optimal parameters.
 """
 
-from typing import Any, Callable, Iterator, List, Union, Tuple, Optional
+from typing import Any, Callable, Iterator, List, Union, Tuple, Optional, Dict
 import warnings
 
 from .system_info import (
@@ -17,6 +17,179 @@ from .system_info import (
 from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator
 
 
+class DiagnosticProfile:
+    """
+    Comprehensive diagnostic information about optimization decisions.
+    
+    This class captures all the factors that influenced the optimizer's
+    decision, providing transparency into the decision-making process.
+    """
+    
+    def __init__(self):
+        # Sampling results
+        self.avg_execution_time: float = 0.0
+        self.avg_pickle_time: float = 0.0
+        self.return_size_bytes: int = 0
+        self.peak_memory_bytes: int = 0
+        self.sample_count: int = 0
+        self.is_picklable: bool = False
+        
+        # System information
+        self.physical_cores: int = 1
+        self.logical_cores: int = 1
+        self.spawn_cost: float = 0.0
+        self.chunking_overhead: float = 0.0
+        self.available_memory: int = 0
+        self.multiprocessing_start_method: str = ""
+        
+        # Workload characteristics
+        self.total_items: int = 0
+        self.estimated_serial_time: float = 0.0
+        self.estimated_result_memory: int = 0
+        
+        # Decision factors
+        self.max_workers_cpu: int = 1
+        self.max_workers_memory: int = 1
+        self.optimal_chunksize: int = 1
+        self.target_chunk_duration: float = 0.2
+        
+        # Overhead breakdown for recommended configuration
+        self.overhead_spawn: float = 0.0
+        self.overhead_ipc: float = 0.0
+        self.overhead_chunking: float = 0.0
+        self.parallel_compute_time: float = 0.0
+        
+        # Speedup analysis
+        self.theoretical_max_speedup: float = 1.0
+        self.estimated_speedup: float = 1.0
+        self.speedup_efficiency: float = 1.0  # actual / theoretical
+        
+        # Decision path
+        self.rejection_reasons: List[str] = []
+        self.constraints: List[str] = []
+        self.recommendations: List[str] = []
+    
+    def format_time(self, seconds: float) -> str:
+        """Format time in human-readable form."""
+        if seconds < 0.001:
+            return f"{seconds * 1_000_000:.1f}μs"
+        elif seconds < 1.0:
+            return f"{seconds * 1000:.2f}ms"
+        else:
+            return f"{seconds:.3f}s"
+    
+    def format_bytes(self, bytes_val: int) -> str:
+        """Format bytes in human-readable form."""
+        if bytes_val < 1024:
+            return f"{bytes_val}B"
+        elif bytes_val < 1024 ** 2:
+            return f"{bytes_val / 1024:.2f}KB"
+        elif bytes_val < 1024 ** 3:
+            return f"{bytes_val / (1024**2):.2f}MB"
+        else:
+            return f"{bytes_val / (1024**3):.2f}GB"
+    
+    def get_overhead_breakdown(self) -> Dict[str, float]:
+        """Get breakdown of overhead components as percentages."""
+        total_overhead = self.overhead_spawn + self.overhead_ipc + self.overhead_chunking
+        if total_overhead == 0:
+            return {"spawn": 0.0, "ipc": 0.0, "chunking": 0.0}
+        
+        return {
+            "spawn": (self.overhead_spawn / total_overhead) * 100,
+            "ipc": (self.overhead_ipc / total_overhead) * 100,
+            "chunking": (self.overhead_chunking / total_overhead) * 100
+        }
+    
+    def explain_decision(self) -> str:
+        """
+        Generate a detailed human-readable explanation of the optimization decision.
+        
+        Returns:
+            Multi-line string with comprehensive diagnostic information
+        """
+        lines = []
+        lines.append("=" * 70)
+        lines.append("AMORSIZE DIAGNOSTIC PROFILE")
+        lines.append("=" * 70)
+        
+        # Section 1: Workload Analysis
+        lines.append("\n[1] WORKLOAD ANALYSIS")
+        lines.append("-" * 70)
+        lines.append(f"  Function execution time:  {self.format_time(self.avg_execution_time)} per item")
+        lines.append(f"  Pickle/IPC overhead:      {self.format_time(self.avg_pickle_time)} per item")
+        lines.append(f"  Return object size:       {self.format_bytes(self.return_size_bytes)}")
+        lines.append(f"  Peak memory per call:     {self.format_bytes(self.peak_memory_bytes)}")
+        lines.append(f"  Total items to process:   {self.total_items if self.total_items > 0 else 'Unknown'}")
+        if self.estimated_serial_time > 0:
+            lines.append(f"  Estimated serial time:    {self.format_time(self.estimated_serial_time)}")
+        if self.estimated_result_memory > 0:
+            lines.append(f"  Total result memory:      {self.format_bytes(self.estimated_result_memory)}")
+        
+        # Section 2: System Resources
+        lines.append("\n[2] SYSTEM RESOURCES")
+        lines.append("-" * 70)
+        lines.append(f"  Physical CPU cores:       {self.physical_cores}")
+        lines.append(f"  Logical CPU cores:        {self.logical_cores}")
+        lines.append(f"  Available memory:         {self.format_bytes(self.available_memory)}")
+        lines.append(f"  Start method:             {self.multiprocessing_start_method}")
+        lines.append(f"  Process spawn cost:       {self.format_time(self.spawn_cost)} per worker")
+        lines.append(f"  Chunking overhead:        {self.format_time(self.chunking_overhead)} per chunk")
+        
+        # Section 3: Optimization Decision
+        lines.append("\n[3] OPTIMIZATION DECISION")
+        lines.append("-" * 70)
+        lines.append(f"  Max workers (CPU limit):  {self.max_workers_cpu}")
+        lines.append(f"  Max workers (RAM limit):  {self.max_workers_memory}")
+        lines.append(f"  Optimal chunksize:        {self.optimal_chunksize}")
+        lines.append(f"  Target chunk duration:    {self.format_time(self.target_chunk_duration)}")
+        
+        # Section 4: Performance Prediction
+        if self.estimated_speedup > 1.0 or self.parallel_compute_time > 0:
+            lines.append("\n[4] PERFORMANCE PREDICTION")
+            lines.append("-" * 70)
+            lines.append(f"  Theoretical max speedup:  {self.theoretical_max_speedup:.2f}x")
+            lines.append(f"  Estimated actual speedup: {self.estimated_speedup:.2f}x")
+            lines.append(f"  Parallel efficiency:      {self.speedup_efficiency * 100:.1f}%")
+            
+            if self.parallel_compute_time > 0:
+                lines.append(f"\n  Time breakdown (parallel execution):")
+                lines.append(f"    Computation:            {self.format_time(self.parallel_compute_time)}")
+                lines.append(f"    Process spawn:          {self.format_time(self.overhead_spawn)}")
+                lines.append(f"    IPC/Pickle:             {self.format_time(self.overhead_ipc)}")
+                lines.append(f"    Task distribution:      {self.format_time(self.overhead_chunking)}")
+                
+                breakdown = self.get_overhead_breakdown()
+                lines.append(f"\n  Overhead distribution:")
+                lines.append(f"    Spawn:                  {breakdown['spawn']:.1f}%")
+                lines.append(f"    IPC:                    {breakdown['ipc']:.1f}%")
+                lines.append(f"    Chunking:               {breakdown['chunking']:.1f}%")
+        
+        # Section 5: Constraints and Rejections
+        if self.rejection_reasons:
+            lines.append("\n[5] REJECTION REASONS")
+            lines.append("-" * 70)
+            for reason in self.rejection_reasons:
+                lines.append(f"  ✗ {reason}")
+        
+        if self.constraints:
+            lines.append("\n[6] ACTIVE CONSTRAINTS")
+            lines.append("-" * 70)
+            for constraint in self.constraints:
+                lines.append(f"  ⚠ {constraint}")
+        
+        # Section 6: Recommendations
+        if self.recommendations:
+            lines.append("\n[7] RECOMMENDATIONS")
+            lines.append("-" * 70)
+            for rec in self.recommendations:
+                lines.append(f"  💡 {rec}")
+        
+        lines.append("\n" + "=" * 70)
+        
+        return "\n".join(lines)
+
+
 class OptimizationResult:
     """Container for optimization results."""
     
@@ -27,7 +200,8 @@ class OptimizationResult:
         reason: str,
         estimated_speedup: float = 1.0,
         warnings: List[str] = None,
-        data: Union[List, Iterator, None] = None
+        data: Union[List, Iterator, None] = None,
+        profile: Optional[DiagnosticProfile] = None
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -35,6 +209,7 @@ class OptimizationResult:
         self.estimated_speedup = estimated_speedup
         self.warnings = warnings or []
         self.data = data
+        self.profile = profile
     
     def __repr__(self):
         return (
@@ -50,6 +225,17 @@ class OptimizationResult:
         if self.warnings:
             result += "\nWarnings:\n" + "\n".join(f"  - {w}" for w in self.warnings)
         return result
+    
+    def explain(self) -> str:
+        """
+        Get detailed diagnostic explanation of the optimization decision.
+        
+        Returns:
+            Human-readable diagnostic report, or message if profiling wasn't enabled
+        """
+        if self.profile is None:
+            return "Diagnostic profiling not enabled. Use optimize(..., profile=True) for detailed analysis."
+        return self.profile.explain_decision()
 
 
 def calculate_amdahl_speedup(
@@ -142,7 +328,8 @@ def optimize(
     target_chunk_duration: float = 0.2,
     verbose: bool = False,
     use_spawn_benchmark: bool = False,
-    use_chunking_benchmark: bool = False
+    use_chunking_benchmark: bool = False,
+    profile: bool = False
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -191,6 +378,9 @@ def optimize(
                             using OS-based estimate (slower but more accurate)
         use_chunking_benchmark: If True, measure actual chunking overhead instead of
                                using default estimate (slower but more accurate)
+        profile: If True, capture detailed diagnostic information in result.profile
+                for in-depth analysis. Use result.explain() to view the diagnostic
+                report. (default: False)
     
     Returns:
         OptimizationResult with:
@@ -200,6 +390,7 @@ def optimize(
             - reason: Explanation of recommendation
             - estimated_speedup: Expected performance improvement
             - warnings: List of constraints or issues
+            - profile: DiagnosticProfile object (if profile=True)
     
     Example:
         >>> def expensive_function(x):
@@ -215,8 +406,15 @@ def optimize(
         >>> with Pool(result.n_jobs) as pool:
         ...     # Use result.data to ensure generators are properly reconstructed
         ...     results = pool.map(expensive_function, result.data, chunksize=result.chunksize)
+        
+        >>> # For detailed diagnostic analysis:
+        >>> result = optimize(expensive_function, data, profile=True)
+        >>> print(result.explain())  # Shows comprehensive breakdown
     """
     result_warnings = []
+    
+    # Initialize diagnostic profile if requested
+    diag = DiagnosticProfile() if profile else None
     
     # Step 1: Perform dry run sampling
     if verbose:
@@ -231,26 +429,42 @@ def optimize(
     else:
         reconstructed_data = sampling_result.remaining_data if sampling_result.remaining_data is not None else data
     
+    # Populate diagnostic profile with sampling results
+    if diag:
+        diag.avg_execution_time = sampling_result.avg_time
+        diag.avg_pickle_time = sampling_result.avg_pickle_time
+        diag.return_size_bytes = sampling_result.return_size
+        diag.peak_memory_bytes = sampling_result.peak_memory
+        diag.sample_count = sampling_result.sample_count
+        diag.is_picklable = sampling_result.is_picklable
+    
     # Check for errors during sampling
     if sampling_result.error:
+        if diag:
+            diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason=f"Error during sampling: {str(sampling_result.error)}",
             estimated_speedup=1.0,
             warnings=[f"Sampling failed: {str(sampling_result.error)}"],
-            data=reconstructed_data
+            data=reconstructed_data,
+            profile=diag
         )
     
     # Check picklability
     if not sampling_result.is_picklable:
+        if diag:
+            diag.rejection_reasons.append("Function is not picklable - multiprocessing requires picklable functions")
+            diag.recommendations.append("Use dill or cloudpickle to serialize complex functions")
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason="Function is not picklable - cannot use multiprocessing",
             estimated_speedup=1.0,
             warnings=["Function cannot be pickled. Use serial execution."],
-            data=reconstructed_data
+            data=reconstructed_data,
+            profile=diag
         )
     
     avg_time = sampling_result.avg_time
@@ -278,6 +492,11 @@ def optimize(
         # pool.map() keeps all results in memory until completion
         estimated_result_memory = return_size * total_items
         
+        if diag:
+            diag.total_items = total_items
+            diag.estimated_serial_time = estimated_total_time
+            diag.estimated_result_memory = estimated_result_memory
+        
         if verbose:
             print(f"Estimated total items: {total_items}")
             print(f"Estimated serial execution time: {estimated_total_time:.2f}s")
@@ -294,6 +513,11 @@ def optimize(
             )
             result_warnings.append(warning_message)
             
+            if diag:
+                diag.constraints.append(f"Result memory ({memory_gb:.2f}GB) exceeds safety threshold ({available_gb * 0.5:.2f}GB)")
+                diag.recommendations.append("Consider using pool.imap_unordered() for memory-efficient streaming")
+                diag.recommendations.append("Or process data in batches to control memory consumption")
+            
             if verbose:
                 print(f"WARNING: Result memory ({memory_gb:.2f}GB) exceeds safety threshold "
                       f"({available_gb * 0.5:.2f}GB). Risk of OOM!")
@@ -301,27 +525,48 @@ def optimize(
         # Can't determine size for generators
         estimated_total_time = None
         result_warnings.append("Cannot determine data size - using heuristics")
+        if diag:
+            diag.constraints.append("Generator size unknown - using conservative estimates")
     
     # Step 3: Fast Fail - very quick functions
     if avg_time < 0.001:
+        if diag:
+            diag.rejection_reasons.append(f"Function execution time ({avg_time * 1000:.3f}ms) is below 1ms threshold")
+            diag.rejection_reasons.append("Parallelization overhead would exceed computation time")
+            diag.recommendations.append("Function is too fast to benefit from parallelization")
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason="Function is too fast (< 1ms) - parallelization overhead would dominate",
             estimated_speedup=1.0,
             warnings=result_warnings,
-            data=reconstructed_data
+            data=reconstructed_data,
+            profile=diag
         )
     
     # Step 4: Get system information
+    import os
     physical_cores = get_physical_cores()
+    logical_cores = os.cpu_count() or 1
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
+    
+    # Populate diagnostic profile with system info
+    if diag:
+        diag.physical_cores = physical_cores
+        diag.logical_cores = logical_cores
+        diag.spawn_cost = spawn_cost
+        diag.chunking_overhead = chunking_overhead
+        diag.available_memory = available_memory
+        diag.multiprocessing_start_method = get_multiprocessing_start_method()
+        diag.target_chunk_duration = target_chunk_duration
     
     # Check for non-default start method
     is_mismatch, mismatch_warning = check_start_method_mismatch()
     if is_mismatch:
         result_warnings.append(mismatch_warning)
+        if diag:
+            diag.constraints.append(mismatch_warning)
     
     if verbose:
         print(f"Physical cores: {physical_cores}")
@@ -333,12 +578,16 @@ def optimize(
     
     # Step 5: Check if parallelization is worth it
     if estimated_total_time is not None and estimated_total_time < spawn_cost * 2:
+        if diag:
+            diag.rejection_reasons.append(f"Total execution time ({estimated_total_time:.2f}s) is less than 2x spawn cost ({spawn_cost * 2:.2f}s)")
+            diag.rejection_reasons.append("Workload too small to overcome parallelization startup overhead")
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason=f"Total execution time ({estimated_total_time:.2f}s) too short for parallelization overhead",
             estimated_speedup=1.0,
-            data=reconstructed_data
+            data=reconstructed_data,
+            profile=diag
         )
     
     # Step 6: Calculate optimal chunksize
@@ -354,6 +603,9 @@ def optimize(
         max_reasonable_chunksize = max(1, total_items // 10)
         optimal_chunksize = min(optimal_chunksize, max_reasonable_chunksize)
     
+    if diag:
+        diag.optimal_chunksize = optimal_chunksize
+    
     if verbose:
         print(f"Optimal chunksize: {optimal_chunksize}")
     
@@ -362,11 +614,19 @@ def optimize(
     estimated_job_ram = peak_memory if peak_memory > 0 else 0
     max_workers = calculate_max_workers(physical_cores, estimated_job_ram)
     
+    if diag:
+        diag.max_workers_cpu = physical_cores
+        diag.max_workers_memory = max_workers
+    
     if max_workers < physical_cores:
-        result_warnings.append(
+        constraint_msg = (
             f"Memory constraints limit workers to {max_workers} "
             f"(physical cores: {physical_cores})"
         )
+        result_warnings.append(constraint_msg)
+        if diag:
+            diag.constraints.append(constraint_msg)
+            diag.recommendations.append("Consider reducing memory footprint per job or adding more RAM")
     
     # For CPU-bound tasks, use physical cores (not logical/hyperthreaded)
     optimal_n_jobs = max_workers
@@ -387,33 +647,64 @@ def optimize(
             total_items=total_items
         )
         
+        # Populate diagnostic profile with speedup analysis
+        if diag:
+            diag.theoretical_max_speedup = float(optimal_n_jobs)
+            diag.estimated_speedup = estimated_speedup
+            diag.speedup_efficiency = estimated_speedup / optimal_n_jobs if optimal_n_jobs > 0 else 0.0
+            
+            # Calculate overhead breakdown
+            num_chunks = max(1, (total_items + optimal_chunksize - 1) // optimal_chunksize)
+            diag.overhead_spawn = spawn_cost * optimal_n_jobs
+            diag.overhead_ipc = avg_pickle_time * total_items
+            diag.overhead_chunking = chunking_overhead * num_chunks
+            diag.parallel_compute_time = estimated_total_time / optimal_n_jobs
+        
         if verbose:
             print(f"Estimated speedup: {estimated_speedup:.2f}x")
         
         # If speedup is less than 1.2x, parallelization may not be worth it
         if estimated_speedup < 1.2:
+            if diag:
+                diag.rejection_reasons.append(f"Estimated speedup ({estimated_speedup:.2f}x) below 1.2x threshold")
+                diag.rejection_reasons.append("Parallelization overhead exceeds performance gains")
+                diag.recommendations.append("Function needs to be slower or data size larger to benefit from parallelization")
             return OptimizationResult(
                 n_jobs=1,
                 chunksize=1,
                 reason=f"Parallelization provides minimal benefit (estimated speedup: {estimated_speedup:.2f}x)",
                 estimated_speedup=1.0,
                 warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"],
-                data=reconstructed_data
+                data=reconstructed_data,
+                profile=diag
             )
     else:
         # Fallback for cases where we don't have enough info
         estimated_speedup = float(optimal_n_jobs) * 0.7  # Conservative estimate
+        if diag:
+            diag.theoretical_max_speedup = float(optimal_n_jobs)
+            diag.estimated_speedup = estimated_speedup
+            diag.speedup_efficiency = 0.7
     
     # Step 9: Final sanity check
     if optimal_n_jobs == 1:
+        if diag:
+            diag.rejection_reasons.append("Only 1 worker recommended due to constraints")
         return OptimizationResult(
             n_jobs=1,
             chunksize=optimal_chunksize,
             reason="Serial execution recommended based on constraints",
             estimated_speedup=1.0,
             warnings=result_warnings,
-            data=reconstructed_data
+            data=reconstructed_data,
+            profile=diag
         )
+    
+    # Success case: parallelization is beneficial
+    if diag and estimated_speedup > 1.2:
+        diag.recommendations.append(f"Use {optimal_n_jobs} workers with chunksize {optimal_chunksize} for ~{estimated_speedup:.2f}x speedup")
+        if diag.speedup_efficiency < 0.5:
+            diag.recommendations.append("Efficiency is low - consider if parallelization overhead is acceptable")
     
     return OptimizationResult(
         n_jobs=optimal_n_jobs,
@@ -421,5 +712,6 @@ def optimize(
         reason=f"Parallelization beneficial: {optimal_n_jobs} workers with chunks of {optimal_chunksize}",
         estimated_speedup=estimated_speedup,
         warnings=result_warnings,
-        data=reconstructed_data
+        data=reconstructed_data,
+        profile=diag
     )
