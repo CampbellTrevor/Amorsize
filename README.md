@@ -22,6 +22,10 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 - 🖥️ **OS-Aware**: Adjusts for Linux (`fork`) vs Windows/macOS (`spawn`) overhead
 - ⚡ **CPU Detection**: Uses physical cores (not hyperthreaded) for best performance
 - 🛡️ **Safety Checks**: Validates function picklability and handles edge cases gracefully
+- 📦 **Batch Processing**: Memory-safe processing for workloads with large return objects
+- 🎯 **CLI Interface**: Analyze functions from command line without writing code
+- 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
+- 📊 **Diagnostic Profiling**: Deep insights into optimization decisions and trade-offs
 
 ## Installation
 
@@ -106,6 +110,43 @@ print(result)
 with Pool(processes=result.n_jobs) as pool:
     results = pool.map(expensive_function, result.data, chunksize=result.chunksize)
 ```
+
+### Option 4: Batch Processing for Memory-Constrained Workloads
+
+When processing functions that return large objects (images, dataframes, models), use batch processing to avoid memory exhaustion:
+
+```python
+from amorsize import process_in_batches
+
+def process_image(filepath):
+    """Load and process large image"""
+    img = load_image(filepath)  # Returns large object
+    return transform(img)  # Returns large result
+
+image_files = list_images()  # 10,000 images
+
+# Process safely in batches to prevent OOM
+results = process_in_batches(
+    process_image,
+    image_files,
+    batch_size=100,  # Process 100 at a time
+    verbose=True
+)
+```
+
+Or let Amorsize automatically calculate safe batch size:
+
+```python
+# Auto-calculate batch size based on available memory
+results = process_in_batches(
+    process_image,
+    image_files,
+    max_memory_percent=0.5,  # Use max 50% of RAM
+    verbose=True
+)
+```
+
+See [Batch Processing Guide](examples/README_batch_processing.md) for complete documentation.
 
 ## How It Works
 
