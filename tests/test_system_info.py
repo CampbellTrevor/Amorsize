@@ -3,6 +3,8 @@ Tests for system_info module.
 """
 
 import pytest
+import multiprocessing
+import platform
 from amorsize.system_info import (
     get_physical_cores,
     get_spawn_cost,
@@ -11,7 +13,10 @@ from amorsize.system_info import (
     get_available_memory,
     calculate_max_workers,
     get_system_info,
-    _clear_spawn_cost_cache
+    _clear_spawn_cost_cache,
+    get_multiprocessing_start_method,
+    _get_default_start_method,
+    check_start_method_mismatch
 )
 
 # Maximum expected per-worker spawn cost (500ms)
@@ -123,3 +128,89 @@ def test_get_system_info():
     assert cores > 0
     assert spawn_cost > 0
     assert memory > 0
+
+
+def test_get_multiprocessing_start_method():
+    """Test that get_multiprocessing_start_method returns a valid method."""
+    method = get_multiprocessing_start_method()
+    assert isinstance(method, str)
+    assert method in ("fork", "spawn", "forkserver")
+
+
+def test_get_default_start_method():
+    """Test that _get_default_start_method returns the correct OS default."""
+    default = _get_default_start_method()
+    assert isinstance(default, str)
+    assert default in ("fork", "spawn", "forkserver")
+    
+    # Verify OS-specific defaults
+    system = platform.system()
+    if system == "Windows":
+        assert default == "spawn"
+    elif system == "Darwin":
+        # macOS defaults to spawn in Python 3.8+
+        import sys
+        if sys.version_info >= (3, 8):
+            assert default == "spawn"
+        else:
+            assert default == "fork"
+    else:
+        # Linux and other Unix systems default to fork
+        assert default == "fork"
+
+
+def test_get_spawn_cost_estimate_uses_start_method():
+    """Test that spawn cost estimate is based on actual start method, not just OS."""
+    # Clear cache to ensure fresh measurement
+    _clear_spawn_cost_cache()
+    
+    cost = get_spawn_cost_estimate()
+    assert isinstance(cost, float)
+    assert cost > 0
+    
+    # The cost should match the current start method
+    method = get_multiprocessing_start_method()
+    if method == "fork":
+        # Fork should be fast (10-20ms range)
+        assert 0.01 <= cost <= 0.05
+    elif method == "spawn":
+        # Spawn should be slower (150-250ms range)
+        assert 0.1 <= cost <= 0.5
+    elif method == "forkserver":
+        # Forkserver should be middle ground (50-150ms range)
+        assert 0.03 <= cost <= 0.2
+
+
+def test_check_start_method_mismatch():
+    """Test start method mismatch detection."""
+    is_mismatch, message = check_start_method_mismatch()
+    
+    assert isinstance(is_mismatch, bool)
+    
+    if is_mismatch:
+        # If there's a mismatch, there should be a warning message
+        assert message is not None
+        assert isinstance(message, str)
+        assert len(message) > 0
+    else:
+        # If no mismatch, message should be None
+        assert message is None
+
+
+def test_start_method_mismatch_logic():
+    """Test the logic of start method mismatch detection."""
+    actual = get_multiprocessing_start_method()
+    default = _get_default_start_method()
+    is_mismatch, message = check_start_method_mismatch()
+    
+    # If actual matches default, there should be no mismatch
+    if actual == default:
+        assert not is_mismatch
+        assert message is None
+    else:
+        # If they differ, there should be a mismatch
+        assert is_mismatch
+        assert message is not None
+        # Message should mention both methods
+        assert actual in message
+        assert default in message

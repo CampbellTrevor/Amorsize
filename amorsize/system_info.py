@@ -134,31 +134,94 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         return _CACHED_SPAWN_COST
 
 
+def get_multiprocessing_start_method() -> str:
+    """
+    Get the current multiprocessing start method.
+    
+    Returns:
+        The current start method name ('fork', 'spawn', or 'forkserver')
+        
+    Rationale:
+        The start method determines how child processes are created:
+        - 'fork': Uses fork() (fast, Linux/Unix default, not available on Windows)
+        - 'spawn': Starts fresh interpreter (slow, Windows/macOS default, safest)
+        - 'forkserver': Uses a server process (middle ground, Unix only)
+        
+    Note:
+        Users can override the default with multiprocessing.set_start_method().
+        This function detects the actual method being used, not the OS default.
+    """
+    try:
+        return multiprocessing.get_start_method()
+    except RuntimeError:
+        # Fallback if context not yet initialized
+        return multiprocessing.get_start_method(allow_none=True) or _get_default_start_method()
+
+
+def _get_default_start_method() -> str:
+    """
+    Get the default multiprocessing start method for the current OS.
+    
+    Returns:
+        Default start method name for the current platform
+        
+    OS Defaults:
+        - Linux/Unix: 'fork'
+        - Windows: 'spawn'
+        - macOS (Python >= 3.8): 'spawn'
+        - macOS (Python < 3.8): 'fork'
+    """
+    system = platform.system()
+    
+    if system == "Windows":
+        return "spawn"
+    elif system == "Darwin":
+        # macOS changed default from fork to spawn in Python 3.8
+        import sys
+        if sys.version_info >= (3, 8):
+            return "spawn"
+        else:
+            return "fork"
+    else:
+        # Linux and other Unix systems default to fork
+        return "fork"
+
+
 def get_spawn_cost_estimate() -> float:
     """
-    Estimate the process spawn cost based on OS.
+    Estimate the process spawn cost based on actual start method.
     
     This is a fallback when actual measurement is not possible.
     
     Returns:
-        Estimated spawn cost in seconds based on OS type
+        Estimated spawn cost in seconds based on start method
         
     Rationale:
-        - Linux: Uses fork() with copy-on-write, very fast (~10-15ms measured)
-        - Windows/macOS: Uses spawn, requires interpreter reload (~200ms)
-        - Unknown: Conservative middle ground (~150ms)
+        - fork: Uses fork() with copy-on-write, very fast (~10-15ms measured)
+        - spawn: Starts fresh interpreter, requires module imports (~200ms)
+        - forkserver: Server process + fork, middle ground (~50-100ms)
+        
+    Important:
+        This function now checks the ACTUAL start method being used,
+        not just the OS. A user can set spawn on Linux, making spawn
+        cost 13x higher than the old OS-based estimate would suggest.
     """
-    system = platform.system()
+    start_method = get_multiprocessing_start_method()
     
-    if system == "Linux":
-        # Linux uses fork (Copy-on-Write) - fast startup
+    if start_method == "fork":
+        # Fork with Copy-on-Write - very fast
         # Empirically measured at ~10-15ms on modern systems
         return 0.015
-    elif system in ("Windows", "Darwin"):
-        # Windows and macOS use spawn - higher startup cost
+    elif start_method == "spawn":
+        # Spawn requires full interpreter initialization
+        # Empirically measured at ~150-250ms depending on imports
         return 0.2
+    elif start_method == "forkserver":
+        # Forkserver uses a pre-started server process, faster than spawn
+        # but slower than direct fork (~50-100ms)
+        return 0.075
     else:
-        # Conservative estimate for unknown systems
+        # Unknown method - use conservative estimate
         return 0.15
 
 
@@ -168,7 +231,7 @@ def get_spawn_cost(use_benchmark: bool = False) -> float:
     
     Args:
         use_benchmark: If True, measures actual spawn cost. If False,
-                      uses OS-based estimate (default: False for speed)
+                      uses start-method-based estimate (default: False for speed)
     
     Returns:
         Spawn cost in seconds
@@ -177,6 +240,47 @@ def get_spawn_cost(use_benchmark: bool = False) -> float:
         return measure_spawn_cost()
     else:
         return get_spawn_cost_estimate()
+
+
+def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
+    """
+    Check if the current start method differs from the OS default.
+    
+    Returns:
+        Tuple of (is_mismatch, warning_message) where:
+        - is_mismatch: True if start method differs from OS default
+        - warning_message: Explanation of the mismatch (None if no mismatch)
+        
+    Use Case:
+        This detects when users have explicitly set a non-default start method,
+        which can significantly affect spawn costs and optimization decisions.
+        
+        Example: User sets 'spawn' on Linux for safety reasons, but this makes
+        spawning 13x slower (200ms vs 15ms), changing optimal parallelization.
+    """
+    actual = get_multiprocessing_start_method()
+    default = _get_default_start_method()
+    
+    if actual != default:
+        if actual == "spawn" and default == "fork":
+            return True, (
+                f"Using '{actual}' start method on a system that defaults to '{default}'. "
+                f"This increases spawn cost from ~15ms to ~200ms per worker. "
+                f"Consider using 'fork' or 'forkserver' for better performance."
+            )
+        elif actual == "fork" and default == "spawn":
+            return True, (
+                f"Using '{actual}' start method on a system that defaults to '{default}'. "
+                f"This is faster but may have issues with threads or locks. "
+                f"Spawn cost estimates adjusted accordingly (~15ms vs ~200ms)."
+            )
+        else:
+            return True, (
+                f"Using '{actual}' start method instead of OS default '{default}'. "
+                f"Spawn cost estimates have been adjusted."
+            )
+    
+    return False, None
 
 
 def _read_cgroup_memory_limit() -> Optional[int]:
