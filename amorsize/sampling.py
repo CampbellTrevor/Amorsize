@@ -47,28 +47,49 @@ def check_picklability(func: Callable) -> bool:
         return False
 
 
-def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List, bool]:
+def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List, Union[List, Iterator], bool]:
     """
-    Safely extract a sample from data without consuming generators.
+    Safely extract a sample from data, preserving iterators when possible.
     
     Args:
         data: Input data (list, iterator, or generator)
         sample_size: Number of items to sample
     
     Returns:
-        Tuple of (sample_list, is_generator)
+        Tuple of (sample_list, reconstructed_data, is_generator) where:
+        - sample_list: List of sampled items
+        - reconstructed_data: Original data (List) or remaining iterator (Iterator)
+        - is_generator: True if data was a generator/iterator, False otherwise
+        
+    Note on Return Type:
+        The second element type depends on input:
+        - If data is a list: returns the original list (unmodified)
+        - If data is an iterator: returns the remaining unconsumed iterator
+        
+        For iterators, use reconstruct_iterator(sample, remaining) to rebuild
+        the full sequence.
+        
+    Generator Handling:
+        For generators/iterators, we consume items for sampling but return
+        them along with the sample. The caller must use itertools.chain
+        to reconstruct the full iterator: chain(sample, remaining_data).
+        
+        This prevents the "Iterator Consumption" problem where dry runs
+        would destroy user data.
     """
     # Check if data is a generator or iterator
     is_generator = hasattr(data, '__iter__') and not hasattr(data, '__len__')
     
     if is_generator:
-        # Use itertools.islice for generators
+        # Consume sample from generator
         sample = list(itertools.islice(data, sample_size))
-        return sample, True
+        # Return sample and the rest of the generator
+        # Caller should use itertools.chain(sample, data) to reconstruct
+        return sample, data, True
     else:
-        # For lists or sequences with __len__
+        # For lists or sequences with __len__, don't consume original
         sample = list(itertools.islice(iter(data), sample_size))
-        return sample, False
+        return sample, data, False
 
 
 def perform_dry_run(
@@ -86,13 +107,18 @@ def perform_dry_run(
     
     Returns:
         SamplingResult with timing and memory information
+        
+    Important:
+        This function consumes sample_size items from generators.
+        Callers should use the reconstructed data from safe_slice_data
+        if they need to preserve the full iterator.
     """
     # Check if function is picklable
     is_picklable = check_picklability(func)
     
     # Get sample data
     try:
-        sample, is_gen = safe_slice_data(data, sample_size)
+        sample, _, is_gen = safe_slice_data(data, sample_size)
     except Exception as e:
         return SamplingResult(
             avg_time=0.0,
@@ -182,3 +208,30 @@ def estimate_total_items(data: Union[List, Iterator], sample_consumed: bool) -> 
     else:
         # Can't determine length of consumed generator
         return -1
+
+
+def reconstruct_iterator(sample: List, remaining_data: Iterator) -> Iterator:
+    """
+    Reconstruct an iterator by chaining the sample back with remaining data.
+    
+    This is critical for generators: after sampling, we must restore the
+    consumed items so the user gets their full dataset back.
+    
+    Args:
+        sample: Items that were consumed during sampling
+        remaining_data: The rest of the iterator
+    
+    Returns:
+        Iterator that yields sample items first, then remaining items
+        
+    Example:
+        >>> def gen():
+        ...     for i in range(10):
+        ...         yield i
+        >>> data = gen()
+        >>> sample, rest, is_gen = safe_slice_data(data, 3)
+        >>> # sample = [0, 1, 2], rest continues from 3
+        >>> reconstructed = reconstruct_iterator(sample, rest)
+        >>> list(reconstructed)  # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    """
+    return itertools.chain(sample, remaining_data)
