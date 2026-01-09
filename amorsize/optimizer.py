@@ -467,6 +467,27 @@ def optimize(
             profile=diag
         )
     
+    # Check if data items are picklable
+    if not sampling_result.data_items_picklable:
+        error_msg = f"Data item at index {sampling_result.unpicklable_data_index} is not picklable"
+        if sampling_result.data_pickle_error:
+            error_msg += f": {type(sampling_result.data_pickle_error).__name__}"
+        
+        if diag:
+            diag.rejection_reasons.append(f"Data items are not picklable - multiprocessing requires picklable data")
+            diag.recommendations.append("Ensure data items don't contain thread locks, file handles, or other unpicklable objects")
+            diag.recommendations.append("Consider using dill or cloudpickle for more flexible serialization")
+        
+        return OptimizationResult(
+            n_jobs=1,
+            chunksize=1,
+            reason=f"Data items are not picklable - {error_msg}",
+            estimated_speedup=1.0,
+            warnings=[error_msg + ". Use serial execution."],
+            data=reconstructed_data,
+            profile=diag
+        )
+    
     avg_time = sampling_result.avg_time
     return_size = sampling_result.return_size
     peak_memory = sampling_result.peak_memory
