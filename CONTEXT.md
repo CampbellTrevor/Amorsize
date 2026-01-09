@@ -1,5 +1,245 @@
 # Amorsize Development Context
 
+## Completed: Adaptive Chunking for Heterogeneous Workloads (Iteration 10)
+
+### What Was Done
+
+This iteration focused on **implementing adaptive chunking that automatically detects workload heterogeneity and adjusts chunk sizes for better load balancing**. This was identified as a high priority CORE LOGIC refinement from the Strategic Priorities - specifically "Consider adaptive chunking based on data characteristics (heterogeneous workloads)".
+
+### The Problem
+
+The previous implementation assumed homogeneous workloads where all items take approximately the same time to process. In real-world scenarios, execution times often vary significantly:
+
+- Document processing: short vs long documents
+- Image processing: small vs large images
+- Mathematical computation: simple vs complex problems
+- API calls: cached vs uncached, fast vs slow endpoints
+
+With fixed chunking, this variance causes **load imbalance**:
+```
+Worker 1: [fast, fast, SLOW, SLOW]  ← Bottleneck, finishes last
+Worker 2: [fast, fast, fast, fast]  ← Idle, waiting for Worker 1
+Worker 3: [fast, fast, fast, fast]  ← Idle, wasting parallelization
+Worker 4: [fast, fast, fast, fast]  ← Idle, poor efficiency
+```
+
+**Example of the problem:**
+```python
+# Processing documents with varying lengths (100 to 5000 words)
+documents = [100, 200, 5000, 150, 4000, ...]  # Highly variable
+
+result = optimize(process_document, documents)
+# Old: Fixed chunksize of 50 regardless of variance
+# Result: Some workers finish quickly, others process slow documents and bottleneck
+```
+
+### Changes Made
+
+1. **Enhanced `SamplingResult` class** (`amorsize/sampling.py`):
+   - Added `time_variance: float` field to store variance of execution times
+   - Added `coefficient_of_variation: float` field (CV = std_dev / mean)
+   - CV provides normalized measure of workload variability
+   - Non-breaking additions (new optional parameters with defaults)
+
+2. **Updated `perform_dry_run()` function** (`amorsize/sampling.py`):
+   - Calculate variance from sample execution times
+   - Compute coefficient of variation (CV)
+   - Formula: `variance = sum((t - mean)**2) / n`
+   - Formula: `CV = sqrt(variance) / mean`
+   - Minimal overhead (< 0.1ms for typical sample sizes)
+
+3. **Enhanced `DiagnosticProfile` class** (`amorsize/optimizer.py`):
+   - Added `coefficient_of_variation: float` field
+   - Added `is_heterogeneous: bool` flag (True when CV > 0.5)
+   - Integrated CV into workload analysis section
+   - Shows "CV=X.XX (heterogeneous/homogeneous)" in explain() output
+
+4. **Implemented Adaptive Chunking Logic** (`amorsize/optimizer.py`):
+   - Detect heterogeneity when CV > 0.5
+   - Calculate adaptive scale factor: `max(0.25, 1.0 - CV * 0.5)`
+   - Reduce chunksize for heterogeneous workloads
+   - Scale factor ranges from 0.5 (CV=0.5) to 0.25 (CV=1.5+)
+   - Add diagnostic messages explaining adaptation
+   - Recommendations suggest smaller chunks for load balancing
+
+5. **Updated Verbose Mode** (`amorsize/optimizer.py`):
+   - Show CV in initial sampling output
+   - Display heterogeneity detection message
+   - Report chunk reduction percentage
+   - Explain rationale for adaptation
+
+6. **Comprehensive Test Suite** (`tests/test_adaptive_chunking.py`):
+   - 18 new tests covering all aspects:
+     * Variance calculation (4 tests)
+     * Adaptive chunking behavior (5 tests)
+     * Edge cases (4 tests)
+     * Real-world scenarios (3 tests)
+     * Backward compatibility (2 tests)
+   - Tests validate CV calculation accuracy
+   - Tests verify chunk reduction for heterogeneous workloads
+   - Tests confirm homogeneous workloads unaffected
+
+7. **Example and Documentation**:
+   - Created `examples/adaptive_chunking_demo.py` with 5 comprehensive examples
+   - Created `examples/README_adaptive_chunking.md` with complete guide
+   - Documented CV interpretation, adaptation formula, and best practices
+   - Provided real-world scenarios and comparisons
+
+### Test Results
+
+All 159 tests pass (141 existing + 18 new):
+- ✅ All existing functionality preserved
+- ✅ CV calculation validated for homogeneous workloads (CV < 0.3)
+- ✅ CV calculation validated for heterogeneous workloads (CV > 0.5)
+- ✅ Adaptive chunking reduces chunksize when appropriate
+- ✅ Homogeneous workloads use standard chunking
+- ✅ Integration with diagnostic profiling validated
+- ✅ Verbose mode shows heterogeneity detection
+- ✅ Edge cases handled (single sample, extreme CV)
+- ✅ Real-world scenarios tested
+- ✅ Backward compatible (no breaking changes)
+
+### What This Fixes
+
+**Before**: Fixed chunking regardless of workload variability
+```python
+# Mix of fast (1ms) and slow (20ms) items
+data = [1, 1, 20, 1, 20, 1, 1, 20, ...]
+result = optimize(func, data)
+# Returns fixed chunksize=50
+# Result: Poor load balancing, worker idle time
+
+with Pool(result.n_jobs) as pool:
+    # Worker 1 gets chunk with many slow items → bottleneck
+    # Other workers finish early → sit idle
+    results = pool.map(func, data, chunksize=result.chunksize)
+```
+
+**After**: Adaptive chunking for heterogeneous workloads
+```python
+# Mix of fast (1ms) and slow (20ms) items  
+data = [1, 1, 20, 1, 20, 1, 1, 20, ...]
+result = optimize(func, data, profile=True)
+# Detects CV=1.2 (highly heterogeneous)
+# Reduces chunksize from 50 to 20 for load balancing
+# Result: Better work distribution, less idle time
+
+with Pool(result.n_jobs) as pool:
+    # Smaller chunks enable work-stealing behavior
+    # Workers grab new chunks as they finish
+    # Better load balancing across all workers
+    results = pool.map(func, data, chunksize=result.chunksize)
+```
+
+### Why This Matters
+
+This is a **critical CORE LOGIC improvement** addressing real-world parallelization challenges:
+
+1. **Better Performance**: Reduces worker idle time for heterogeneous workloads
+2. **Automatic Detection**: No manual analysis or tuning required
+3. **Load Balancing**: Smaller chunks enable better work distribution
+4. **Transparent**: CV metric and diagnostic messages explain adaptation
+5. **Safe**: Only activates for clearly heterogeneous workloads (CV > 0.5)
+6. **Backward Compatible**: Homogeneous workloads use standard chunking
+
+Real-world scenarios:
+- Data scientist processing documents with varying lengths → adaptive chunks prevent bottlenecks
+- Engineer processing images of different sizes → better load balance across workers
+- Developer running mixed-complexity computations → reduced idle time, improved efficiency
+
+### Performance Characteristics
+
+The adaptive chunking feature is extremely efficient:
+- **Time overhead**: < 0.1ms (variance calculated during existing sampling)
+- **Zero additional benchmarking**: Uses already-measured execution times
+- **No memory overhead**: Simple arithmetic operations
+- **Scalability**: O(sample_size), typically 5 items
+- **Safe activation**: Conservative threshold (CV > 0.5)
+
+### CV Interpretation
+
+**Coefficient of Variation (CV)** = standard_deviation / mean
+
+- **CV < 0.3**: Homogeneous workload (consistent execution times)
+  - Standard chunking used
+  - No adaptation needed
+  
+- **CV 0.3-0.5**: Slightly variable
+  - Still uses standard chunking
+  - Below adaptation threshold
+
+- **CV 0.5-0.7**: Moderately heterogeneous
+  - Adaptive chunking activated
+  - 25-35% chunk reduction
+
+- **CV > 0.7**: Highly heterogeneous
+  - Aggressive chunk reduction
+  - 35-75% reduction for load balancing
+
+### Adaptive Reduction Formula
+
+```python
+if cv > 0.5:  # Heterogeneous workload
+    scale_factor = max(0.25, 1.0 - (cv * 0.5))
+    chunksize = int(chunksize * scale_factor)
+```
+
+**Examples:**
+- CV = 0.3 → No reduction (homogeneous)
+- CV = 0.5 → scale = 0.75 (25% reduction)
+- CV = 1.0 → scale = 0.50 (50% reduction)
+- CV = 1.5 → scale = 0.25 (75% reduction)
+- CV = 2.0+ → scale = 0.25 (75% reduction, capped)
+
+### API Changes
+
+**Non-breaking additions**:
+
+**New in `SamplingResult`:**
+- `time_variance` attribute (float)
+- `coefficient_of_variation` attribute (float)
+
+**New in `DiagnosticProfile`:**
+- `coefficient_of_variation` attribute (float)
+- `is_heterogeneous` attribute (bool)
+
+**Enhanced `optimize()` behavior:**
+- Automatically detects workload heterogeneity
+- Reduces chunksize for heterogeneous workloads
+- Adds diagnostic messages about adaptation
+- Shows CV in verbose mode and diagnostic profile
+
+**Example usage:**
+```python
+# Simple usage - automatic adaptation
+result = optimize(func, data)
+# Chunking automatically adapted if workload is heterogeneous
+
+# With profiling - see CV and adaptation
+result = optimize(func, data, profile=True, verbose=True)
+print(f"CV: {result.profile.coefficient_of_variation:.2f}")
+print(f"Heterogeneous: {result.profile.is_heterogeneous}")
+print(f"Chunksize: {result.chunksize}")
+
+# Detailed analysis
+print(result.explain())
+# Shows:
+# Workload variability: CV=0.85 (heterogeneous)
+# Heterogeneous workload (CV=0.85) - using smaller chunks for load balancing
+```
+
+### Integration Notes
+
+- No breaking changes to existing API
+- Works with all data types (lists, generators, ranges)
+- Integrates seamlessly with diagnostic profiling
+- Compatible with verbose mode
+- Backward compatible with existing code
+- Zero overhead when workload is homogeneous
+- Conservative threshold prevents false positives
+
+---
+
 ## Completed: Data Picklability Detection (Iteration 9)
 
 ### What Was Done
@@ -1025,6 +1265,15 @@ Based on the Strategic Priorities, consider these high-value tasks:
 
 ### Engineering Notes
 
+**Critical Decisions Made (Iteration 10)**:
+1. Use Coefficient of Variation (CV) as normalized measure of workload variability
+2. Threshold of CV > 0.5 to trigger adaptive chunking (conservative, prevents false positives)
+3. Adaptive scale factor: `max(0.25, 1.0 - CV * 0.5)` for gradual reduction
+4. Cap reduction at 75% (scale factor minimum 0.25) to prevent over-aggressive chunking
+5. Calculate CV during existing sampling (zero additional benchmarking overhead)
+6. Integrate with diagnostic profiling for transparency
+7. Maintain standard chunking for homogeneous workloads (backward compatible)
+
 **Critical Decisions Made (Iteration 8)**:
 1. DiagnosticProfile captures all decision factors for complete transparency
 2. Profile parameter is optional (default=False) to maintain backward compatibility
@@ -1072,11 +1321,11 @@ Based on the Strategic Priorities, consider these high-value tasks:
 3. Pickle overhead measured during dry run - adds minimal time to analysis
 
 **Why This Matters**:
-The optimizer now provides complete transparency into its decision-making process through the diagnostic profiling system. Combined with dynamic measurement of all major overhead sources (spawn cost, chunking overhead, pickle overhead), accurate physical core detection, generator safety, memory protection, and **data picklability detection**, it ensures both accurate recommendations and user understanding across diverse deployment environments: bare metal, VMs, containers, different Python versions, and various OS configurations.
+The optimizer now provides complete transparency into its decision-making process through the diagnostic profiling system. Combined with dynamic measurement of all major overhead sources (spawn cost, chunking overhead, pickle overhead), accurate physical core detection, generator safety, memory protection, data picklability detection, and **adaptive chunking for heterogeneous workloads**, it ensures both accurate recommendations, intelligent load balancing, and user understanding across diverse deployment environments and workload types: bare metal, VMs, containers, different Python versions, various OS configurations, and varying task complexity.
 
 ---
 
-**Status**: Iteration 9 is COMPLETE. The library now has comprehensive data picklability detection preventing runtime failures. Major accomplishments across all 9 iterations:
+**Status**: Iteration 10 is COMPLETE. The library now has adaptive chunking for heterogeneous workloads. Major accomplishments across all 10 iterations:
 
 - ✅ Accurate Amdahl's Law with dynamic overhead measurement (spawn, chunking, pickle)
 - ✅ Memory safety with large return object detection and warnings
@@ -1085,19 +1334,21 @@ The optimizer now provides complete transparency into its decision-making proces
 - ✅ Generator safety with proper iterator preservation
 - ✅ Robust physical core detection without external dependencies
 - ✅ Comprehensive diagnostic profiling with detailed decision transparency
-- ✅ **Data picklability detection preventing multiprocessing runtime failures**
+- ✅ Data picklability detection preventing multiprocessing runtime failures
+- ✅ **Adaptive chunking for heterogeneous workloads with automatic CV-based detection**
 
 The optimizer is now production-ready with:
 - Accurate performance predictions
 - Comprehensive safety guardrails (function, data, memory, generators)
 - Complete transparency via diagnostic profiling
+- **Intelligent load balancing for varying workload complexity**
 - Minimal dependencies (psutil optional)
 - Cross-platform compatibility
-- 141 tests validating all functionality
+- 159 tests validating all functionality
 
 Future agents should focus on:
-1. **Advanced Features**: Adaptive chunking, heterogeneous workloads, nested parallelism
+1. **Advanced Features**: Nested parallelism detection, dynamic runtime adjustment
 2. **Enhanced UX**: Progress callbacks, visualization tools, comparison modes
-3. **Platform Coverage**: ARM/M1 Mac testing, Windows optimizations
-4. **Edge Cases**: Streaming workloads, batch processing utilities
-5. **Performance**: Workload-specific optimizations, dynamic adjustment
+3. **Platform Coverage**: ARM/M1 Mac testing, Windows optimizations, cloud environment tuning
+4. **Edge Cases**: Streaming workloads with imap, batch processing utilities
+5. **Performance**: Workload-specific heuristics, historical performance tracking

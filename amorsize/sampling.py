@@ -28,7 +28,9 @@ class SamplingResult:
         is_generator: bool = False,
         data_items_picklable: bool = True,
         unpicklable_data_index: Optional[int] = None,
-        data_pickle_error: Optional[Exception] = None
+        data_pickle_error: Optional[Exception] = None,
+        time_variance: float = 0.0,
+        coefficient_of_variation: float = 0.0
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -43,6 +45,8 @@ class SamplingResult:
         self.data_items_picklable = data_items_picklable
         self.unpicklable_data_index = unpicklable_data_index
         self.data_pickle_error = data_pickle_error
+        self.time_variance = time_variance
+        self.coefficient_of_variation = coefficient_of_variation
 
 
 def check_picklability(func: Callable) -> bool:
@@ -245,6 +249,24 @@ def perform_dry_run(
         avg_return_size = sum(return_sizes) // len(return_sizes) if return_sizes else 0
         avg_pickle_time = sum(pickle_times) / len(pickle_times) if pickle_times else 0.0
         
+        # Calculate variance and coefficient of variation for heterogeneous workload detection
+        # Variance measures spread of execution times
+        # Coefficient of variation (CV) = std_dev / mean, normalizes variance by mean
+        time_variance = 0.0
+        coefficient_of_variation = 0.0
+        if len(times) > 1 and avg_time > 0:
+            # Calculate variance: average of squared deviations from mean
+            squared_diffs = [(t - avg_time) ** 2 for t in times]
+            time_variance = sum(squared_diffs) / len(times)
+            
+            # Calculate coefficient of variation (CV)
+            # CV = (std_dev / mean) gives normalized measure of variability
+            # CV < 0.3: homogeneous (consistent times)
+            # CV 0.3-0.7: moderately heterogeneous
+            # CV > 0.7: highly heterogeneous (varying times)
+            std_dev = time_variance ** 0.5
+            coefficient_of_variation = std_dev / avg_time
+        
         return SamplingResult(
             avg_time=avg_time,
             return_size=avg_return_size,
@@ -258,7 +280,9 @@ def perform_dry_run(
             is_generator=is_gen,
             data_items_picklable=data_picklable,
             unpicklable_data_index=unpicklable_idx,
-            data_pickle_error=pickle_err
+            data_pickle_error=pickle_err,
+            time_variance=time_variance,
+            coefficient_of_variation=coefficient_of_variation
         )
     
     except Exception as e:

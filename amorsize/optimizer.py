@@ -33,6 +33,8 @@ class DiagnosticProfile:
         self.peak_memory_bytes: int = 0
         self.sample_count: int = 0
         self.is_picklable: bool = False
+        self.coefficient_of_variation: float = 0.0
+        self.is_heterogeneous: bool = False
         
         # System information
         self.physical_cores: int = 1
@@ -120,6 +122,8 @@ class DiagnosticProfile:
         lines.append(f"  Pickle/IPC overhead:      {self.format_time(self.avg_pickle_time)} per item")
         lines.append(f"  Return object size:       {self.format_bytes(self.return_size_bytes)}")
         lines.append(f"  Peak memory per call:     {self.format_bytes(self.peak_memory_bytes)}")
+        if self.coefficient_of_variation > 0:
+            lines.append(f"  Workload variability:     CV={self.coefficient_of_variation:.2f} ({'heterogeneous' if self.is_heterogeneous else 'homogeneous'})")
         lines.append(f"  Total items to process:   {self.total_items if self.total_items > 0 else 'Unknown'}")
         if self.estimated_serial_time > 0:
             lines.append(f"  Estimated serial time:    {self.format_time(self.estimated_serial_time)}")
@@ -437,6 +441,12 @@ def optimize(
         diag.peak_memory_bytes = sampling_result.peak_memory
         diag.sample_count = sampling_result.sample_count
         diag.is_picklable = sampling_result.is_picklable
+        diag.coefficient_of_variation = sampling_result.coefficient_of_variation
+        # Workload is considered heterogeneous if CV > 0.5
+        # CV < 0.3: homogeneous (consistent execution times)
+        # CV 0.3-0.7: moderately heterogeneous
+        # CV > 0.7: highly heterogeneous (significant variance)
+        diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
     
     # Check for errors during sampling
     if sampling_result.error:
@@ -498,6 +508,9 @@ def optimize(
         print(f"Average return size: {return_size} bytes")
         print(f"Peak memory: {peak_memory} bytes")
         print(f"Average pickle overhead: {avg_pickle_time:.6f}s")
+        if sampling_result.coefficient_of_variation > 0:
+            cv_label = "heterogeneous" if sampling_result.coefficient_of_variation > 0.5 else "homogeneous"
+            print(f"Workload variability: CV={sampling_result.coefficient_of_variation:.2f} ({cv_label})")
     
     # Step 2: Estimate total workload and check for memory safety
     # This must happen BEFORE fast-fail checks because memory explosion
@@ -613,10 +626,31 @@ def optimize(
     
     # Step 6: Calculate optimal chunksize
     # Target: each chunk should take at least target_chunk_duration seconds
+    # For heterogeneous workloads (high variance in execution times),
+    # use smaller chunks to enable better load balancing
     if avg_time > 0:
         optimal_chunksize = max(1, int(target_chunk_duration / avg_time))
     else:
         optimal_chunksize = 1
+    
+    # Adaptive chunking: adjust for workload heterogeneity
+    # High CV (coefficient of variation) means execution times vary significantly
+    # Smaller chunks enable work-stealing and better load balance
+    cv = sampling_result.coefficient_of_variation
+    if cv > 0.5:
+        # Heterogeneous workload: reduce chunksize for better load balancing
+        # The higher the CV, the smaller the chunks should be
+        # Scale factor ranges from 0.5 (CV=0.5) to 0.25 (CV=1.5+)
+        scale_factor = max(0.25, 1.0 - (cv * 0.5))
+        optimal_chunksize = max(1, int(optimal_chunksize * scale_factor))
+        
+        if verbose:
+            print(f"Heterogeneous workload detected (CV={cv:.2f})")
+            print(f"Reducing chunksize by {(1-scale_factor)*100:.0f}% for better load balancing")
+        
+        if diag:
+            diag.constraints.append(f"Heterogeneous workload (CV={cv:.2f}) - using smaller chunks for load balancing")
+            diag.recommendations.append(f"Workload variability detected - reduced chunksize to {optimal_chunksize} for better distribution")
     
     # Cap chunksize at a reasonable value
     if total_items > 0:
