@@ -251,7 +251,8 @@ def _validate_optimize_parameters(
     use_spawn_benchmark: bool,
     use_chunking_benchmark: bool,
     profile: bool,
-    auto_adjust_for_nested_parallelism: bool
+    auto_adjust_for_nested_parallelism: bool,
+    progress_callback: Any
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -266,6 +267,7 @@ def _validate_optimize_parameters(
         use_chunking_benchmark: Chunking benchmark flag to validate
         profile: Profile flag to validate
         auto_adjust_for_nested_parallelism: Auto-adjust flag to validate
+        progress_callback: Progress callback to validate
     
     Returns:
         None if all parameters are valid, error message string otherwise
@@ -309,6 +311,10 @@ def _validate_optimize_parameters(
         return f"profile must be a boolean, got {type(profile).__name__}"
     if not isinstance(auto_adjust_for_nested_parallelism, bool):
         return f"auto_adjust_for_nested_parallelism must be a boolean, got {type(auto_adjust_for_nested_parallelism).__name__}"
+    
+    # Validate progress_callback
+    if progress_callback is not None and not callable(progress_callback):
+        return f"progress_callback must be callable or None, got {type(progress_callback).__name__}"
     
     return None
 
@@ -405,7 +411,8 @@ def optimize(
     use_spawn_benchmark: bool = True,
     use_chunking_benchmark: bool = True,
     profile: bool = False,
-    auto_adjust_for_nested_parallelism: bool = True
+    auto_adjust_for_nested_parallelism: bool = True,
+    progress_callback: Optional[Callable[[str, float], None]] = None
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -473,6 +480,11 @@ def optimize(
                 Calculates optimal n_jobs = physical_cores / estimated_internal_threads.
                 (default: True). Set to False to disable auto-adjustment and only
                 receive warnings. Must be a boolean.
+        progress_callback: Optional callback function for progress updates during
+                optimization. Called at key milestones with signature:
+                `callback(phase: str, progress: float)` where phase is a descriptive
+                string and progress is a value from 0.0 to 1.0. Default is None (no callbacks).
+                Example: `lambda phase, pct: print(f"{phase}: {pct*100:.0f}%")`
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -511,7 +523,7 @@ def optimize(
     validation_error = _validate_optimize_parameters(
         func, data, sample_size, target_chunk_duration,
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
-        auto_adjust_for_nested_parallelism
+        auto_adjust_for_nested_parallelism, progress_callback
     )
     
     if validation_error:
@@ -522,11 +534,28 @@ def optimize(
     # Initialize diagnostic profile if requested
     diag = DiagnosticProfile() if profile else None
     
+    # Helper function to invoke progress callback safely
+    def _report_progress(phase: str, progress: float):
+        """Safely invoke progress callback if provided."""
+        if progress_callback is not None:
+            try:
+                progress_callback(phase, progress)
+            except Exception:
+                # Silently ignore callback errors to avoid disrupting optimization
+                pass
+    
+    # Report start
+    _report_progress("Starting optimization", 0.0)
+    
     # Step 1: Perform dry run sampling
     if verbose:
         print("Performing dry run sampling...")
     
+    _report_progress("Sampling function", 0.1)
+    
     sampling_result = perform_dry_run(func, data, sample_size)
+    
+    _report_progress("Sampling complete", 0.3)
     
     # Reconstruct data for generators to preserve consumed items
     # For lists, use original data. For generators, chain sample with remaining.
@@ -637,6 +666,7 @@ def optimize(
     if sampling_result.error:
         if diag:
             diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+        _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -652,6 +682,7 @@ def optimize(
         if diag:
             diag.rejection_reasons.append("Function is not picklable - multiprocessing requires picklable functions")
             diag.recommendations.append("Use dill or cloudpickle to serialize complex functions")
+        _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -673,6 +704,7 @@ def optimize(
             diag.recommendations.append("Ensure data items don't contain thread locks, file handles, or other unpicklable objects")
             diag.recommendations.append("Consider using dill or cloudpickle for more flexible serialization")
         
+        _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -753,6 +785,7 @@ def optimize(
             diag.rejection_reasons.append(f"Function execution time ({avg_time * 1000:.3f}ms) is below 1ms threshold")
             diag.rejection_reasons.append("Parallelization overhead would exceed computation time")
             diag.recommendations.append("Function is too fast to benefit from parallelization")
+        _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -764,6 +797,8 @@ def optimize(
         )
     
     # Step 4: Get system information (physical_cores already retrieved earlier for nested parallelism)
+    _report_progress("Analyzing system", 0.5)
+    
     import os
     logical_cores = os.cpu_count() or 1
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
@@ -799,6 +834,7 @@ def optimize(
         if diag:
             diag.rejection_reasons.append(f"Total execution time ({estimated_total_time:.2f}s) is less than 2x spawn cost ({spawn_cost * 2:.2f}s)")
             diag.rejection_reasons.append("Workload too small to overcome parallelization startup overhead")
+        _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -809,6 +845,8 @@ def optimize(
         )
     
     # Step 6: Calculate optimal chunksize
+    _report_progress("Calculating optimal parameters", 0.7)
+    
     # Target: each chunk should take at least target_chunk_duration seconds
     # For heterogeneous workloads (high variance in execution times),
     # use smaller chunks to enable better load balancing
@@ -905,6 +943,8 @@ def optimize(
         print(f"Optimal n_jobs: {optimal_n_jobs}")
     
     # Step 8: Estimate speedup using proper Amdahl's Law
+    _report_progress("Estimating speedup", 0.9)
+    
     if estimated_total_time and optimal_n_jobs > 1 and total_items > 0:
         # Use refined Amdahl's Law calculation with overhead accounting
         estimated_speedup = calculate_amdahl_speedup(
@@ -941,6 +981,7 @@ def optimize(
                 diag.rejection_reasons.append(f"Estimated speedup ({estimated_speedup:.2f}x) below 1.2x threshold")
                 diag.rejection_reasons.append("Parallelization overhead exceeds performance gains")
                 diag.recommendations.append("Function needs to be slower or data size larger to benefit from parallelization")
+            _report_progress("Optimization complete", 1.0)
             return OptimizationResult(
                 n_jobs=1,
                 chunksize=1,
@@ -964,6 +1005,7 @@ def optimize(
             # Reset speedup to 1.0 for serial execution (by definition)
             diag.estimated_speedup = 1.0
             diag.rejection_reasons.append("Only 1 worker recommended due to constraints")
+        _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
             chunksize=optimal_chunksize,
@@ -979,6 +1021,8 @@ def optimize(
         diag.recommendations.append(f"Use {optimal_n_jobs} workers with chunksize {optimal_chunksize} for ~{estimated_speedup:.2f}x speedup")
         if diag.speedup_efficiency < 0.5:
             diag.recommendations.append("Efficiency is low - consider if parallelization overhead is acceptable")
+    
+    _report_progress("Optimization complete", 1.0)
     
     return OptimizationResult(
         n_jobs=optimal_n_jobs,
