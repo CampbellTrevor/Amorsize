@@ -6,8 +6,9 @@ import sys
 import time
 import pickle
 import tracemalloc
-from typing import Any, Callable, Iterator, List, Tuple, Union
+from typing import Any, Callable, Iterator, List, Tuple, Union, Optional
 import itertools
+
 
 
 class SamplingResult:
@@ -24,7 +25,10 @@ class SamplingResult:
         error: Exception = None,
         sample: List[Any] = None,
         remaining_data: Union[List, Iterator, range, None] = None,
-        is_generator: bool = False
+        is_generator: bool = False,
+        data_items_picklable: bool = True,
+        unpicklable_data_index: Optional[int] = None,
+        data_pickle_error: Optional[Exception] = None
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -36,6 +40,9 @@ class SamplingResult:
         self.sample = sample or []
         self.remaining_data = remaining_data
         self.is_generator = is_generator
+        self.data_items_picklable = data_items_picklable
+        self.unpicklable_data_index = unpicklable_data_index
+        self.data_pickle_error = data_pickle_error
 
 
 def check_picklability(func: Callable) -> bool:
@@ -53,6 +60,46 @@ def check_picklability(func: Callable) -> bool:
         return True
     except (pickle.PicklingError, AttributeError, TypeError):
         return False
+
+
+def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception]]:
+    """
+    Check if data items can be pickled (required for multiprocessing).
+    
+    This function tests a sample of data items to ensure they can be serialized
+    by pickle, which is necessary for multiprocessing.Pool.map() to work.
+    Common unpicklable objects include: thread locks, file handles, database
+    connections, lambdas, and objects with __getstate__ that raises errors.
+    
+    Args:
+        data_items: List of data items to check
+    
+    Returns:
+        Tuple of (all_picklable, first_unpicklable_index, exception)
+        - all_picklable: True if all items can be pickled, False otherwise
+        - first_unpicklable_index: Index of first unpicklable item, or None
+        - exception: The exception raised during pickling, or None
+        
+    Examples:
+        >>> data = [1, 2, 3, 4, 5]
+        >>> check_data_picklability(data)
+        (True, None, None)
+        
+        >>> import threading
+        >>> data_with_lock = [1, threading.Lock(), 3]
+        >>> picklable, idx, exc = check_data_picklability(data_with_lock)
+        >>> picklable
+        False
+        >>> idx
+        1
+    """
+    for idx, item in enumerate(data_items):
+        try:
+            pickle.dumps(item)
+        except (pickle.PicklingError, AttributeError, TypeError) as e:
+            return False, idx, e
+    
+    return True, None, None
 
 
 def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List, Union[List, Iterator], bool]:
@@ -156,6 +203,9 @@ def perform_dry_run(
             is_generator=is_gen
         )
     
+    # Check if data items are picklable
+    data_picklable, unpicklable_idx, pickle_err = check_data_picklability(sample)
+    
     # Start memory tracking
     tracemalloc.start()
     
@@ -205,7 +255,10 @@ def perform_dry_run(
             error=None,
             sample=sample,
             remaining_data=remaining_data,
-            is_generator=is_gen
+            is_generator=is_gen,
+            data_items_picklable=data_picklable,
+            unpicklable_data_index=unpicklable_idx,
+            data_pickle_error=pickle_err
         )
     
     except Exception as e:
@@ -220,7 +273,10 @@ def perform_dry_run(
             error=e,
             sample=sample,
             remaining_data=remaining_data,
-            is_generator=is_gen
+            is_generator=is_gen,
+            data_items_picklable=data_picklable,
+            unpicklable_data_index=unpicklable_idx,
+            data_pickle_error=pickle_err
         )
 
 
