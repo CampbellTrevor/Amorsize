@@ -21,7 +21,8 @@ def execute(
     profile: bool = False,
     auto_adjust_for_nested_parallelism: bool = True,
     progress_callback: Optional[Callable[[str, float], None]] = None,
-    return_optimization_result: bool = False
+    return_optimization_result: bool = False,
+    prefer_threads_for_io: bool = True
 ) -> Union[List[Any], tuple]:
     """
     Optimize and execute a function on data in parallel.
@@ -53,6 +54,9 @@ def execute(
         progress_callback: Optional callback function for progress updates.
         return_optimization_result: If True, return (results, optimization_result) tuple
                 instead of just results (default: False).
+        prefer_threads_for_io: If True, automatically use ThreadPoolExecutor instead of
+                multiprocessing.Pool for I/O-bound workloads (< 30% CPU utilization).
+                (default: True). Set to False to always use multiprocessing.
     
     Returns:
         List of results from applying func to each item in data.
@@ -97,23 +101,32 @@ def execute(
         use_chunking_benchmark=use_chunking_benchmark,
         profile=profile,
         auto_adjust_for_nested_parallelism=auto_adjust_for_nested_parallelism,
-        progress_callback=progress_callback
+        progress_callback=progress_callback,
+        prefer_threads_for_io=prefer_threads_for_io
     )
     
     if verbose:
-        print(f"\nExecuting with n_jobs={opt_result.n_jobs}, chunksize={opt_result.chunksize}")
+        print(f"\nExecuting with n_jobs={opt_result.n_jobs}, chunksize={opt_result.chunksize}, executor={opt_result.executor_type}")
         print(f"Estimated speedup: {opt_result.estimated_speedup}")
     
     # Step 2: Execute with optimal parameters
     if opt_result.n_jobs == 1:
-        # Serial execution - don't create a Pool
+        # Serial execution - don't create any executor
         if verbose:
-            print("Using serial execution (no Pool created)")
+            print("Using serial execution (no Pool/ThreadPool created)")
         results = [func(item) for item in opt_result.data]
-    else:
-        # Parallel execution with Pool
+    elif opt_result.executor_type == "thread":
+        # Threading execution for I/O-bound workloads
+        # Lazy import to avoid loading concurrent.futures at module level
+        from concurrent.futures import ThreadPoolExecutor
         if verbose:
-            print(f"Creating Pool with {opt_result.n_jobs} workers")
+            print(f"Creating ThreadPoolExecutor with {opt_result.n_jobs} workers")
+        with ThreadPoolExecutor(max_workers=opt_result.n_jobs) as executor:
+            results = list(executor.map(func, opt_result.data, chunksize=opt_result.chunksize))
+    else:
+        # Multiprocessing execution for CPU-bound workloads
+        if verbose:
+            print(f"Creating multiprocessing.Pool with {opt_result.n_jobs} workers")
         with Pool(opt_result.n_jobs) as pool:
             results = pool.map(func, opt_result.data, chunksize=opt_result.chunksize)
     
