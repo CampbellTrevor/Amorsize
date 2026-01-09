@@ -22,6 +22,11 @@ _CACHED_SPAWN_COST: Optional[float] = None
 # Below this, we assume measurement noise and fall back to single-worker measurement
 MIN_REASONABLE_MARGINAL_COST = 0.001
 
+# Spawn cost constants (in seconds) for different start methods
+SPAWN_COST_FORK = 0.015        # fork with Copy-on-Write (~15ms)
+SPAWN_COST_SPAWN = 0.2         # full interpreter initialization (~200ms)
+SPAWN_COST_FORKSERVER = 0.075  # server process + fork (~75ms)
+
 
 def _clear_spawn_cost_cache():
     """
@@ -152,14 +157,19 @@ def get_multiprocessing_start_method() -> str:
         Users can override the default with multiprocessing.set_start_method().
         This function detects the actual method being used, not the OS default.
     """
+    # Try to get the start method, allowing None if not yet initialized
+    method = None
     try:
-        return multiprocessing.get_start_method()
+        method = multiprocessing.get_start_method()
     except RuntimeError:
-        # Fallback if context not yet initialized
+        # Context not initialized yet
         method = multiprocessing.get_start_method(allow_none=True)
-        if method is None:
-            return _get_default_start_method()
-        return method
+    
+    # If still None, return the OS default
+    if method is None:
+        return _get_default_start_method()
+    
+    return method
 
 
 def _get_default_start_method() -> str:
@@ -213,19 +223,17 @@ def get_spawn_cost_estimate() -> float:
     
     if start_method == "fork":
         # Fork with Copy-on-Write - very fast
-        # Empirically measured at ~10-15ms on modern systems
-        return 0.015
+        return SPAWN_COST_FORK
     elif start_method == "spawn":
         # Spawn requires full interpreter initialization
-        # Empirically measured at ~150-250ms depending on imports
-        return 0.2
+        return SPAWN_COST_SPAWN
     elif start_method == "forkserver":
         # Forkserver uses a pre-started server process, faster than spawn
-        # but slower than direct fork (~50-100ms)
-        return 0.075
+        # but slower than direct fork
+        return SPAWN_COST_FORKSERVER
     else:
-        # Unknown method - use conservative estimate
-        return 0.15
+        # Unknown method - use conservative estimate (halfway between fork and spawn)
+        return (SPAWN_COST_FORK + SPAWN_COST_SPAWN) / 2
 
 
 def get_spawn_cost(use_benchmark: bool = False) -> float:
@@ -268,14 +276,14 @@ def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
         if actual == "spawn" and default == "fork":
             return True, (
                 f"Using '{actual}' start method on a system that defaults to '{default}'. "
-                f"This increases spawn cost from ~15ms to ~200ms per worker. "
+                f"This increases spawn cost from ~{int(SPAWN_COST_FORK * 1000)}ms to ~{int(SPAWN_COST_SPAWN * 1000)}ms per worker. "
                 f"Consider using 'fork' or 'forkserver' for better performance."
             )
         elif actual == "fork" and default == "spawn":
             return True, (
                 f"Using '{actual}' start method on a system that defaults to '{default}'. "
                 f"This is faster but may have issues with threads or locks. "
-                f"Spawn cost estimates adjusted accordingly (~15ms vs ~200ms)."
+                f"Spawn cost estimates adjusted accordingly (~{int(SPAWN_COST_FORK * 1000)}ms vs ~{int(SPAWN_COST_SPAWN * 1000)}ms)."
             )
         else:
             return True, (
