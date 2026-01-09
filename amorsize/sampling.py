@@ -22,8 +22,8 @@ class SamplingResult:
         is_picklable: bool,
         avg_pickle_time: float = 0.0,
         error: Exception = None,
-        sample: List = None,
-        remaining_data: Union[List, Iterator, None] = None,
+        sample: List[Any] = None,
+        remaining_data: Union[List, Iterator, range, None] = None,
         is_generator: bool = False
     ):
         self.avg_time = avg_time
@@ -242,7 +242,7 @@ def estimate_total_items(data: Union[List, Iterator], sample_consumed: bool) -> 
         return -1
 
 
-def reconstruct_iterator(sample: List, remaining_data: Iterator) -> Iterator:
+def reconstruct_iterator(sample: List[Any], remaining_data: Union[Iterator, List, range]) -> Iterator:
     """
     Reconstruct an iterator by chaining the sample back with remaining data.
     
@@ -251,7 +251,7 @@ def reconstruct_iterator(sample: List, remaining_data: Iterator) -> Iterator:
     
     Args:
         sample: Items that were consumed during sampling
-        remaining_data: The rest of the iterator
+        remaining_data: The rest of the iterator, or full list/range
     
     Returns:
         Iterator that yields sample items first, then remaining items
