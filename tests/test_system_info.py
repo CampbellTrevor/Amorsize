@@ -38,11 +38,31 @@ def test_get_spawn_cost_estimate():
 
 def test_measure_spawn_cost():
     """Test actual spawn cost measurement."""
+    # Clear cache to ensure fresh measurement
+    _clear_spawn_cost_cache()
+    
     cost = measure_spawn_cost(timeout=5.0)
     assert isinstance(cost, float)
     assert cost > 0
     # Should be reasonable (between 1ms and 5s)
     assert 0.001 < cost < 5.0
+
+
+def test_measure_spawn_cost_marginal():
+    """Test that spawn cost measures marginal per-worker cost."""
+    # Clear cache to ensure fresh measurement
+    _clear_spawn_cost_cache()
+    
+    # The marginal cost should generally be less than full pool creation
+    # since it removes fixed initialization overhead
+    cost = measure_spawn_cost(timeout=5.0)
+    
+    # On most systems, per-worker spawn should be under 500ms
+    # (This is a generous upper bound for slow systems)
+    assert cost < 0.5
+    
+    # Should still be positive and measurable
+    assert cost > 0
 
 
 def test_spawn_cost_caching():

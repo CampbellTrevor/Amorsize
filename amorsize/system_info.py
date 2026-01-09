@@ -54,17 +54,26 @@ def _noop_worker(_):
 
 def measure_spawn_cost(timeout: float = 2.0) -> float:
     """
-    Measure the actual process spawn cost by benchmarking.
+    Measure the actual per-worker process spawn cost by benchmarking.
     
-    This function spawns a single worker process that does nothing,
-    measuring the total overhead. The measurement is cached globally
-    to avoid repeated benchmarking.
+    This function measures the marginal cost of spawning additional workers
+    by comparing pool creation times with different worker counts. This gives
+    a more accurate per-worker cost than measuring a single worker pool.
+    
+    The measurement is cached globally to avoid repeated benchmarking.
     
     Args:
         timeout: Maximum time to wait for measurement in seconds
     
     Returns:
-        Measured spawn cost in seconds, or OS-based estimate on failure
+        Measured per-worker spawn cost in seconds, or OS-based estimate on failure
+        
+    Algorithm:
+        1. Measure time to create pool with 1 worker
+        2. Measure time to create pool with 2 workers
+        3. Calculate marginal cost: (time_2_workers - time_1_worker) / 1
+        
+        This isolates the per-worker cost from fixed pool initialization overhead.
         
     Fallback Strategy:
         If benchmarking fails (e.g., multiprocessing not available,
@@ -77,21 +86,39 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         return _CACHED_SPAWN_COST
     
     try:
-        # Measure time to spawn a single no-op worker
-        start = time.perf_counter()
-        
-        # Use context manager to ensure proper cleanup
+        # Measure time to create pool with 1 worker
+        start_1 = time.perf_counter()
         with multiprocessing.Pool(processes=1) as pool:
-            # Submit a no-op task and wait for it
             result = pool.apply_async(_noop_worker, (None,))
             result.get(timeout=timeout)
+        end_1 = time.perf_counter()
+        time_1_worker = end_1 - start_1
         
-        end = time.perf_counter()
-        measured_cost = end - start
+        # Measure time to create pool with 2 workers
+        start_2 = time.perf_counter()
+        with multiprocessing.Pool(processes=2) as pool:
+            # Submit tasks to ensure both workers are initialized
+            results = [pool.apply_async(_noop_worker, (None,)) for _ in range(2)]
+            for result in results:
+                result.get(timeout=timeout)
+        end_2 = time.perf_counter()
+        time_2_workers = end_2 - start_2
+        
+        # Calculate marginal cost per worker
+        # This removes fixed pool initialization overhead
+        marginal_cost = time_2_workers - time_1_worker
+        
+        # Ensure we have a reasonable positive value
+        # If marginal cost is negative or tiny, fall back to the 1-worker measurement
+        if marginal_cost > 0.001:
+            per_worker_cost = marginal_cost
+        else:
+            # Fallback: use the single worker measurement
+            per_worker_cost = time_1_worker
         
         # Cache the result
-        _CACHED_SPAWN_COST = measured_cost
-        return measured_cost
+        _CACHED_SPAWN_COST = per_worker_cost
+        return per_worker_cost
         
     except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError) as e:
         # If measurement fails, fall back to OS-based estimate
