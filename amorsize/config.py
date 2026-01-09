@@ -80,6 +80,13 @@ class ConfigData:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary format."""
+        # Import version dynamically to avoid circular imports
+        try:
+            from . import __version__
+            version = __version__
+        except ImportError:
+            version = '0.1.0'  # Fallback
+        
         return {
             'n_jobs': self.n_jobs,
             'chunksize': self.chunksize,
@@ -92,7 +99,7 @@ class ConfigData:
             'source': self.source,
             'system_info': self.system_info,
             'timestamp': self.timestamp,
-            'amorsize_version': '0.1.0'
+            'amorsize_version': version
         }
     
     @classmethod

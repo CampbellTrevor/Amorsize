@@ -64,6 +64,30 @@ def load_function(function_path: str) -> Callable:
     return func
 
 
+def extract_function_name(function_path: str) -> str:
+    """
+    Extract the function name from a module path.
+    
+    Args:
+        function_path: Path in format "module.function" or "module:function"
+    
+    Returns:
+        Function name only (last component)
+    
+    Examples:
+        >>> extract_function_name("math.factorial")
+        'factorial'
+        >>> extract_function_name("mymodule:myfunc")
+        'myfunc'
+    """
+    if '.' in function_path:
+        return function_path.split('.')[-1]
+    elif ':' in function_path:
+        return function_path.split(':')[-1]
+    else:
+        return function_path
+
+
 def load_data(args: argparse.Namespace) -> List[Any]:
     """
     Load data based on command-line arguments.
@@ -219,7 +243,7 @@ def cmd_optimize(args: argparse.Namespace):
     if hasattr(args, 'save_config') and args.save_config:
         try:
             # Extract function name
-            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            function_name = extract_function_name(args.function)
             
             result.save_config(
                 args.save_config,
@@ -447,7 +471,7 @@ def cmd_tune(args: argparse.Namespace):
             )
             
             # Extract function name
-            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            function_name = extract_function_name(args.function)
             
             # Get data size
             data_size = len(data) if hasattr(data, '__len__') else 0
@@ -464,7 +488,7 @@ def cmd_tune(args: argparse.Namespace):
     if hasattr(args, 'save_config') and args.save_config:
         try:
             # Extract function name
-            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            function_name = extract_function_name(args.function)
             
             result.save_config(
                 args.save_config,
@@ -686,7 +710,7 @@ def cmd_compare(args: argparse.Namespace):
     if hasattr(args, 'save_result') and args.save_result:
         try:
             # Extract function name from the function path
-            function_name = args.function.split('.')[-1] if '.' in args.function else args.function.split(':')[-1] if ':' in args.function else args.function
+            function_name = extract_function_name(args.function)
             
             # Get data size (use loaded data length)
             data_size = len(data) if hasattr(data, '__len__') else 0
