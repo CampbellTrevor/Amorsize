@@ -179,6 +179,33 @@ def example_10_real_world_use_case():
     print()
 
 
+def example_11_system_validation():
+    """Example 11: System validation."""
+    print("="*70)
+    print("Example 11: System Validation")
+    print("="*70)
+    print("\nCommand:")
+    print("  python -m amorsize validate")
+    print("\nDescription:")
+    print("  Validate that Amorsize measurements are working correctly on your system")
+    print("\nShows:")
+    print("  - Multiprocessing basic functionality test")
+    print("  - System resources (cores, memory, start method)")
+    print("  - Spawn cost measurement accuracy")
+    print("  - Chunking overhead measurement")
+    print("  - Pickle overhead for various data types")
+    print("\nUse cases:")
+    print("  # Post-installation health check")
+    print("  python -m amorsize validate")
+    print()
+    print("  # CI/CD integration - fail if system unhealthy")
+    print("  python -m amorsize validate && deploy.sh")
+    print()
+    print("  # Get JSON output for programmatic checks")
+    print("  python -m amorsize validate --json")
+    print()
+
+
 def main():
     """Run all examples."""
     examples = [
@@ -192,6 +219,7 @@ def main():
         example_8_disable_benchmarks,
         example_9_nested_parallelism,
         example_10_real_world_use_case,
+        example_11_system_validation,
     ]
     
     print("\n" + "="*70)
