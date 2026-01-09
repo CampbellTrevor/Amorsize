@@ -4,6 +4,7 @@ System information module for detecting hardware and OS constraints.
 
 import os
 import platform
+import subprocess
 import sys
 import time
 import multiprocessing
@@ -57,22 +58,145 @@ def _clear_chunking_overhead_cache():
     _CACHED_CHUNKING_OVERHEAD = None
 
 
+def _parse_proc_cpuinfo() -> Optional[int]:
+    """
+    Parse /proc/cpuinfo to determine physical core count on Linux.
+    
+    Returns:
+        Number of physical cores, or None if parsing fails
+        
+    Algorithm:
+        Counts unique (physical_id, core_id) pairs in /proc/cpuinfo.
+        This gives the actual number of physical cores, excluding hyperthreading.
+    """
+    try:
+        if not os.path.exists('/proc/cpuinfo'):
+            return None
+        
+        cores = set()
+        current_physical_id = None
+        current_core_id = None
+        
+        with open('/proc/cpuinfo', 'r') as f:
+            for line in f:
+                line = line.strip()
+                
+                # Reset IDs when starting a new processor entry
+                if line.startswith('processor'):
+                    # Save the previous processor's core info if we have both IDs
+                    if current_physical_id is not None and current_core_id is not None:
+                        cores.add((current_physical_id, current_core_id))
+                    # Reset for new processor entry
+                    current_physical_id = None
+                    current_core_id = None
+                elif line.startswith('physical id'):
+                    current_physical_id = line.split(':')[1].strip()
+                elif line.startswith('core id'):
+                    current_core_id = line.split(':')[1].strip()
+            
+            # Don't forget the last processor entry
+            if current_physical_id is not None and current_core_id is not None:
+                cores.add((current_physical_id, current_core_id))
+        
+        if cores:
+            return len(cores)
+        
+        return None
+    except (IOError, ValueError, IndexError):
+        return None
+
+
+def _parse_lscpu() -> Optional[int]:
+    """
+    Use lscpu command to determine physical core count on Linux.
+    
+    Returns:
+        Number of physical cores, or None if command fails
+        
+    Note:
+        This is a secondary fallback after /proc/cpuinfo parsing.
+        lscpu is part of util-linux and should be available on most Linux systems.
+    """
+    try:
+        # Run lscpu and capture output
+        result = subprocess.run(
+            ['lscpu', '-p=Core,Socket'],
+            capture_output=True,
+            text=True,
+            timeout=1.0
+        )
+        
+        if result.returncode != 0:
+            return None
+        
+        # Parse the output to count unique (socket, core) pairs
+        cores = set()
+        for line in result.stdout.split('\n'):
+            # Skip comments and empty lines
+            if line.startswith('#') or not line.strip():
+                continue
+            
+            parts = line.split(',')
+            if len(parts) >= 2:
+                core_id = parts[0].strip()
+                socket_id = parts[1].strip()
+                cores.add((socket_id, core_id))
+        
+        if cores:
+            return len(cores)
+        
+        return None
+    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
 def get_physical_cores() -> int:
     """
     Get the number of physical CPU cores.
     
     Returns:
-        Number of physical cores. Falls back to logical cores if psutil is unavailable.
+        Number of physical cores, using the best available detection method
+        
+    Detection Strategy (in order of preference):
+        1. psutil (most reliable, cross-platform)
+        2. /proc/cpuinfo parsing (Linux, no dependencies)
+        3. lscpu command (Linux, secondary fallback)
+        4. Logical cores / 2 (conservative estimate for hyperthreading)
+        5. 1 core (absolute fallback)
+        
+    Rationale:
+        For CPU-bound tasks, using logical cores (with hyperthreading) can lead
+        to over-subscription and worse performance. Physical cores provide better
+        parallelization characteristics.
     """
+    # Strategy 1: Use psutil if available (best method)
     if HAS_PSUTIL:
         # psutil can distinguish between physical and logical cores
         physical = psutil.cpu_count(logical=False)
         if physical is not None:
             return physical
     
-    # Fallback to logical cores
+    # Strategy 2: Try /proc/cpuinfo on Linux (no dependencies)
+    if platform.system() == "Linux":
+        physical = _parse_proc_cpuinfo()
+        if physical is not None:
+            return physical
+        
+        # Strategy 3: Try lscpu command on Linux (secondary fallback)
+        physical = _parse_lscpu()
+        if physical is not None:
+            return physical
+    
+    # Strategy 4: Conservative estimate - assume hyperthreading (logical / 2)
+    # This is better than using all logical cores for CPU-bound tasks
     logical = os.cpu_count()
-    return logical if logical is not None else 1
+    if logical is not None and logical > 1:
+        # Assume hyperthreading is enabled (common on modern CPUs)
+        # Divide by 2 to get approximate physical core count
+        return max(1, logical // 2)
+    
+    # Strategy 5: Absolute fallback
+    return 1
 
 
 def _noop_worker(_):

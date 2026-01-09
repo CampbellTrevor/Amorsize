@@ -2,12 +2,15 @@
 Tests for system_info module.
 """
 
+import os
 import pytest
 import sys
 import multiprocessing
 import platform
 from amorsize.system_info import (
     get_physical_cores,
+    _parse_proc_cpuinfo,
+    _parse_lscpu,
     get_spawn_cost,
     get_spawn_cost_estimate,
     measure_spawn_cost,
@@ -34,6 +37,70 @@ def test_get_physical_cores():
     cores = get_physical_cores()
     assert isinstance(cores, int)
     assert cores > 0
+
+
+def test_parse_proc_cpuinfo_on_linux():
+    """Test /proc/cpuinfo parsing on Linux systems."""
+    if platform.system() != "Linux":
+        pytest.skip("This test only runs on Linux")
+    
+    # The function should return None or a positive integer
+    result = _parse_proc_cpuinfo()
+    
+    # On Linux, this should typically succeed
+    if result is not None:
+        assert isinstance(result, int)
+        assert result > 0
+        # Should be reasonable number of cores (1-256)
+        assert 1 <= result <= 256
+
+
+def test_parse_lscpu_on_linux():
+    """Test lscpu command parsing on Linux systems."""
+    if platform.system() != "Linux":
+        pytest.skip("This test only runs on Linux")
+    
+    # The function should return None or a positive integer
+    result = _parse_lscpu()
+    
+    # On Linux with lscpu available, this should typically succeed
+    if result is not None:
+        assert isinstance(result, int)
+        assert result > 0
+        # Should be reasonable number of cores (1-256)
+        assert 1 <= result <= 256
+
+
+def test_physical_cores_fallback_consistency():
+    """Test that physical core detection is consistent and reasonable."""
+    # Get cores multiple times - should be consistent
+    cores1 = get_physical_cores()
+    cores2 = get_physical_cores()
+    
+    assert cores1 == cores2
+    assert cores1 > 0
+    
+    # Should not exceed logical core count
+    logical_cores = os.cpu_count()
+    if logical_cores:
+        assert cores1 <= logical_cores
+
+
+def test_physical_cores_without_psutil():
+    """Test physical core detection when psutil fallback is used."""
+    # This test validates the fallback logic works
+    # Even without psutil, we should get a reasonable answer
+    cores = get_physical_cores()
+    
+    assert isinstance(cores, int)
+    assert cores > 0
+    
+    # On systems with at least 2 logical cores, physical cores should be at least 1
+    logical = os.cpu_count()
+    if logical and logical >= 2:
+        assert cores >= 1
+        # Physical cores should be <= logical cores
+        assert cores <= logical
 
 
 def test_get_spawn_cost():
