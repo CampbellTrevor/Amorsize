@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
         exclude:
-          # Python 3.7 is not available on macos-latest (ARM64)
+          # GitHub deprecated Python 3.7 support on macos-latest runners
           - os: macos-latest
             python-version: '3.7'
     
@@ -138,10 +138,4 @@ jobs:
     
     - name: Run basic functionality test
       run: |
-        python -c "
-        from amorsize import optimize
-        def simple_func(x):
-            return x * 2
-        result = optimize(simple_func, range(100))
-        print(f'✓ Basic optimization works: n_jobs={result.n_jobs}, chunksize={result.chunksize}')
-        "
+        python -c "from amorsize import optimize; result = optimize(lambda x: x * 2, range(100)); print(f'✓ Basic optimization works: n_jobs={result.n_jobs}, chunksize={result.chunksize}')"
