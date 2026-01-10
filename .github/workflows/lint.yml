@@ -1,0 +1,112 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, Iterate ]
+  pull_request:
+    branches: [ main, Iterate ]
+  workflow_dispatch:
+
+jobs:
+  ruff:
+    name: Ruff Linter
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install ruff
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff
+    
+    - name: Run ruff check
+      run: |
+        ruff check amorsize/ --output-format=github || echo "Ruff issues found (advisory)"
+    
+    - name: Run ruff format check
+      run: |
+        ruff format --check amorsize/ || echo "Format issues found (advisory)"
+
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install mypy types-psutil
+        pip install -e ".[full]"
+    
+    - name: Run mypy
+      run: |
+        mypy amorsize/ --ignore-missing-imports || echo "Type checking issues found (advisory)"
+
+  imports:
+    name: Import Order Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install isort
+      run: |
+        python -m pip install --upgrade pip
+        pip install isort
+    
+    - name: Check import order
+      run: |
+        isort --check-only --diff amorsize/ || echo "Import order issues found (advisory)"
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install bandit
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit[toml]
+    
+    - name: Run bandit security scan
+      run: |
+        bandit -r amorsize/ -f json -o bandit-report.json || echo "Security scan complete"
+    
+    - name: Display security report summary
+      run: |
+        python -m bandit -r amorsize/ || echo "Security issues found (review required)"
+    
+    - name: Upload security report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-scan-report
+        path: bandit-report.json
+        retention-days: 30
