@@ -29,6 +29,14 @@ _spawn_cost_lock = threading.Lock()
 _CACHED_CHUNKING_OVERHEAD: Optional[float] = None
 _chunking_overhead_lock = threading.Lock()
 
+# Global cache for available memory detection (with TTL)
+_CACHED_AVAILABLE_MEMORY: Optional[int] = None
+_memory_cache_timestamp: Optional[float] = None
+_memory_cache_lock = threading.Lock()
+# Memory cache TTL in seconds - balances performance vs accuracy
+# 1 second is reasonable since memory doesn't change frequently
+MEMORY_CACHE_TTL = 1.0
+
 # Minimum reasonable marginal cost threshold (1ms)
 # Below this, we assume measurement noise and fall back to single-worker measurement
 MIN_REASONABLE_MARGINAL_COST = 0.001
@@ -83,6 +91,21 @@ def _clear_chunking_overhead_cache():
     global _CACHED_CHUNKING_OVERHEAD
     with _chunking_overhead_lock:
         _CACHED_CHUNKING_OVERHEAD = None
+
+
+def _clear_memory_cache():
+    """
+    Clear the cached available memory value.
+    
+    This is primarily for testing purposes to ensure tests don't
+    interfere with each other's cached values.
+    
+    Thread-safe: Uses lock to prevent race conditions.
+    """
+    global _CACHED_AVAILABLE_MEMORY, _memory_cache_timestamp
+    with _memory_cache_lock:
+        _CACHED_AVAILABLE_MEMORY = None
+        _memory_cache_timestamp = None
 
 
 def _parse_proc_cpuinfo() -> Optional[int]:
@@ -904,6 +927,10 @@ def get_available_memory() -> int:
     """
     Get available system memory in bytes, respecting container limits.
     
+    The available memory is cached with a short TTL (Time-To-Live) to
+    eliminate redundant system calls while still reflecting memory changes.
+    Thread-safe: Uses lock to prevent concurrent detection.
+    
     Returns:
         Available memory in bytes. Returns a conservative default if
         detection fails.
@@ -916,26 +943,60 @@ def get_available_memory() -> int:
         1. Try cgroup limits (Docker/containers)
         2. Try psutil for system memory
         3. Return 1GB conservative default
+        
+    Performance:
+        Cached with 1-second TTL to eliminate redundant file I/O and system
+        calls within a single optimization session. The short TTL ensures we
+        still respect memory changes that may occur during program execution.
+        This is especially beneficial when multiple optimizations occur in
+        rapid succession (e.g., batch processing, validation workflows).
     """
-    # First, check for container memory limits
-    cgroup_limit = _read_cgroup_memory_limit()
+    global _CACHED_AVAILABLE_MEMORY, _memory_cache_timestamp
     
-    if HAS_PSUTIL:
-        vm = psutil.virtual_memory()
-        system_available = vm.available
-        
-        # If we're in a container, respect the lower limit
-        if cgroup_limit is not None:
-            return min(cgroup_limit, system_available)
-        
-        return system_available
-    elif cgroup_limit is not None:
-        # No psutil, but we have cgroup limit
-        return cgroup_limit
+    current_time = time.perf_counter()
     
-    # Return a conservative estimate if detection fails (1GB)
-    # Better to underestimate than cause OOM
-    return 1024 * 1024 * 1024
+    # Quick check without lock (optimization for common case)
+    if (_CACHED_AVAILABLE_MEMORY is not None and 
+        _memory_cache_timestamp is not None and
+        (current_time - _memory_cache_timestamp) < MEMORY_CACHE_TTL):
+        return _CACHED_AVAILABLE_MEMORY
+    
+    # Acquire lock for detection
+    with _memory_cache_lock:
+        # Double-check after acquiring lock (another thread may have detected)
+        if (_CACHED_AVAILABLE_MEMORY is not None and 
+            _memory_cache_timestamp is not None and
+            (current_time - _memory_cache_timestamp) < MEMORY_CACHE_TTL):
+            return _CACHED_AVAILABLE_MEMORY
+        
+        # Perform detection (only one thread reaches here)
+        # First, check for container memory limits
+        cgroup_limit = _read_cgroup_memory_limit()
+        
+        available_memory = None
+        
+        if HAS_PSUTIL:
+            vm = psutil.virtual_memory()
+            system_available = vm.available
+            
+            # If we're in a container, respect the lower limit
+            if cgroup_limit is not None:
+                available_memory = min(cgroup_limit, system_available)
+            else:
+                available_memory = system_available
+        elif cgroup_limit is not None:
+            # No psutil, but we have cgroup limit
+            available_memory = cgroup_limit
+        else:
+            # Return a conservative estimate if detection fails (1GB)
+            # Better to underestimate than cause OOM
+            available_memory = 1024 * 1024 * 1024
+        
+        # Cache the result with timestamp
+        _CACHED_AVAILABLE_MEMORY = available_memory
+        _memory_cache_timestamp = current_time
+        
+        return available_memory
 
 
 def get_swap_usage() -> Tuple[float, int, int]:
