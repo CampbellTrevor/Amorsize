@@ -37,7 +37,7 @@ def expensive_hash_computation(data):
 def expensive_mathematical_computation(x):
     """Perform expensive mathematical computations."""
     result = 0
-    for i in range(1000):
+    for i in range(2000):
         result += math.sin(x + i) * math.cos(x - i) * math.sqrt(abs(x))
     return result
 

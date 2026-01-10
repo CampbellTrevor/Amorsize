@@ -138,22 +138,25 @@ def detect_parallel_libraries() -> List[str]:
         - scipy (often uses numpy's BLAS)
         - numba (JIT compilation with threading)
         - joblib (parallel computing)
-        - multiprocessing (nested pools)
-        - concurrent.futures (thread/process pools)
         - tensorflow (GPU/CPU parallelism)
         - torch/pytorch (GPU/CPU parallelism)
         - dask (distributed computing)
+        
+    Note:
+        This function excludes concurrent.futures and multiprocessing.pool
+        because they are loaded by Amorsize itself and don't indicate that
+        the user's function uses internal parallelism.
     """
     detected = []
     
     # Check for loaded modules
+    # NOTE: We exclude concurrent.futures and multiprocessing.pool because
+    # they're loaded by Amorsize itself and don't indicate user function parallelism
     parallel_libs = {
         'numpy': 'numpy',
         'scipy': 'scipy',
         'numba': 'numba',
         'joblib': 'joblib',
-        'multiprocessing.pool': 'multiprocessing.Pool',
-        'concurrent.futures': 'concurrent.futures',
         'tensorflow': 'tensorflow',
         'torch': 'torch/pytorch',
         'dask': 'dask'

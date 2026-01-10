@@ -77,14 +77,15 @@ class TestLibraryDetection:
             assert isinstance(lib, str)
     
     def test_detect_parallel_libraries_multiprocessing(self):
-        """Test detection when multiprocessing.pool is loaded."""
+        """Test that multiprocessing.pool (loaded by amorsize) is NOT detected."""
         # Import to ensure it's in sys.modules
         import multiprocessing.pool
         
         libs = detect_parallel_libraries()
         assert isinstance(libs, list)
-        # multiprocessing.Pool should be detected
-        assert 'multiprocessing.Pool' in libs
+        # multiprocessing.Pool should NOT be detected because it's loaded
+        # by amorsize itself and doesn't indicate user function parallelism
+        assert 'multiprocessing.Pool' not in libs
     
     def test_detect_parallel_libraries_threading(self):
         """Test that threading module alone doesn't trigger detection."""
