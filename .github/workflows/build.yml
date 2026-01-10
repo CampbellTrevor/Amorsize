@@ -13,6 +13,9 @@ jobs:
     name: Build Distribution
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -41,7 +44,7 @@ jobs:
     
     - name: Test installation from wheel
       run: |
-        pip install dist/*.whl
+        pip install dist/amorsize-0.1.0-py3-none-any.whl
         python -c "from amorsize import optimize; print('✓ Package installs correctly')"
     
     - name: Store build artifacts
@@ -55,6 +58,9 @@ jobs:
     name: Verify Source Distribution
     runs-on: ubuntu-latest
     needs: build
+    
+    permissions:
+      contents: read
     
     steps:
     - name: Download build artifacts
@@ -70,5 +76,5 @@ jobs:
     
     - name: Install from sdist
       run: |
-        pip install dist/*.tar.gz
+        pip install dist/amorsize-0.1.0.tar.gz
         python -c "from amorsize import optimize; print('✓ Source distribution installs correctly')"
