@@ -1,0 +1,49 @@
+name: Build Package
+
+on:
+  push:
+    branches: [ main, Iterate ]
+  pull_request:
+    branches: [ main, Iterate ]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build distribution packages
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build wheel setuptools
+    
+    - name: Build source distribution
+      run: python -m build --sdist
+    
+    - name: Build wheel distribution
+      run: python -m build --wheel
+    
+    - name: Verify distributions
+      run: |
+        python -m pip install twine
+        twine check dist/*
+    
+    - name: Test installation from wheel
+      run: |
+        pip install dist/*.whl
+        python -c "from amorsize import optimize; print('✓ Import successful')"
+    
+    - name: Upload distributions as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
