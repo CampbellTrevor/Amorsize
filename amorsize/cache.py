@@ -378,3 +378,271 @@ def prune_expired_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> int:
         
     except (OSError, IOError):
         return 0
+
+
+class BenchmarkCacheEntry:
+    """
+    Container for a cached benchmark validation result.
+    
+    Attributes:
+        serial_time: Measured serial execution time (seconds)
+        parallel_time: Measured parallel execution time (seconds)
+        actual_speedup: Measured speedup (serial_time / parallel_time)
+        n_jobs: Number of workers used
+        chunksize: Chunk size used
+        timestamp: When this entry was created
+        system_info: System configuration at cache time
+        cache_version: Version of cache format
+    """
+    
+    def __init__(
+        self,
+        serial_time: float,
+        parallel_time: float,
+        actual_speedup: float,
+        n_jobs: int,
+        chunksize: int,
+        timestamp: float,
+        system_info: Dict[str, Any],
+        cache_version: int = CACHE_VERSION
+    ):
+        self.serial_time = serial_time
+        self.parallel_time = parallel_time
+        self.actual_speedup = actual_speedup
+        self.n_jobs = n_jobs
+        self.chunksize = chunksize
+        self.timestamp = timestamp
+        self.system_info = system_info
+        self.cache_version = cache_version
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "serial_time": self.serial_time,
+            "parallel_time": self.parallel_time,
+            "actual_speedup": self.actual_speedup,
+            "n_jobs": self.n_jobs,
+            "chunksize": self.chunksize,
+            "timestamp": self.timestamp,
+            "system_info": self.system_info,
+            "cache_version": self.cache_version
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BenchmarkCacheEntry":
+        """Create BenchmarkCacheEntry from dictionary."""
+        return cls(
+            serial_time=data["serial_time"],
+            parallel_time=data["parallel_time"],
+            actual_speedup=data["actual_speedup"],
+            n_jobs=data["n_jobs"],
+            chunksize=data["chunksize"],
+            timestamp=data["timestamp"],
+            system_info=data["system_info"],
+            cache_version=data.get("cache_version", 1)
+        )
+    
+    def is_expired(self, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
+        """Check if this cache entry has expired."""
+        age = time.time() - self.timestamp
+        return age > ttl_seconds
+    
+    def is_system_compatible(self) -> bool:
+        """
+        Check if cached benchmark is compatible with current system.
+        
+        Returns False if key system parameters have changed.
+        Benchmark results are highly system-dependent.
+        """
+        current_cores = get_physical_cores()
+        current_memory = get_available_memory()
+        current_start_method = get_multiprocessing_start_method()
+        
+        cached_cores = self.system_info.get("physical_cores", 0)
+        cached_memory = self.system_info.get("available_memory", 0)
+        cached_start_method = self.system_info.get("start_method", "")
+        
+        # Benchmark results are system-specific - require exact match
+        if cached_cores != current_cores:
+            return False
+        
+        if cached_start_method != current_start_method:
+            return False
+        
+        # Memory within 10% tolerance (stricter than optimization cache)
+        if cached_memory > 0:
+            memory_ratio = current_memory / cached_memory
+            if not (0.9 <= memory_ratio <= 1.1):
+                return False
+        
+        return True
+
+
+def get_benchmark_cache_dir() -> Path:
+    """
+    Get the benchmark cache directory path.
+    
+    Returns:
+        Path to benchmark cache directory (creates if doesn't exist)
+    """
+    # Use same base as optimization cache but separate subdirectory
+    if platform.system() == "Windows":
+        cache_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif platform.system() == "Darwin":  # macOS
+        cache_base = Path.home() / "Library" / "Caches"
+    else:  # Linux and others
+        cache_base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    
+    cache_dir = cache_base / "amorsize" / "benchmark_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def compute_benchmark_cache_key(func: Callable, data_size: int) -> str:
+    """
+    Compute a cache key for a benchmark validation.
+    
+    The key is based on:
+    1. Function bytecode hash (detects function changes)
+    2. Data size (exact match for benchmark validity)
+    
+    Args:
+        func: Function being benchmarked
+        data_size: Number of items in the benchmark dataset
+    
+    Returns:
+        Cache key string
+    """
+    # Hash function bytecode to detect changes
+    try:
+        func_code = func.__code__.co_code
+        func_hash = hashlib.sha256(func_code).hexdigest()[:16]
+    except AttributeError:
+        # For built-in functions or methods without __code__
+        func_hash = hashlib.sha256(str(func).encode()).hexdigest()[:16]
+    
+    # For benchmarks, we need exact data size (no bucketing)
+    # Benchmarks are repeatable only with same workload size
+    cache_key = f"benchmark_{func_hash}_{data_size}_v{CACHE_VERSION}"
+    return cache_key
+
+
+def save_benchmark_cache_entry(
+    cache_key: str,
+    serial_time: float,
+    parallel_time: float,
+    actual_speedup: float,
+    n_jobs: int,
+    chunksize: int
+) -> None:
+    """
+    Save a benchmark validation result to the cache.
+    
+    Args:
+        cache_key: Unique key for this benchmark
+        serial_time: Measured serial execution time
+        parallel_time: Measured parallel execution time
+        actual_speedup: Measured speedup
+        n_jobs: Number of workers used
+        chunksize: Chunk size used
+    """
+    try:
+        cache_dir = get_benchmark_cache_dir()
+        cache_file = cache_dir / f"{cache_key}.json"
+        
+        # Gather current system info
+        system_info = {
+            "physical_cores": get_physical_cores(),
+            "available_memory": get_available_memory(),
+            "start_method": get_multiprocessing_start_method(),
+            "platform": platform.system(),
+            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}"
+        }
+        
+        # Create cache entry
+        entry = BenchmarkCacheEntry(
+            serial_time=serial_time,
+            parallel_time=parallel_time,
+            actual_speedup=actual_speedup,
+            n_jobs=n_jobs,
+            chunksize=chunksize,
+            timestamp=time.time(),
+            system_info=system_info
+        )
+        
+        # Write to file atomically
+        temp_file = cache_file.with_suffix(".tmp")
+        with open(temp_file, 'w') as f:
+            json.dump(entry.to_dict(), f, indent=2)
+        temp_file.replace(cache_file)
+        
+    except (OSError, IOError, PermissionError):
+        # Silently fail if cache cannot be written
+        pass
+
+
+def load_benchmark_cache_entry(
+    cache_key: str,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS
+) -> Optional[BenchmarkCacheEntry]:
+    """
+    Load a cached benchmark validation result.
+    
+    Args:
+        cache_key: Unique key for the benchmark
+        ttl_seconds: Maximum age in seconds (default: 7 days)
+    
+    Returns:
+        BenchmarkCacheEntry if found and valid, None otherwise
+    """
+    try:
+        cache_dir = get_benchmark_cache_dir()
+        cache_file = cache_dir / f"{cache_key}.json"
+        
+        if not cache_file.exists():
+            return None
+        
+        # Load cache entry
+        with open(cache_file, 'r') as f:
+            data = json.load(f)
+        
+        entry = BenchmarkCacheEntry.from_dict(data)
+        
+        # Validate cache entry
+        if entry.cache_version != CACHE_VERSION:
+            return None
+        
+        if entry.is_expired(ttl_seconds):
+            return None
+        
+        if not entry.is_system_compatible():
+            return None
+        
+        return entry
+        
+    except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+
+def clear_benchmark_cache() -> int:
+    """
+    Clear all cached benchmark results.
+    
+    Returns:
+        Number of cache entries deleted
+    """
+    try:
+        cache_dir = get_benchmark_cache_dir()
+        count = 0
+        
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                cache_file.unlink()
+                count += 1
+            except OSError:
+                pass
+        
+        return count
+        
+    except (OSError, IOError):
+        return 0

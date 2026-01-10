@@ -11,6 +11,11 @@ from typing import Any, Callable, List, Union, Iterator, Optional, Dict
 from multiprocessing import Pool
 
 from .optimizer import optimize, OptimizationResult
+from .cache import (
+    compute_benchmark_cache_key,
+    save_benchmark_cache_entry,
+    load_benchmark_cache_entry
+)
 
 
 class BenchmarkResult:
@@ -26,6 +31,7 @@ class BenchmarkResult:
         accuracy_percent: Accuracy of prediction ((1 - |error|) * 100)
         error_percent: Prediction error percentage
         recommendations: List of insights based on validation
+        cache_hit: Whether this result came from cache (default: False)
     """
     
     def __init__(
@@ -37,7 +43,8 @@ class BenchmarkResult:
         predicted_speedup: float,
         accuracy_percent: float,
         error_percent: float,
-        recommendations: List[str] = None
+        recommendations: List[str] = None,
+        cache_hit: bool = False
     ):
         self.optimization = optimization
         self.serial_time = serial_time
@@ -47,6 +54,7 @@ class BenchmarkResult:
         self.accuracy_percent = accuracy_percent
         self.error_percent = error_percent
         self.recommendations = recommendations or []
+        self.cache_hit = cache_hit
     
     def __repr__(self):
         return (f"BenchmarkResult(actual_speedup={self.actual_speedup:.2f}x, "
@@ -61,7 +69,8 @@ class BenchmarkResult:
         result += "Performance Measurements:\n"
         result += f"  Serial execution time:   {self.serial_time:.4f}s\n"
         result += f"  Parallel execution time: {self.parallel_time:.4f}s\n"
-        result += f"  Actual speedup:          {self.actual_speedup:.2f}x\n"
+        speedup_suffix = " (cached)" if self.cache_hit else ""
+        result += f"  Actual speedup:          {self.actual_speedup:.2f}x{speedup_suffix}\n"
         result += f"  Predicted speedup:       {self.predicted_speedup:.2f}x\n\n"
         
         result += "Prediction Accuracy:\n"
@@ -104,7 +113,8 @@ def validate_optimization(
     optimization: Optional[OptimizationResult] = None,
     max_items: Optional[int] = None,
     timeout: float = 60.0,
-    verbose: bool = False
+    verbose: bool = False,
+    use_cache: bool = True
 ) -> BenchmarkResult:
     """
     Validate optimizer recommendations by running empirical benchmarks.
@@ -121,6 +131,7 @@ def validate_optimization(
         max_items: Maximum items to benchmark (limits runtime for large datasets)
         timeout: Maximum time for each benchmark in seconds (default: 60s)
         verbose: Print progress information (default: False)
+        use_cache: Enable caching of benchmark results (default: True)
     
     Returns:
         BenchmarkResult with actual vs predicted performance comparison
@@ -142,6 +153,7 @@ def validate_optimization(
         - For very large datasets, use max_items to limit benchmark runtime
         - Serial execution is skipped if n_jobs=1 (already optimal)
         - Results include recommendations for improving accuracy
+        - Benchmark results are cached for 7 days by default (10-100x faster)
     """
     # Validate inputs
     if not callable(func):
@@ -169,6 +181,77 @@ def validate_optimization(
         if verbose:
             print("Computing optimization...")
         optimization = optimize(func, data, verbose=verbose)
+    
+    # Check cache if enabled
+    if use_cache:
+        cache_key = compute_benchmark_cache_key(func, len(data))
+        cached_entry = load_benchmark_cache_entry(cache_key)
+        
+        if cached_entry is not None:
+            # Cache hit - verify it matches current optimization parameters
+            if (cached_entry.n_jobs == optimization.n_jobs and
+                cached_entry.chunksize == optimization.chunksize):
+                
+                if verbose:
+                    print(f"\n✓ Cache hit! Using cached benchmark result")
+                    print(f"  Cached at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cached_entry.timestamp))}")
+                
+                # Calculate prediction accuracy from cached results
+                predicted_speedup = optimization.estimated_speedup
+                error = cached_entry.actual_speedup - predicted_speedup
+                error_percent = (error / predicted_speedup) * 100 if predicted_speedup > 0 else 0
+                max_speedup = max(predicted_speedup, cached_entry.actual_speedup)
+                normalized_error = abs(error) / max_speedup if max_speedup > 0 else 0
+                accuracy_percent = (1.0 - normalized_error) * 100
+                
+                # Generate recommendations based on cached data
+                recommendations = []
+                if optimization.n_jobs == 1:
+                    recommendations.append("Serial execution is optimal for this workload")
+                    if "too fast" in optimization.reason.lower():
+                        recommendations.append("Function execution time is very short - overhead dominates")
+                elif cached_entry.actual_speedup < 1.0:
+                    recommendations.append(
+                        "Parallel execution is slower than serial - overhead dominates benefit"
+                    )
+                    recommendations.append(
+                        "Consider increasing workload size or function complexity"
+                    )
+                elif cached_entry.actual_speedup < 1.2:
+                    recommendations.append(
+                        "Marginal speedup - overhead nearly equals benefit"
+                    )
+                
+                if accuracy_percent < 75:
+                    recommendations.append(
+                        "Significant deviation from prediction - system-specific factors detected"
+                    )
+                    if cached_entry.actual_speedup > predicted_speedup * 1.3:
+                        recommendations.append(
+                            "Actual speedup exceeds prediction - your system is more efficient than estimated"
+                        )
+                    elif cached_entry.actual_speedup < predicted_speedup * 0.7:
+                        recommendations.append(
+                            "Actual speedup below prediction - check for system contention or thermal throttling"
+                        )
+                
+                return BenchmarkResult(
+                    optimization=optimization,
+                    serial_time=cached_entry.serial_time,
+                    parallel_time=cached_entry.parallel_time,
+                    actual_speedup=cached_entry.actual_speedup,
+                    predicted_speedup=predicted_speedup,
+                    accuracy_percent=accuracy_percent,
+                    error_percent=error_percent,
+                    recommendations=recommendations,
+                    cache_hit=True
+                )
+            else:
+                if verbose:
+                    print(f"\n✗ Cache miss - optimization parameters changed")
+        else:
+            if verbose:
+                print(f"\n✗ Cache miss - performing fresh benchmark")
     
     if verbose:
         print(f"\nValidating optimization: n_jobs={optimization.n_jobs}, "
@@ -301,6 +384,18 @@ def validate_optimization(
                 "Actual speedup below prediction - check for system contention or thermal throttling"
             )
     
+    # Save to cache if enabled
+    if use_cache:
+        cache_key = compute_benchmark_cache_key(func, len(data))
+        save_benchmark_cache_entry(
+            cache_key=cache_key,
+            serial_time=serial_time,
+            parallel_time=parallel_time,
+            actual_speedup=actual_speedup,
+            n_jobs=optimization.n_jobs,
+            chunksize=optimization.chunksize
+        )
+    
     return BenchmarkResult(
         optimization=optimization,
         serial_time=serial_time,
@@ -309,7 +404,8 @@ def validate_optimization(
         predicted_speedup=predicted_speedup,
         accuracy_percent=accuracy_percent,
         error_percent=error_percent,
-        recommendations=recommendations
+        recommendations=recommendations,
+        cache_hit=False
     )
 
 
@@ -317,7 +413,8 @@ def quick_validate(
     func: Callable[[Any], Any],
     data: Union[List, Iterator],
     sample_size: int = 100,
-    verbose: bool = False
+    verbose: bool = False,
+    use_cache: bool = True
 ) -> BenchmarkResult:
     """
     Quick validation using a small sample of data.
@@ -331,6 +428,7 @@ def quick_validate(
         data: Input data
         sample_size: Number of items to sample for validation (default: 100)
         verbose: Print progress information
+        use_cache: Enable caching of benchmark results (default: True)
     
     Returns:
         BenchmarkResult based on sampled data
@@ -347,6 +445,7 @@ def quick_validate(
         - Much faster than full validation
         - Less accurate for heterogeneous workloads
         - Good for quick confidence checks during development
+        - Benchmark results are cached for 7 days by default
     """
     # Convert to list and sample
     if not isinstance(data, list):
@@ -366,5 +465,6 @@ def quick_validate(
         func,
         sampled_data,
         optimization=None,
-        verbose=verbose
+        verbose=verbose,
+        use_cache=use_cache
     )
