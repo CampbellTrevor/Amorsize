@@ -1,52 +1,72 @@
-# Context for Next Agent - Iteration 37 Complete
+# Context for Next Agent - Iteration 38 Complete
 
 ## What Was Accomplished
 
-Successfully fixed **datetime.utcnow() deprecation warning** in history module.
+Successfully fixed **pytest.mark.slow warning** by registering custom marker in pytest configuration.
 
 ### Issue Addressed
-- Python 3.12+ deprecates `datetime.utcnow()` 
-- Will become a hard error in future Python versions
-- Was generating 28 deprecation warnings during test runs
+- pytest was generating "Unknown pytest.mark.slow" warning
+- Custom markers need to be registered in pytest configuration
+- Only remaining warning in the entire test suite
 
 ### Changes Made
-**File: `amorsize/history.py`**
-- Line 15: Added `timezone` import: `from datetime import datetime, timezone`
-- Line 188: Replaced deprecated call with timezone-aware version:
-  - OLD: `timestamp = datetime.utcnow().isoformat() + "Z"`
-  - NEW: `timestamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"`
+**File: `pytest.ini` (NEW)**
+- Created pytest configuration file
+- Registered custom 'slow' marker with description
+- Added standard pytest settings (strict markers, discovery patterns)
+- Documented usage: `pytest -m slow` or `pytest -m "not slow"`
 
 ### Why This Approach
-- `datetime.now(timezone.utc)` is the recommended replacement
-- `.replace(tzinfo=None)` maintains exact same format as before (backward compatible)
-- `timezone.utc` is available in Python 3.7+ (meets minimum version requirement)
-- Timestamp format remains: `2026-01-10T00:03:03.350285Z`
+- pytest.ini is the standard location for pytest configuration
+- `--strict-markers` ensures all markers are registered (prevents typos)
+- Properly documents the purpose of the 'slow' marker
+- Follows pytest best practices
 
 ### Testing Results
 ✅ All 630 tests passing (26 skipped)
-✅ Deprecation warnings reduced from 29 to 1 (only pytest.mark.slow remains)
-✅ All history module tests pass (21/21)
-✅ No other deprecated datetime usage found in codebase
+✅ **ZERO warnings** - completely clean test output
+✅ Marker functionality verified:
+  - `pytest -m slow` runs 2 slow performance tests
+  - `pytest -m "not slow"` runs 628 tests (2 deselected)
+✅ No regressions - all tests still pass
 
 ### Status
-✅ Production ready - Clean, minimal fix with zero regression
+✅ Production ready - Test suite is now warning-free
 
 ## Recommended Next Steps
 1. Advanced tuning (Bayesian optimization)
 2. Profiling integration (cProfile, flame graphs)  
 3. Pipeline optimization (multi-function)
-4. Fix pytest.mark.slow warning (optional - cosmetic)
+4. Documentation improvements (API reference, advanced guides)
 
 ## Notes for Next Agent
-The codebase is in excellent shape:
-- ✅ Infrastructure (physical cores, cgroup-aware memory)
-- ✅ Safety (generator preservation, pickle checks)
-- ✅ Core logic (Amdahl's Law, measured overhead)
-- ✅ Robustness (now with Python 3.13+ compatibility)
+The codebase is in **EXCELLENT** shape across all strategic priorities:
 
-Consider high-value enhancements from the recommended steps above, or focus on:
+### Infrastructure (The Foundation) ✅
+- ✅ Physical core detection with multiple fallback strategies
+- ✅ Memory limit detection (cgroup/Docker aware)
+- ✅ Measured spawn cost (not estimated - actual benchmarks)
+
+### Safety & Accuracy (The Guardrails) ✅
+- ✅ Generator safety with `itertools.chain` 
+- ✅ OS spawning overhead actually measured
+- ✅ Comprehensive pickle checks (function + data)
+
+### Core Logic (The Optimizer) ✅
+- ✅ Full Amdahl's Law implementation
+- ✅ Chunksize based on 0.2s target duration
+- ✅ Memory-aware worker calculation
+
+### UX & Robustness (The Polish) ✅
+- ✅ Edge cases handled (empty data, unpicklable, etc.)
+- ✅ Clean API (`from amorsize import optimize`)
+- ✅ Python 3.13+ compatibility (datetime fix in iteration 37)
+- ✅ **Zero warnings in test suite** (pytest markers fix in iteration 38)
+
+All foundational work is complete. Consider high-value enhancements:
 - Performance improvements in hot paths
-- Additional edge case handling
-- Enhanced diagnostics/profiling
+- Advanced tuning algorithms
+- Enhanced profiling capabilities
+- Documentation expansion
 
 Good luck! 🚀
