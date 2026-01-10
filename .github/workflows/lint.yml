@@ -1,0 +1,43 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop, iterate ]
+  pull_request:
+    branches: [ main, develop, iterate ]
+  workflow_dispatch:
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install package
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,full]"
+    
+    - name: Check Python syntax
+      run: |
+        python -m py_compile amorsize/*.py
+        python -m py_compile tests/*.py
+    
+    - name: Check import structure
+      run: |
+        python -c "from amorsize import optimize, execute; print('✓ Core imports work')"
+        python -c "from amorsize import process_in_batches; print('✓ Batch imports work')"
+        python -c "from amorsize import optimize_streaming; print('✓ Streaming imports work')"
+    
+    - name: Verify package metadata
+      run: |
+        python -c "import amorsize; print(f'✓ Package version: {getattr(amorsize, \"__version__\", \"0.1.0\")}')"
