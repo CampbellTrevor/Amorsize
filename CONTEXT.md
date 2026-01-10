@@ -1,12 +1,273 @@
-# Context for Next Agent - Iteration 76 Complete
+# Context for Next Agent - Iteration 77 Complete
 
 ## What Was Accomplished
 
-**UX ENHANCEMENT - Cache Prewarming for Zero First-Run Penalty** - Added cache prewarming capability to eliminate first-run optimization overhead. Users can now pre-populate the cache with optimization results, achieving instant optimization on first call. Critical for serverless/Lambda functions, production deployments, and development iteration.
+**UX ENHANCEMENT - Cache Export/Import for Team Collaboration & Production Deployment** - Added comprehensive cache export/import functionality to enable sharing optimized cache entries across team members, deploying pre-optimized caches to production environments, version controlling cache entries for reproducible builds, and transferring cache between development and production systems.
 
-### Previous Iteration Summary (Iteration 75)
+### Previous Iteration Summary (Iteration 76)
+- **Iteration 76**: Cache prewarming for zero first-run penalty (866 tests passing, 14.5x+ speedup for cold starts)
 - **Iteration 75**: Detailed cache miss reason feedback (845 tests passing)
 - **Iteration 74**: Thread-safe global cache (double-check locking for spawn cost and chunking overhead, 829 tests passing)
+
+### Critical Achievement (Iteration 77)
+**UX ENHANCEMENT - Cache Export/Import for Team Collaboration & Production Deployment**
+
+**The Mission**: After Iteration 76's cache prewarming eliminated first-run penalty, identify the next highest-value UX improvement. While the caching system provides excellent features (prewarming, transparency, statistics, thread-safety), there was no way to share optimized cache entries between team members, deploy pre-optimized caches to production environments, or version control cache entries for reproducible builds.
+
+**Problem Identified**: 
+The caching system (Iterations 65-76) provides comprehensive functionality but lacked portability:
+1. No way to export cache entries to a portable format
+2. No way to import cache entries from another machine
+3. No way to share cache entries across team members
+4. No way to deploy pre-optimized caches to production
+5. No way to version control cache entries for reproducible builds
+6. No way to transfer cache between development and production environments
+
+For production use cases, especially team collaboration and CI/CD deployments, this lack of portability was a significant limitation. Users needed a way to:
+- Share optimized cache entries with teammates
+- Deploy pre-optimized caches to production servers/containers
+- Version control cache entries for consistent builds
+- Transfer cache entries between environments (dev → staging → prod)
+
+**Enhancement Implemented**:
+Added comprehensive cache export/import with flexible merge strategies:
+
+1. **Cache Export** (`export_cache()`):
+   ```python
+   # Export only valid entries
+   count = export_cache('cache_backup.json')
+   
+   # Export all entries including expired
+   count = export_cache('full_cache.json', include_expired=True)
+   
+   # Export to version control
+   export_cache('production_cache.json')
+   ```
+   
+   Features:
+   - Exports to portable JSON format
+   - Filter options: include_expired, include_incompatible
+   - Metadata includes: cache version, export timestamp, system info
+   - Preserves cache keys for accurate reimport
+   - Graceful handling of corrupted entries
+
+2. **Cache Import** (`import_cache()`):
+   ```python
+   # Import cache from team member
+   imported, skipped, incompatible = import_cache('teammate_cache.json')
+   
+   # Deploy to production with overwrite
+   imported, _, _ = import_cache('production_cache.json', merge_strategy='overwrite')
+   
+   # Import without compatibility check (use with caution)
+   import_cache('cache.json', validate_compatibility=False)
+   ```
+   
+   Features:
+   - Three merge strategies:
+     - `skip`: Skip existing entries (default)
+     - `overwrite`: Replace existing entries
+     - `update`: Only update if imported entry is newer
+   - Compatibility validation (can be disabled)
+   - Optional timestamp updates for fresh deployments
+   - Returns detailed counts: (imported, skipped, incompatible)
+
+3. **Export/Import Format**:
+   ```json
+   {
+     "version": 1,
+     "export_timestamp": 1736543213.45,
+     "export_system": {
+       "platform": "Linux",
+       "physical_cores": 2,
+       "available_memory": 1073741824,
+       "start_method": "fork"
+     },
+     "entries": [
+       {
+         "cache_key": "abc123...",
+         "n_jobs": 2,
+         "chunksize": 37,
+         "executor_type": "process",
+         "estimated_speedup": 1.97,
+         "reason": "Parallelization beneficial...",
+         "warnings": [],
+         "timestamp": 1736543200.0,
+         "system_info": {...}
+       }
+     ]
+   }
+   ```
+
+**Impact**: 
+- **Team Collaboration**: Share optimized cache entries across developers
+- **Production Deployment**: Deploy pre-optimized caches to servers/containers
+- **Reproducible Builds**: Version control cache entries for consistency
+- **CI/CD Integration**: Import cached results in CI pipelines for faster builds
+- **Environment Migration**: Transfer cache entries between dev/staging/prod
+- **Zero breaking changes**: Pure addition to existing API
+- **Comprehensive testing**: 20 new tests, all 886 tests passing (+20 from Iteration 76)
+- **Flexible merge strategies**: Skip, overwrite, or update based on timestamps
+- **Robust validation**: System compatibility checks prevent stale results
+
+**Changes Made (Iteration 77)**:
+
+**Files Modified (2 files):**
+
+1. **`amorsize/cache.py`** - Added cache export/import functionality
+   - Added `export_cache()` function (~70 lines)
+     - Exports cache entries to portable JSON format
+     - Filters expired and incompatible entries based on parameters
+     - Includes metadata (version, timestamp, system info)
+     - Returns count of entries exported
+   - Added `import_cache()` function (~130 lines)
+     - Imports cache entries from exported files
+     - Three merge strategies: skip, overwrite, update
+     - Compatibility validation (optional)
+     - Timestamp updates (optional)
+     - Returns (imported_count, skipped_count, incompatible_count)
+   - Total: ~200 lines of new code
+
+2. **`amorsize/__init__.py`** - Exported new public API
+   - Added `export_cache` to imports
+   - Added `import_cache` to imports
+   - Added both to `__all__`
+
+**Files Created (1 file):**
+
+3. **`tests/test_cache_export_import.py`** - Comprehensive test coverage
+   - `TestExportCache`: 5 tests for export functionality
+     - test_export_empty_cache
+     - test_export_with_entries
+     - test_export_exclude_expired
+     - test_export_creates_directory
+   - `TestImportCache`: 6 tests for import functionality
+     - test_import_nonexistent_file
+     - test_import_invalid_json
+     - test_import_invalid_format
+     - test_import_skip_strategy
+     - test_import_overwrite_strategy
+     - test_import_update_strategy
+     - test_import_update_timestamps
+     - test_import_invalid_merge_strategy
+   - `TestExportImportIntegration`: 3 tests for integration scenarios
+     - test_round_trip_export_import
+     - test_share_cache_between_functions
+     - test_version_control_workflow
+   - `TestExportImportEdgeCases`: 4 tests for edge cases
+     - test_export_to_readonly_location
+     - test_import_with_compatibility_check
+     - test_export_import_with_corrupted_entry
+   - `TestExportImportPublicAPI`: 2 tests for public API
+     - test_export_import_in_public_api
+     - test_functions_have_docstrings
+   - Total: 20 new tests (~460 lines)
+
+### Why This Approach (Iteration 77)
+
+- **High-value UX improvement**: Enables critical team collaboration and production deployment workflows
+- **Minimal changes**: Only ~200 lines of production code (plus ~460 test lines)
+- **Surgical precision**: Pure addition, zero breaking changes
+- **Zero API impact**: Existing code works identically
+- **Comprehensive testing**: 20 new tests cover all scenarios
+- **Production quality**: Follows existing patterns and conventions
+- **Strategic Priority #4**: Addresses UX & ROBUSTNESS (portability and collaboration)
+- **Real-world relevance**: Solves actual problems in team and production workflows
+- **Builds on solid foundation**: Leverages Iterations 65-76's excellent caching
+
+### Validation Results (Iteration 77)
+
+✅ **Full Test Suite:**
+```bash
+pytest tests/ -q --tb=line
+# 886 passed, 48 skipped in 21.21s
+# Zero failures, zero errors
+# +20 new tests from Iteration 77
+```
+
+✅ **Export/Import Functionality:**
+```python
+# Test: Export cache entries
+def func(x):
+    return x ** 2
+
+create_test_cache_entry(func, 100, 0.001)
+create_test_cache_entry(func, 1000, 0.002)
+
+count = export_cache('export.json')
+# ✓ Exported 2 entries
+
+# Test: Import cache entries
+clear_cache()
+imported, skipped, incompatible = import_cache('export.json')
+# ✓ Imported 2, skipped 0, incompatible 0
+
+# Test: Skip strategy (default)
+imported, skipped, incompatible = import_cache('export.json', merge_strategy='skip')
+# ✓ Imported 0, skipped 2 (entries already exist)
+
+# Test: Overwrite strategy
+imported, skipped, incompatible = import_cache('export.json', merge_strategy='overwrite')
+# ✓ Imported 2, skipped 0 (overwrote existing)
+```
+
+✅ **Export Format:**
+```json
+{
+  "version": 1,
+  "export_timestamp": 1736543213.45,
+  "export_system": {
+    "platform": "Linux",
+    "physical_cores": 2,
+    "available_memory": 1073741824,
+    "start_method": "fork"
+  },
+  "entries": [
+    {
+      "cache_key": "abc123...",
+      "n_jobs": 2,
+      "chunksize": 37,
+      "executor_type": "process",
+      "estimated_speedup": 1.97,
+      "reason": "Parallelization beneficial...",
+      "warnings": [],
+      "timestamp": 1736543200.0,
+      "system_info": {...}
+    }
+  ]
+}
+```
+
+✅ **Team Collaboration Workflow:**
+```python
+# Developer 1: Optimize and export
+result = optimize(production_func, data, use_cache=True)
+count = export_cache('team_cache.json')
+# ✓ Exported 1 entry
+
+# Developer 2: Import and use
+imported, _, _ = import_cache('team_cache.json')
+# ✓ Imported 1 entry
+result = optimize(production_func, data, use_cache=True)
+# ✓ Cache hit! Instant optimization
+```
+
+✅ **Production Deployment Workflow:**
+```python
+# Development: Export optimized cache
+export_cache('production_cache.json')
+
+# Production: Import with overwrite
+imported, _, _ = import_cache('production_cache.json', merge_strategy='overwrite')
+# ✓ Deployed pre-optimized cache to production
+```
+
+✅ **Backward Compatibility:**
+- All existing 866 tests still pass
+- No API changes to existing functions
+- Export/import are optional (doesn't affect existing workflows)
+- Existing caching behavior unchanged
+- Prewarmed entries work identically to measured entries
 
 ### Critical Achievement (Iteration 76)
 **UX ENHANCEMENT - Cache Prewarming for Zero First-Run Penalty**
