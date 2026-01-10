@@ -298,7 +298,6 @@ class TestPrewarmCacheIntegration:
         # Create a profile that will match the same bucket
         # data_size=100 falls in "small" bucket (10-100)
         # avg_time from result1.profile
-        from amorsize.cache import compute_cache_key
         if result1.profile:
             avg_time = result1.profile.avg_execution_time
         else:

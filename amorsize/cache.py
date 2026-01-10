@@ -18,6 +18,10 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
+# Import for prewarm_cache parameter estimation
+from . import system_info
+
+# Main system_info functions imported at module level
 from .system_info import get_physical_cores, get_available_memory, get_multiprocessing_start_method
 
 
@@ -1228,29 +1232,37 @@ def _get_default_workload_profiles() -> list:
     """
     Get default workload profiles for cache prewarming.
     
-    These profiles cover common use cases:
+    These profiles cover common use cases with distinct buckets:
+    - Tiny/instant: Very quick operations
     - Small/fast: Quick operations on small datasets
     - Medium/moderate: Typical batch processing
     - Large/slow: Heavy computation on large datasets
+    - XLarge/very_slow: Very heavy computation
     
     Returns:
         List of workload profile dictionaries
     """
     return [
-        # Small datasets, fast execution (< 1ms per item)
-        {"data_size": 10, "avg_time": 0.0001},
-        {"data_size": 100, "avg_time": 0.0005},
+        # Tiny/instant: data_size < 10, avg_time < 0.0001
+        {"data_size": 5, "avg_time": 0.00005},
         
-        # Medium datasets, moderate execution (1-10ms per item)
-        {"data_size": 100, "avg_time": 0.001},
-        {"data_size": 1000, "avg_time": 0.005},
+        # Small/fast: data_size 10-100, avg_time 0.0001-0.001
+        {"data_size": 50, "avg_time": 0.0005},
         
-        # Large datasets, slow execution (10-100ms per item)
-        {"data_size": 1000, "avg_time": 0.01},
-        {"data_size": 10000, "avg_time": 0.05},
+        # Medium/moderate: data_size 100-1000, avg_time 0.001-0.01
+        {"data_size": 500, "avg_time": 0.005},
         
-        # Very large datasets, very slow execution (> 100ms per item)
-        {"data_size": 10000, "avg_time": 0.1},
+        # Large/moderate: data_size 1000-10000, avg_time 0.001-0.01
+        {"data_size": 2000, "avg_time": 0.005},
+        
+        # Large/slow: data_size 1000-10000, avg_time 0.01-0.1
+        {"data_size": 5000, "avg_time": 0.05},
+        
+        # XLarge/slow: data_size >= 10000, avg_time 0.01-0.1
+        {"data_size": 15000, "avg_time": 0.05},
+        
+        # XLarge/very_slow: data_size >= 10000, avg_time >= 0.1
+        {"data_size": 20000, "avg_time": 0.15},
     ]
 
 
@@ -1272,10 +1284,8 @@ def _estimate_optimization_parameters(
     Returns:
         Tuple of (n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings)
     """
-    from .system_info import get_physical_cores, get_spawn_cost_estimate
-    
-    physical_cores = get_physical_cores()
-    spawn_cost_estimate = get_spawn_cost_estimate()
+    physical_cores = system_info.get_physical_cores()
+    spawn_cost_estimate = system_info.get_spawn_cost_estimate()
     
     # Estimate total serial time
     total_time = data_size * avg_time
