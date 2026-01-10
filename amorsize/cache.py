@@ -1332,3 +1332,230 @@ def _estimate_optimization_parameters(
     ]
     
     return (n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings)
+
+
+def export_cache(
+    output_file: str,
+    include_expired: bool = False,
+    include_incompatible: bool = False,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS
+) -> int:
+    """
+    Export cache entries to a portable file format.
+    
+    This function exports the optimization cache to a JSON file that can be:
+    - Shared with team members
+    - Version controlled for reproducible builds
+    - Deployed to production environments
+    - Imported on different machines
+    
+    Args:
+        output_file: Path to output file (will be created/overwritten)
+        include_expired: Include expired entries (default: False)
+        include_incompatible: Include system-incompatible entries (default: False)
+        ttl_seconds: TTL for determining expiration (default: 7 days)
+    
+    Returns:
+        Number of entries exported
+    
+    Example:
+        >>> # Export only valid entries
+        >>> count = export_cache('cache_backup.json')
+        >>> print(f"Exported {count} valid cache entries")
+        
+        >>> # Export all entries including expired
+        >>> count = export_cache('full_cache.json', include_expired=True)
+        
+        >>> # Export to version control
+        >>> export_cache('production_cache.json')
+        >>> # Commit to git for reproducible builds
+    """
+    try:
+        cache_dir = get_cache_dir()
+        entries = []
+        
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                
+                entry = CacheEntry.from_dict(data)
+                
+                # Filter based on parameters
+                if not include_expired and entry.is_expired(ttl_seconds):
+                    continue
+                
+                if not include_incompatible:
+                    is_compatible, _ = entry.is_system_compatible()
+                    if not is_compatible:
+                        continue
+                
+                # Include cache key in export for reimport
+                cache_key = cache_file.stem
+                entry_data = data.copy()
+                entry_data['cache_key'] = cache_key
+                entries.append(entry_data)
+                
+            except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
+                # Skip corrupted entries
+                continue
+        
+        # Write to output file
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        export_data = {
+            'version': CACHE_VERSION,
+            'export_timestamp': time.time(),
+            'export_system': {
+                'platform': platform.system(),
+                'physical_cores': get_physical_cores(),
+                'available_memory': get_available_memory(),
+                'start_method': get_multiprocessing_start_method()
+            },
+            'entries': entries
+        }
+        
+        with open(output_path, 'w') as f:
+            json.dump(export_data, f, indent=2)
+        
+        return len(entries)
+        
+    except (OSError, IOError) as e:
+        raise IOError(f"Failed to export cache: {e}")
+
+
+def import_cache(
+    input_file: str,
+    merge_strategy: str = "skip",
+    validate_compatibility: bool = True,
+    update_timestamps: bool = False
+) -> Tuple[int, int, int]:
+    """
+    Import cache entries from an exported file.
+    
+    This function imports cache entries that were previously exported,
+    enabling cache sharing across environments and reproducible builds.
+    
+    Args:
+        input_file: Path to exported cache file
+        merge_strategy: How to handle existing entries:
+            - "skip": Skip entries that already exist (default)
+            - "overwrite": Overwrite existing entries
+            - "update": Only update if exported entry is newer
+        validate_compatibility: Check system compatibility before import (default: True)
+        update_timestamps: Update timestamps to current time (default: False)
+    
+    Returns:
+        Tuple of (imported_count, skipped_count, incompatible_count)
+    
+    Example:
+        >>> # Import cache from team member
+        >>> imported, skipped, incompatible = import_cache('teammate_cache.json')
+        >>> print(f"Imported {imported}, skipped {skipped}, incompatible {incompatible}")
+        
+        >>> # Deploy to production with overwrite
+        >>> imported, _, _ = import_cache('production_cache.json', merge_strategy='overwrite')
+        
+        >>> # Import without compatibility check (use with caution)
+        >>> import_cache('cache.json', validate_compatibility=False)
+    
+    Raises:
+        IOError: If file cannot be read or is invalid
+        ValueError: If merge_strategy is invalid
+    """
+    if merge_strategy not in ("skip", "overwrite", "update"):
+        raise ValueError(f"Invalid merge_strategy: {merge_strategy}. Must be 'skip', 'overwrite', or 'update'")
+    
+    try:
+        # Load export file
+        input_path = Path(input_file)
+        if not input_path.exists():
+            raise IOError(f"Import file not found: {input_file}")
+        
+        with open(input_path, 'r') as f:
+            export_data = json.load(f)
+        
+        # Validate export format
+        if 'version' not in export_data or 'entries' not in export_data:
+            raise IOError("Invalid export file format: missing required fields")
+        
+        # Check version compatibility
+        export_version = export_data['version']
+        if export_version != CACHE_VERSION:
+            raise IOError(f"Incompatible cache version: export={export_version}, current={CACHE_VERSION}")
+        
+        cache_dir = get_cache_dir()
+        current_time = time.time()
+        
+        imported_count = 0
+        skipped_count = 0
+        incompatible_count = 0
+        
+        for entry_data in export_data['entries']:
+            try:
+                # Extract cache key
+                cache_key = entry_data.get('cache_key')
+                if not cache_key:
+                    skipped_count += 1
+                    continue
+                
+                # Create entry for validation
+                entry = CacheEntry.from_dict(entry_data)
+                
+                # Validate compatibility if requested
+                if validate_compatibility:
+                    is_compatible, reason = entry.is_system_compatible()
+                    if not is_compatible:
+                        incompatible_count += 1
+                        continue
+                
+                # Check if entry already exists
+                cache_file = cache_dir / f"{cache_key}.json"
+                entry_exists = cache_file.exists()
+                
+                # Apply merge strategy
+                should_import = False
+                if not entry_exists:
+                    should_import = True
+                elif merge_strategy == "overwrite":
+                    should_import = True
+                elif merge_strategy == "update":
+                    # Only import if exported entry is newer
+                    try:
+                        with open(cache_file, 'r') as f:
+                            existing_data = json.load(f)
+                        existing_timestamp = existing_data.get('timestamp', 0)
+                        if entry.timestamp > existing_timestamp:
+                            should_import = True
+                        else:
+                            skipped_count += 1
+                    except (OSError, IOError, json.JSONDecodeError):
+                        should_import = True  # Corrupted existing entry
+                else:  # merge_strategy == "skip"
+                    skipped_count += 1
+                
+                if should_import:
+                    # Update timestamp if requested
+                    if update_timestamps:
+                        entry_data['timestamp'] = current_time
+                    
+                    # Remove cache_key from data before saving
+                    save_data = {k: v for k, v in entry_data.items() if k != 'cache_key'}
+                    
+                    # Write to cache
+                    with open(cache_file, 'w') as f:
+                        json.dump(save_data, f, indent=2)
+                    
+                    imported_count += 1
+                    
+            except (KeyError, ValueError, json.JSONDecodeError):
+                # Skip malformed entries
+                skipped_count += 1
+        
+        return (imported_count, skipped_count, incompatible_count)
+        
+    except (OSError, IOError) as e:
+        raise IOError(f"Failed to import cache: {e}")
+    except json.JSONDecodeError as e:
+        raise IOError(f"Invalid JSON in import file: {e}")
