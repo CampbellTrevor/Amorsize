@@ -714,15 +714,14 @@ def load_benchmark_cache_entry(
         - BenchmarkCacheEntry if found and valid, None if invalid/missing
         - miss_reason: Empty string on success, or explanation why cache missed
     """
-    # Probabilistically trigger automatic cache pruning
-    # This distributes cleanup cost and prevents unbounded growth
-    _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
-    
     try:
         cache_dir = get_benchmark_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
         
         if not cache_file.exists():
+            # Trigger auto-prune before returning (only if file doesn't exist)
+            # This ensures we clean up other expired entries
+            _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, "No cached benchmark result found for this workload"
         
         # Load cache entry
@@ -733,20 +732,35 @@ def load_benchmark_cache_entry(
         
         # Validate cache entry
         if entry.cache_version != CACHE_VERSION:
+            # Cache format changed, invalidate
+            # Trigger auto-prune after checking this entry
+            _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, f"Cache format version mismatch (cached: v{entry.cache_version}, current: v{CACHE_VERSION})"
         
         if entry.is_expired(ttl_seconds):
+            # Cache entry too old, invalidate
             age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
             ttl_days = ttl_seconds / (24 * 60 * 60)
+            # Trigger auto-prune after detecting expiration
+            # This ensures we return correct miss reason before potentially deleting the file
+            _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, f"Cache entry expired (age: {age_days:.1f} days, TTL: {ttl_days:.1f} days)"
         
         is_compatible, incompatibility_reason = entry.is_system_compatible()
         if not is_compatible:
+            # System configuration changed, invalidate
+            # Trigger auto-prune after checking compatibility
+            _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, incompatibility_reason
         
+        # Valid cache hit - trigger auto-prune to clean up other entries
+        _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
         return entry, ""
         
     except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
+        # Silently fail - caching should never break functionality
+        # Trigger auto-prune even on errors
+        _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
         return None, f"Failed to load cache: {type(e).__name__}"
 
 
