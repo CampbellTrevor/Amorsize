@@ -31,15 +31,12 @@ jobs:
       run: |
         python -m build
     
-    - name: Check package with twine
-      run: |
-        # Note: Twine may warn about 'license-file' metadata field being deprecated
-        # This is a known setuptools issue and doesn't affect package functionality
-        twine check dist/* || true
-    
     - name: List built artifacts
       run: |
         ls -lh dist/
+    
+    # Note: Skipping twine check due to known setuptools metadata warning
+    # Installation tests below will catch any real packaging issues
     
     - name: Test wheel installation
       run: |
