@@ -1,0 +1,154 @@
+name: Performance Tests
+
+on:
+  push:
+    branches: [ main, develop, iterate ]
+  pull_request:
+    branches: [ main, develop, iterate ]
+  workflow_dispatch:
+
+jobs:
+  performance:
+    name: Performance Regression Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history to access baseline results
+        fetch-depth: 0
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,full]"
+    
+    - name: Create benchmarks directory
+      run: |
+        mkdir -p benchmarks
+    
+    - name: Check for existing baseline
+      id: check_baseline
+      run: |
+        if [ -f benchmarks/baseline.json ]; then
+          echo "baseline_exists=true" >> $GITHUB_OUTPUT
+          echo "✓ Found existing baseline"
+        else
+          echo "baseline_exists=false" >> $GITHUB_OUTPUT
+          echo "ℹ No baseline found - will create one"
+        fi
+    
+    - name: Run performance benchmark suite
+      run: |
+        python -c "
+        from amorsize import run_performance_suite
+        import sys
+        
+        print('Running performance benchmark suite...')
+        results = run_performance_suite(
+            run_validation=True,
+            validate_max_items=30,  # Use small dataset for CI speed
+            verbose=True,
+            save_results=True,
+            results_path='benchmarks/current.json'
+        )
+        
+        # Report results (but don't fail on absolute performance)
+        passed = sum(1 for r in results.values() if r.passed)
+        total = len(results)
+        print(f'\n✓ Completed: {passed}/{total} benchmarks passed absolute thresholds')
+        
+        # Note: We focus on regression detection, not absolute performance
+        # CI environments may not achieve production speedup thresholds
+        failed = [name for name, r in results.items() if not r.passed]
+        if failed:
+            print(f'\nℹ Some benchmarks below absolute thresholds (expected in CI):')
+            for name in failed:
+                print(f'  - {name}')
+        
+        print('\n✓ Benchmark suite completed successfully!')
+        "
+      env:
+        AMORSIZE_TESTING: "1"
+    
+    - name: Compare against baseline (if exists)
+      if: steps.check_baseline.outputs.baseline_exists == 'true'
+      run: |
+        python -c "
+        from amorsize import compare_performance_results
+        from pathlib import Path
+        import sys
+        
+        print('\nComparing against baseline...')
+        comparison = compare_performance_results(
+            baseline_path=Path('benchmarks/baseline.json'),
+            current_path=Path('benchmarks/current.json'),
+            regression_threshold=0.15  # 15% tolerance for CI variability
+        )
+        
+        # Calculate summary
+        num_unchanged = len(comparison['unchanged'])
+        num_regressions = len(comparison['regressions'])
+        num_improvements = len(comparison['improvements'])
+        num_missing = len(comparison['missing_workloads'])
+        num_new = len(comparison['new_workloads'])
+        
+        print(f\"\\nSummary:\")
+        print(f\"  Unchanged: {num_unchanged}\")
+        print(f\"  Regressions: {num_regressions}\")
+        print(f\"  Improvements: {num_improvements}\")
+        print(f\"  Missing: {num_missing}\")
+        print(f\"  New: {num_new}\")
+        
+        # Report regressions
+        if comparison['regressions']:
+            print(f\"\\n⚠️  Performance regressions detected:\")
+            for reg in comparison['regressions']:
+                print(f\"  {reg['workload']}:\")
+                print(f\"    Baseline: {reg['baseline_speedup']:.2f}x\")
+                print(f\"    Current:  {reg['current_speedup']:.2f}x\")
+                print(f\"    Change:   {reg['change_percent']:.1f}%\")
+            sys.exit(1)
+        
+        # Report improvements
+        if comparison['improvements']:
+            print(f\"\\n✓ Performance improvements:\")
+            for imp in comparison['improvements']:
+                print(f\"  {imp['workload']}: {imp['baseline_speedup']:.2f}x → {imp['current_speedup']:.2f}x ({imp['change_percent']:.1f}%)\")
+        
+        print('\\n✓ No performance regressions detected!')
+        "
+      env:
+        AMORSIZE_TESTING: "1"
+    
+    - name: Save current results as baseline (main branch only)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        cp benchmarks/current.json benchmarks/baseline.json
+        echo "✓ Updated baseline with current results"
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-results
+        path: benchmarks/
+        retention-days: 30
+    
+    - name: Comment on PR (if regression detected and PR exists)
+      if: failure() && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '⚠️ Performance regression detected! Please review the performance test results in the workflow logs.'
+          })
