@@ -65,6 +65,13 @@ Successfully added **CI/CD automation with GitHub Actions workflows** for contin
 - Bandit security scanning
 - All checks use continue-on-error (informational)
 
+**Security Hardening:**
+- Explicit GITHUB_TOKEN permissions (contents: read)
+- Artifact actions updated to patched versions
+  - actions/download-artifact@v4.1.3 (fixes Arbitrary File Write vulnerability)
+  - actions/upload-artifact@v4.4.3 (latest stable)
+- All dependencies validated for vulnerabilities
+
 ### Workflow Validation
 ✅ All YAML files have valid syntax
 ✅ Uses modern GitHub Actions (v4/v5)
