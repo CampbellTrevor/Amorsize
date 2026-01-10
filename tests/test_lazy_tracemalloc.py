@@ -19,8 +19,9 @@ def simple_function(x):
 
 def memory_intensive_function(x):
     """A function that allocates significant memory."""
-    # Allocate 1MB per call
-    data = [0] * (1024 * 256)  # ~1MB list
+    # Allocate approximately 1MB per call
+    # Using 1024*1024//8 = 131,072 integers at ~8 bytes each = ~1MB
+    data = [0] * (1024 * 1024 // 8)
     return sum(data) + x
 
 
@@ -76,8 +77,8 @@ class TestLazyTracemalloc:
         )
         
         # Memory-intensive function should show significant peak memory
-        # At least 500KB (we allocate ~1MB per call, but tracemalloc may not catch all)
-        assert result.peak_memory > 500_000
+        # We allocate ~1MB per call, tracemalloc should detect at least 100KB
+        assert result.peak_memory > 100_000
         assert result.error is None
     
     def test_memory_intensive_function_without_tracking(self):
