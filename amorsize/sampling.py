@@ -8,6 +8,9 @@ import pickle
 import tracemalloc
 import threading
 import os
+import cProfile
+import pstats
+import io
 from typing import Any, Callable, Iterator, List, Tuple, Union, Optional, Dict
 import itertools
 
@@ -37,7 +40,8 @@ class SamplingResult:
         parallel_libraries: List[str] = None,
         thread_activity: Dict[str, int] = None,
         workload_type: str = "cpu_bound",
-        cpu_time_ratio: float = 1.0
+        cpu_time_ratio: float = 1.0,
+        function_profiler_stats: Optional[pstats.Stats] = None
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -59,6 +63,7 @@ class SamplingResult:
         self.thread_activity = thread_activity or {}
         self.workload_type = workload_type
         self.cpu_time_ratio = cpu_time_ratio
+        self.function_profiler_stats = function_profiler_stats
 
 
 def check_picklability(func: Callable) -> bool:
@@ -439,7 +444,8 @@ def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List
 def perform_dry_run(
     func: Callable[[Any], Any],
     data: Union[List, Iterator],
-    sample_size: int = 5
+    sample_size: int = 5,
+    enable_function_profiling: bool = False
 ) -> SamplingResult:
     """
     Perform a dry run of the function on a small sample of data.
@@ -448,10 +454,13 @@ def perform_dry_run(
         func: The function to test
         data: The input data
         sample_size: Number of items to sample (default: 5)
+        enable_function_profiling: If True, use cProfile to profile the function
+                                  execution to identify bottlenecks (default: False)
     
     Returns:
         SamplingResult with timing and memory information, plus sample and
-        remaining data for generator reconstruction
+        remaining data for generator reconstruction. If enable_function_profiling
+        is True, also includes function_profiler_stats with cProfile statistics.
         
     Important:
         For generators, this function stores the consumed sample and the
@@ -534,6 +543,11 @@ def perform_dry_run(
     # Detect workload type (CPU-bound vs I/O-bound)
     workload_type, cpu_time_ratio = detect_workload_type(func, sample)
     
+    # Initialize cProfile if function profiling is enabled
+    profiler = None
+    if enable_function_profiling:
+        profiler = cProfile.Profile()
+    
     # Start memory tracking
     tracemalloc.start()
     
@@ -545,7 +559,16 @@ def perform_dry_run(
         for item in sample:
             # Measure execution time
             start_time = time.perf_counter()
+            
+            # Profile function execution if enabled
+            if profiler is not None:
+                profiler.enable()
+            
             result = func(item)
+            
+            if profiler is not None:
+                profiler.disable()
+            
             end_time = time.perf_counter()
             
             times.append(end_time - start_time)
@@ -591,6 +614,14 @@ def perform_dry_run(
             std_dev = time_variance ** 0.5
             coefficient_of_variation = std_dev / avg_time
         
+        # Process profiler stats if profiling was enabled
+        profiler_stats = None
+        if profiler is not None:
+            # Create Stats object from profiler
+            profiler_stats = pstats.Stats(profiler)
+            # Strip directory paths for cleaner output
+            profiler_stats.strip_dirs()
+        
         return SamplingResult(
             avg_time=avg_time,
             return_size=avg_return_size,
@@ -611,7 +642,8 @@ def perform_dry_run(
             parallel_libraries=parallel_libs,
             thread_activity=thread_info,
             workload_type=workload_type,
-            cpu_time_ratio=cpu_time_ratio
+            cpu_time_ratio=cpu_time_ratio,
+            function_profiler_stats=profiler_stats
         )
     
     except Exception as e:

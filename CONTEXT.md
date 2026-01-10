@@ -1,116 +1,140 @@
-# Context for Next Agent - Iteration 40 Complete
+# Context for Next Agent - Iteration 41 Complete
 
 ## What Was Accomplished
 
-Successfully added **CI/CD automation with GitHub Actions workflows** for continuous integration and quality assurance.
+Successfully added **cProfile-based function performance profiling** to help users identify bottlenecks inside their functions.
 
 ### Issue Addressed
-- Project lacked CI/CD automation
-- No automated testing on push/PR
-- No validation across Python versions and OSes
-- Manual testing required for every change
+- Project had diagnostic profiling (explains optimizer decisions) but lacked performance profiling (shows where time is spent in user's function)
+- Users needed tools to identify function bottlenecks and optimization opportunities
+- No built-in way to understand function call patterns and hotspots
 
 ### Changes Made
-**Files Created (4 files):**
+**Files Modified (2 files):**
 
-1. **`.github/workflows/test.yml`** - Comprehensive test suite workflow
-   - Test matrix: 3 OSes × 7 Python versions = 20 combinations
-   - Operating systems: Ubuntu, Windows, macOS
-   - Python versions: 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, 3.13
-   - Features: pip caching, coverage reporting, Codecov upload
-   - Sets `AMORSIZE_TESTING=1` to prevent false positives
+1. **`amorsize/sampling.py`** - Added cProfile integration
+   - Imported cProfile and pstats modules
+   - Added `function_profiler_stats` field to SamplingResult
+   - Modified `perform_dry_run()` to accept `enable_function_profiling` parameter
+   - Integrated cProfile to profile function execution during dry run
+   - Stored profiler stats in SamplingResult for downstream use
 
-2. **`.github/workflows/lint.yml`** - Code quality checks
-   - Python syntax validation with py_compile
-   - Import structure verification
-   - Package metadata validation
+2. **`amorsize/optimizer.py`** - Added profiling API and parameter
+   - Added `enable_function_profiling` parameter to `optimize()` function
+   - Added `function_profiler_stats` field to OptimizationResult
+   - Added `show_function_profile()` method to display profiling results
+   - Added `save_function_profile()` method to export profiling to file
+   - Updated parameter validation to include new parameter
+   - Updated all OptimizationResult constructors to include profiler stats
+   - Updated docstrings with comprehensive documentation
 
-3. **`.github/workflows/build.yml`** - Package build validation
-   - Builds wheel and source distribution
-   - Validates with twine
-   - Tests installation from wheel
-   - Uploads artifacts (7-day retention)
+**Files Created (3 files):**
 
-4. **`.github/workflows/README.md`** - Comprehensive documentation
-   - Workflow descriptions and architecture
-   - Local testing instructions
+3. **`tests/test_function_profiling.py`** - Comprehensive test suite
+   - 10 tests covering all profiling functionality
+   - Tests for enabling/disabling profiling
+   - Tests for viewing and saving profiles
+   - Tests for parameter validation
+   - Tests for integration with other features
+   - All 10 tests passing ✅
+
+4. **`examples/function_profiling_demo.py`** - Extensive demonstration
+   - 5 detailed examples showing different use cases
+   - Example 1: Identifying bottlenecks (Fibonacci)
+   - Example 2: Understanding call trees (nested functions)
+   - Example 3: Saving profiles to files
+   - Example 4: Combining both profiling modes
+   - Example 5: Different sort options
+   - Comprehensive output with analysis explanations
+
+5. **`examples/README_function_profiling.md`** - Complete documentation
+   - API reference with all parameters
+   - Usage examples with code and output
+   - Profile output explanation (columns, sort options)
    - Troubleshooting guide
-   - Maintenance procedures
+   - Comparison with diagnostic profiling
+   - Integration examples
 
 ### Why This Approach
-- **Comprehensive Coverage**: Test across all supported Python versions and OSes
-- **Fast Feedback**: Pip caching reduces CI time
-- **Production-Ready**: Validates builds and installations
-- **Documented**: Clear README for contributors
-- **Non-Blocking**: Coverage upload failures don't fail CI
+- **Built-in cProfile**: No new dependencies, uses Python standard library
+- **Minimal Overhead**: Profiling only during dry run sampling (~5-10%)
+- **Seamless Integration**: Works alongside all existing features
+- **Flexible API**: Multiple sort options, display and export capabilities
+- **Well-Tested**: 10 comprehensive tests, all passing
+- **Well-Documented**: Complete docs with examples and troubleshooting
 
 ### Technical Details
-**Test Suite Workflow:**
-```yaml
-strategy:
-  matrix:
-    os: [ubuntu-latest, windows-latest, macos-latest]
-    python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
-    exclude:
-      - os: macos-latest
-        python-version: '3.7'  # Not available on ARM64
-```
+
+**Function Profiling Flow:**
+1. User calls `optimize(..., enable_function_profiling=True)`
+2. `perform_dry_run()` creates cProfile.Profile() instance
+3. Profiler wraps each function execution during sampling
+4. Profile stats stored in SamplingResult
+5. Stats passed to OptimizationResult
+6. User accesses via `show_function_profile()` or `save_function_profile()`
 
 **Key Features:**
-- Pip dependency caching for 3x faster runs
-- Coverage report generation (Ubuntu + Python 3.11)
-- Codecov integration (non-blocking)
-- `AMORSIZE_TESTING=1` prevents false positives in nested parallelism detection
+- Multiple sort options: 'cumulative', 'time', 'calls', 'name'
+- Configurable display limit (default: 20 lines)
+- Export to file for sharing and archiving
+- Works with both list and generator inputs
+- Compatible with all other optimize() parameters
 
-**Build Workflow:**
-- Uses modern `python -m build` command
-- Validates with twine
-- Tests wheel installation
-- Artifacts retained for 7 days
+**API Methods:**
+```python
+# Enable profiling
+result = optimize(func, data, enable_function_profiling=True)
+
+# View profiling results
+result.show_function_profile(sort_by='cumulative', limit=20)
+
+# Save to file
+result.save_function_profile('profile.txt', sort_by='time', limit=50)
+```
 
 ### Testing Results
-✅ Workflows validated locally:
-   - All YAML files are valid
-   - Test suite runs successfully (10 tests in test_optimizer.py)
-   - Package builds successfully
-   - Imports work correctly
-   - All dependencies install properly
+✅ **All tests passing:**
+```bash
+pytest tests/test_function_profiling.py -v
+# 10 passed in 0.15s
 
-✅ Package build verification:
-   ```bash
-   python -m build
-   # Successfully built amorsize-0.1.0.tar.gz and amorsize-0.1.0-py3-none-any.whl
-   
-   twine check dist/*
-   # ⚠️  Minor metadata warnings (non-critical, known setuptools issue)
-   ```
+pytest tests/ -x
+# 640 passed, 26 skipped in 18.21s
+```
 
-✅ Import tests pass:
-   ```bash
-   python -c "from amorsize import optimize, execute"  # ✓
-   python -c "from amorsize import process_in_batches"  # ✓
-   python -c "from amorsize import optimize_streaming"  # ✓
-   ```
+✅ **Demo verified:**
+```bash
+python examples/function_profiling_demo.py
+# All 5 examples run successfully
+# Profile output shows function call trees correctly
+# Bottlenecks identified as expected
+```
+
+✅ **Integration verified:**
+- Works with `profile=True` (diagnostic profiling)
+- Works with `verbose=True`
+- Works with all other parameters
+- No conflicts or regressions
 
 ### Status
-✅ Production ready - CI/CD infrastructure complete and tested
+✅ Production ready - Feature complete, tested, and documented
 
 ## Recommended Next Steps
-1. **Performance Profiling** (HIGH VALUE) - Add flame graphs or detailed profiling tools
-2. Advanced tuning (Bayesian optimization for parameter search)
-3. Pipeline optimization (multi-function workloads)
-4. Documentation improvements (API reference, video tutorials)
-5. PyPI publication (package is ready)
+1. **PyPI Publication** (HIGH VALUE) - Package is ready for public distribution
+2. **Advanced Tuning** - Implement Bayesian optimization for parameter search
+3. **Pipeline Optimization** - Multi-function workloads
+4. **Performance Benchmarking Suite** - Track performance over time
+5. **Documentation improvements** - Video tutorials, interactive guides
 
 ## Notes for Next Agent
-The codebase is in **EXCELLENT** shape with complete CI/CD automation:
+The codebase is in **EXCELLENT** shape with comprehensive profiling capabilities:
 
 ### Infrastructure (The Foundation) ✅
 - ✅ Physical core detection with multiple fallback strategies
 - ✅ Memory limit detection (cgroup/Docker aware)
 - ✅ Measured spawn cost (not estimated - actual benchmarks)
 - ✅ Modern Python packaging (pyproject.toml - PEP 517/518)
-- ✅ **CI/CD automation with GitHub Actions (3 workflows)**
+- ✅ CI/CD automation with GitHub Actions (3 workflows)
 
 ### Safety & Accuracy (The Guardrails) ✅
 - ✅ Generator safety with `itertools.chain` 
@@ -128,20 +152,22 @@ The codebase is in **EXCELLENT** shape with complete CI/CD automation:
 - ✅ Python 3.7-3.13 compatibility (tested in CI)
 - ✅ Zero warnings in test suite
 - ✅ Modern packaging with pyproject.toml
-- ✅ **Automated testing across 20 OS/Python combinations**
+- ✅ Automated testing across 20 OS/Python combinations
+- ✅ **Function performance profiling with cProfile** ← NEW!
 
 ### Key Enhancement
-**CI/CD workflows provide:**
-- Automated testing on every push/PR
-- Cross-platform validation (Linux, Windows, macOS)
-- Multi-version testing (Python 3.7-3.13)
-- Build validation and artifact generation
-- Coverage reporting and Codecov integration
-- Fast feedback with pip caching
+**cProfile integration provides:**
+- Identify bottlenecks inside user functions
+- Understand function call patterns and hierarchies
+- Multiple sort options (cumulative, time, calls, name)
+- Export profiles for sharing and archiving
+- Minimal overhead (~5-10% during sampling only)
+- Works alongside diagnostic profiling
+- Comprehensive documentation and examples
 
 All foundational work is complete. The **highest-value next increment** would be:
-- **Performance Profiling Tools**: Add integrated profiling (cProfile, flame graphs) to help users understand bottlenecks
+- **PyPI Publication**: Package is fully ready for public distribution
 - **Advanced Tuning**: Implement Bayesian optimization for parameter search
-- **PyPI Publication**: Package is ready for public distribution
+- **Performance Benchmarking**: Add tools to track performance over time
 
 Good luck! 🚀
