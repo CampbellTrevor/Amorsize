@@ -1,0 +1,44 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, Iterate ]
+  pull_request:
+    branches: [ main, Iterate ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8
+    
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 amorsize/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Check for common issues (with relaxed line length for this project)
+        flake8 amorsize/ --count --max-line-length=120 --statistics --exit-zero
+    
+    - name: Check package metadata
+      run: |
+        pip install build
+        python -m build --wheel --no-isolation
+    
+    - name: Verify imports
+      run: |
+        pip install -e .
+        python -c "from amorsize import optimize, execute, process_in_batches; print('✓ Core imports work')"
+        python -c "from amorsize import validate_optimization, quick_validate; print('✓ Benchmark imports work')"
+        python -c "from amorsize import load_config, save_config; print('✓ Config imports work')"
