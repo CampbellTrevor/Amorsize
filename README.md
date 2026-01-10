@@ -1,5 +1,9 @@
 # Amorsize
 
+[![CI](https://github.com/CampbellTrevor/Amorsize/workflows/CI/badge.svg)](https://github.com/CampbellTrevor/Amorsize/actions)
+[![Python Versions](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/CampbellTrevor/Amorsize)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **Dynamic Parallelism Optimizer & Overhead Calculator**
 
 Amorsize analyzes your Python functions and data to determine the optimal parallelization parameters (`n_jobs` and `chunksize`), preventing "Negative Scaling" where parallelism becomes slower than serial execution.
