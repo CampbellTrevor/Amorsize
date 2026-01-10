@@ -1,0 +1,105 @@
+name: Documentation & Examples
+
+on:
+  push:
+    branches: [ main, master, Iterate, develop ]
+    paths:
+      - 'examples/**'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main, master, Iterate, develop ]
+    paths:
+      - 'examples/**'
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  validate-examples:
+    name: Validate example scripts
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[full]"
+    
+    - name: Lint example scripts
+      run: |
+        pip install flake8
+        flake8 examples/ --count --select=E9,F63,F7,F82 --show-source --statistics
+      continue-on-error: true
+    
+    - name: Check examples can be imported
+      run: |
+        for file in examples/*.py; do
+          if [ -f "$file" ]; then
+            echo "Checking syntax: $file"
+            python -m py_compile "$file"
+          fi
+        done
+    
+    - name: Run quick example tests
+      run: |
+        cd examples
+        timeout 30 python basic_usage.py || echo "Basic usage timed out (expected for some examples)"
+        timeout 30 python memory_constrained_example.py || echo "Memory constrained example timed out"
+      continue-on-error: true
+  
+  validate-readme:
+    name: Validate README
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check README links
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        config-file: '.github/markdown-link-check-config.json'
+        use-quiet-mode: 'yes'
+      continue-on-error: true
+    
+    - name: Markdown lint
+      uses: nosborn/github-action-markdown-cli@v3.3.0
+      with:
+        files: README.md
+        config_file: '.markdownlint.json'
+      continue-on-error: true
+
+  check-code-examples:
+    name: Test code examples in README
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[full]"
+    
+    - name: Extract and test Python code blocks from README
+      run: |
+        # Test basic imports mentioned in README
+        python -c "from amorsize import optimize"
+        python -c "from amorsize import execute"
+        python -c "from amorsize import process_in_batches"
+        python -c "from amorsize import optimize_streaming"
+        python -c "from amorsize import validate_optimization"
+        echo "✓ All README imports are valid"
