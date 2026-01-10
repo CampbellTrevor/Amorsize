@@ -131,17 +131,10 @@ class TestOptimizationCacheAutoPruning:
         
         assert cache_file.exists()
         
-        # Force auto-pruning to trigger
-        with patch('amorsize.cache.random.random', return_value=0.0):
-            load_cache_entry("some_other_key")
+        # Force auto-pruning to trigger with probability=1.0
+        _maybe_auto_prune_cache(get_cache_dir, probability=1.0)
         
-        # Expired entry should be removed (eventually - may not happen on first call)
-        # So we trigger multiple times to ensure it happens
-        for _ in range(10):
-            with patch('amorsize.cache.random.random', return_value=0.0):
-                load_cache_entry("some_other_key")
-        
-        # After multiple triggers, expired file should be deleted
+        # Expired entry should be removed
         assert not cache_file.exists()
     
     def test_auto_prune_preserves_recent_entries(self):
@@ -162,10 +155,8 @@ class TestOptimizationCacheAutoPruning:
         cache_file = cache_dir / f"{cache_key}.json"
         assert cache_file.exists()
         
-        # Force auto-pruning to trigger multiple times
-        for _ in range(10):
-            with patch('amorsize.cache.random.random', return_value=0.0):
-                load_cache_entry("some_other_key")
+        # Force auto-pruning to trigger with probability=1.0
+        _maybe_auto_prune_cache(get_cache_dir, probability=1.0)
         
         # Recent entry should still exist
         assert cache_file.exists()
@@ -217,12 +208,10 @@ class TestBenchmarkCacheAutoPruning:
         
         assert cache_file.exists()
         
-        # Force auto-pruning to trigger multiple times
-        for _ in range(10):
-            with patch('amorsize.cache.random.random', return_value=0.0):
-                load_benchmark_cache_entry("some_other_key")
+        # Force auto-pruning to trigger with probability=1.0
+        _maybe_auto_prune_cache(get_benchmark_cache_dir, probability=1.0)
         
-        # After multiple triggers, expired file should be deleted
+        # Expired entry should be removed
         assert not cache_file.exists()
     
     def test_benchmark_auto_prune_preserves_recent_entries(self):
@@ -242,10 +231,8 @@ class TestBenchmarkCacheAutoPruning:
         cache_file = cache_dir / f"{cache_key}.json"
         assert cache_file.exists()
         
-        # Force auto-pruning to trigger multiple times
-        for _ in range(10):
-            with patch('amorsize.cache.random.random', return_value=0.0):
-                load_benchmark_cache_entry("some_other_key")
+        # Force auto-pruning to trigger with probability=1.0
+        _maybe_auto_prune_cache(get_benchmark_cache_dir, probability=1.0)
         
         # Recent entry should still exist
         assert cache_file.exists()
