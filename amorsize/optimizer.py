@@ -215,7 +215,8 @@ class OptimizationResult:
         data: Union[List, Iterator, None] = None,
         profile: Optional[DiagnosticProfile] = None,
         executor_type: str = "process",
-        function_profiler_stats: Optional['pstats.Stats'] = None
+        function_profiler_stats: Optional['pstats.Stats'] = None,
+        cache_hit: bool = False
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -226,6 +227,7 @@ class OptimizationResult:
         self.profile = profile
         self.executor_type = executor_type  # "process" or "thread"
         self.function_profiler_stats = function_profiler_stats  # cProfile stats
+        self.cache_hit = cache_hit  # True if result came from cache
     
     def __repr__(self):
         return (
@@ -239,6 +241,8 @@ class OptimizationResult:
         result = f"Recommended: n_jobs={self.n_jobs}, chunksize={self.chunksize}, executor={self.executor_type}\n"
         result += f"Reason: {self.reason}\n"
         result += f"Estimated speedup: {self.estimated_speedup:.2f}x"
+        if self.cache_hit:
+            result += " (cached)"
         if self.warnings:
             result += "\nWarnings:\n" + "\n".join(f"  - {w}" for w in self.warnings)
         return result
@@ -784,7 +788,7 @@ def optimize(
             
             if cache_entry is not None:
                 if verbose:
-                    print(f"Using cached optimization result (saved {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cache_entry.timestamp))})")
+                    print(f"✓ Cache hit! Using cached optimization result (saved {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cache_entry.timestamp))})")
                 
                 # Return cached result immediately
                 # Note: We still need to handle generator reconstruction
@@ -802,11 +806,15 @@ def optimize(
                     warnings=cache_entry.warnings,
                     data=reconstructed_data,
                     profile=None,  # Cache doesn't store full profile
-                    executor_type=cache_entry.executor_type
+                    executor_type=cache_entry.executor_type,
+                    cache_hit=True
                 )
     
     # Step 1: Perform dry run sampling
     if verbose:
+        # Indicate if we attempted cache lookup but missed
+        if use_cache and not profile and cache_key is not None and cache_entry is None:
+            print("✗ Cache miss - performing fresh optimization")
         print("Performing dry run sampling...")
     
     _report_progress("Sampling function", 0.1)
