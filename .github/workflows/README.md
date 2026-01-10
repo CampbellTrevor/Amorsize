@@ -142,7 +142,7 @@ Actions are pinned to major versions (e.g., `@v4`):
 - `actions/checkout@v4` - Repository checkout
 - `actions/setup-python@v5` - Python installation
 - `actions/upload-artifact@v4` - Artifact uploads
-- `actions/download-artifact@v4` - Artifact downloads
+- `actions/download-artifact@v4.1.3` - Artifact downloads (patched for CVE-2024-42471)
 
 Check for updates periodically using Dependabot.
 
