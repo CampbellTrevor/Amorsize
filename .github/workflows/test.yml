@@ -69,7 +69,7 @@ jobs:
     
     - name: Verify psutil is not installed
       run: |
-        python -c "import sys; import psutil; sys.exit(1)" || echo "✓ psutil not installed (expected)"
+        python -c "import psutil" 2>/dev/null && { echo "❌ psutil found - should not be installed"; exit 1; } || echo "✓ psutil not installed (expected)"
     
     - name: Run tests without psutil
       run: |
