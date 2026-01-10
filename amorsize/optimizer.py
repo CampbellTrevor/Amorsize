@@ -8,6 +8,7 @@ import warnings
 
 from .system_info import (
     get_physical_cores,
+    get_logical_cores,
     get_spawn_cost,
     get_chunking_overhead,
     calculate_max_workers,
@@ -1104,8 +1105,7 @@ def optimize(
     # Note: We need spawn_cost for intelligent fast-fail decisions, so get system info before checking
     _report_progress("Analyzing system", 0.5)
     
-    import os
-    logical_cores = os.cpu_count() or 1
+    logical_cores = get_logical_cores()
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
     

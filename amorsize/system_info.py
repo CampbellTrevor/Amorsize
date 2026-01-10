@@ -37,6 +37,10 @@ _memory_cache_lock = threading.Lock()
 # 1 second is reasonable since memory doesn't change frequently
 MEMORY_CACHE_TTL = 1.0
 
+# Global cache for logical core count detection
+_CACHED_LOGICAL_CORES: Optional[int] = None
+_logical_cores_lock = threading.Lock()
+
 # Minimum reasonable marginal cost threshold (1ms)
 # Below this, we assume measurement noise and fall back to single-worker measurement
 MIN_REASONABLE_MARGINAL_COST = 0.001
@@ -106,6 +110,20 @@ def _clear_memory_cache():
     with _memory_cache_lock:
         _CACHED_AVAILABLE_MEMORY = None
         _memory_cache_timestamp = None
+
+
+def _clear_logical_cores_cache():
+    """
+    Clear the cached logical core count.
+    
+    This is primarily for testing purposes to ensure tests don't
+    interfere with each other's cached values.
+    
+    Thread-safe: Uses lock to prevent race conditions.
+    """
+    global _CACHED_LOGICAL_CORES
+    with _logical_cores_lock:
+        _CACHED_LOGICAL_CORES = None
 
 
 def _parse_proc_cpuinfo() -> Optional[int]:
@@ -264,11 +282,13 @@ def get_physical_cores() -> int:
         # Strategy 4: Conservative estimate - assume hyperthreading (logical / 2)
         # This is better than using all logical cores for CPU-bound tasks
         if physical_cores is None:
-            logical = os.cpu_count()
-            if logical is not None and logical > 1:
+            logical = get_logical_cores()
+            if logical > 1:
                 # Assume hyperthreading is enabled (common on modern CPUs)
                 # Divide by 2 to get approximate physical core count
                 physical_cores = max(1, logical // 2)
+            else:
+                physical_cores = logical
         
         # Strategy 5: Absolute fallback
         if physical_cores is None:
@@ -277,6 +297,51 @@ def get_physical_cores() -> int:
         # Cache the result
         _CACHED_PHYSICAL_CORES = physical_cores
         return physical_cores
+
+
+def get_logical_cores() -> int:
+    """
+    Get the number of logical CPU cores (including hyperthreading).
+    
+    The logical core count is cached globally after first detection since
+    it's a system constant that never changes during program execution.
+    Thread-safe: Uses lock to prevent concurrent detection.
+    
+    Returns:
+        Number of logical cores, or 1 if detection fails
+        
+    Rationale:
+        Logical cores include hyperthreading/SMT cores. This is useful for
+        diagnostic information and understanding the system topology, though
+        physical cores are typically preferred for CPU-bound parallelization.
+        
+    Performance:
+        Cached globally after first call to eliminate redundant system calls
+        on subsequent calls. This is especially beneficial when multiple
+        optimizations occur in the same program.
+    """
+    global _CACHED_LOGICAL_CORES
+    
+    # Quick check without lock (optimization for common case)
+    if _CACHED_LOGICAL_CORES is not None:
+        return _CACHED_LOGICAL_CORES
+    
+    # Acquire lock for detection
+    with _logical_cores_lock:
+        # Double-check after acquiring lock (another thread may have detected)
+        if _CACHED_LOGICAL_CORES is not None:
+            return _CACHED_LOGICAL_CORES
+        
+        # Perform detection (only one thread reaches here)
+        logical_cores = os.cpu_count()
+        
+        # Fallback to 1 if detection fails
+        if logical_cores is None:
+            logical_cores = 1
+        
+        # Cache the result
+        _CACHED_LOGICAL_CORES = logical_cores
+        return logical_cores
 
 
 def _noop_worker(_):
