@@ -166,8 +166,9 @@ class TestBenchmarkCacheSaveLoad:
         )
         
         # Load entry
-        entry = load_benchmark_cache_entry(cache_key)
+        entry, miss_reason = load_benchmark_cache_entry(cache_key)
         assert entry is not None
+        assert miss_reason == ""
         assert entry.serial_time == 1.0
         assert entry.parallel_time == 0.5
         assert entry.actual_speedup == 2.0
@@ -176,8 +177,9 @@ class TestBenchmarkCacheSaveLoad:
     
     def test_load_nonexistent_cache_entry(self):
         """Test that loading nonexistent entry returns None."""
-        entry = load_benchmark_cache_entry("nonexistent_key_xyz")
+        entry, miss_reason = load_benchmark_cache_entry("nonexistent_key_xyz")
         assert entry is None
+        assert "No cached benchmark result found" in miss_reason
     
     def test_load_expired_cache_entry(self):
         """Test that expired entries return None."""
@@ -194,8 +196,9 @@ class TestBenchmarkCacheSaveLoad:
         )
         
         # Try to load with very short TTL
-        entry = load_benchmark_cache_entry(cache_key, ttl_seconds=0)
+        entry, miss_reason = load_benchmark_cache_entry(cache_key, ttl_seconds=0)
         assert entry is None
+        assert "expired" in miss_reason.lower()
 
 
 class TestBenchmarkCacheIntegration:

@@ -185,7 +185,7 @@ def validate_optimization(
     # Check cache if enabled
     if use_cache:
         cache_key = compute_benchmark_cache_key(func, len(data))
-        cached_entry = load_benchmark_cache_entry(cache_key)
+        cached_entry, cache_miss_reason = load_benchmark_cache_entry(cache_key)
         
         if cached_entry is not None:
             # Cache hit - verify it matches current optimization parameters
@@ -248,10 +248,10 @@ def validate_optimization(
                 )
             else:
                 if verbose:
-                    print(f"\n✗ Cache miss - optimization parameters changed")
+                    print(f"\n✗ Cache miss - Optimization parameters changed (cached: n_jobs={cached_entry.n_jobs}, chunksize={cached_entry.chunksize}; current: n_jobs={optimization.n_jobs}, chunksize={optimization.chunksize})")
         else:
             if verbose:
-                print(f"\n✗ Cache miss - performing fresh benchmark")
+                print(f"\n✗ Cache miss - {cache_miss_reason}")
     
     if verbose:
         print(f"\nValidating optimization: n_jobs={optimization.n_jobs}, "

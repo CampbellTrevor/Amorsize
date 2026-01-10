@@ -159,7 +159,8 @@ class TestCacheEntry:
                 "start_method": current_method
             }
         )
-        assert entry.is_system_compatible()
+        is_compatible, reason = entry.is_system_compatible()
+        assert is_compatible
         
         # Incompatible (different core count)
         incompatible_entry = CacheEntry(
@@ -176,7 +177,9 @@ class TestCacheEntry:
                 "start_method": current_method
             }
         )
-        assert not incompatible_entry.is_system_compatible()
+        is_compatible, reason = incompatible_entry.is_system_compatible()
+        assert not is_compatible
+        assert "Physical core count changed" in reason
 
 
 class TestCacheKey:
@@ -227,8 +230,9 @@ class TestCacheSaveLoad:
         )
         
         # Load entry
-        entry = load_cache_entry(cache_key)
+        entry, miss_reason = load_cache_entry(cache_key)
         assert entry is not None
+        assert miss_reason == ""
         assert entry.n_jobs == 2
         assert entry.chunksize == 50
         assert entry.executor_type == "process"
@@ -237,8 +241,9 @@ class TestCacheSaveLoad:
     def test_load_nonexistent_cache(self):
         """Test loading a cache entry that doesn't exist."""
         clear_cache()
-        entry = load_cache_entry("nonexistent_key_12345")
+        entry, miss_reason = load_cache_entry("nonexistent_key_12345")
         assert entry is None
+        assert "No cached entry found" in miss_reason
     
     def test_clear_cache(self):
         """Test clearing all cache entries."""
@@ -259,8 +264,9 @@ class TestCacheSaveLoad:
         assert count >= 0  # Should clear at least the entry we just added
         
         # Verify entry is gone
-        entry = load_cache_entry(cache_key)
+        entry, miss_reason = load_cache_entry(cache_key)
         assert entry is None
+        assert "No cached entry found" in miss_reason
 
 
 class TestOptimizeCaching:
@@ -305,8 +311,9 @@ class TestOptimizeCaching:
         
         # Verify no cache file was created
         cache_key = compute_cache_key(simple_func, len(data), 0.001)
-        entry = load_cache_entry(cache_key)
+        entry, miss_reason = load_cache_entry(cache_key)
         assert entry is None
+        assert "No cached entry found" in miss_reason
     
     def test_cache_with_different_data_sizes(self):
         """Test that similar data sizes share cache."""
@@ -370,16 +377,19 @@ class TestCachePruning:
         )
         
         # Manually load and verify it exists
-        entry = load_cache_entry(cache_key, ttl_seconds=DEFAULT_TTL_SECONDS)
+        entry, miss_reason = load_cache_entry(cache_key, ttl_seconds=DEFAULT_TTL_SECONDS)
         assert entry is not None
+        assert miss_reason == ""
         
         # Prune with very short TTL (should remove entry)
         count = prune_expired_cache(ttl_seconds=0)
         assert count >= 1
         
         # Entry should be gone
-        entry = load_cache_entry(cache_key)
+        entry, miss_reason = load_cache_entry(cache_key)
         assert entry is None
+        # After pruning, the file is deleted, so we get "not found" instead of "expired"
+        assert miss_reason != ""  # Some reason should be provided
 
 
 class TestCacheDirectory:
