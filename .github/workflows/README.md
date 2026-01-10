@@ -155,11 +155,13 @@ Some tests may be skipped on certain platforms or configurations. This is expect
 
 ## Maintenance
 
-Workflows use pinned action versions for stability:
+Workflows use pinned action versions for stability and security:
 - `actions/checkout@v4`
 - `actions/setup-python@v5`
-- `actions/upload-artifact@v4`
-- `actions/download-artifact@v4`
+- `actions/upload-artifact@v4.4.3` (latest stable)
+- `actions/download-artifact@v4.1.3` (patched for CVE: arbitrary file write vulnerability)
 - `codecov/codecov-action@v3`
+
+**Security Note:** Version 4.1.3 of `actions/download-artifact` is used to address a critical arbitrary file write vulnerability (CVE) affecting versions 4.0.0 to 4.1.2. Always use the latest patched versions for artifact actions.
 
 Update these periodically to get security fixes and new features.
