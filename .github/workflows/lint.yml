@@ -1,0 +1,48 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, Iterate, develop ]
+  pull_request:
+    branches: [ main, Iterate, develop ]
+
+jobs:
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Check Python syntax
+      run: |
+        python -m py_compile amorsize/*.py
+        python -m py_compile tests/*.py
+    
+    - name: Check for common issues with pyflakes (if available)
+      continue-on-error: true
+      run: |
+        pip install pyflakes || true
+        if command -v pyflakes &> /dev/null; then
+          pyflakes amorsize/ || true
+        fi
+    
+    - name: Verify package installation
+      run: |
+        python -c "from amorsize import optimize, execute; print('✓ Package imports successfully')"
+    
+    - name: Check for circular imports
+      run: |
+        python -c "import amorsize; print('✓ No circular import issues')"

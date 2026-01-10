@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, Iterate, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, Iterate, develop ]
+
+jobs:
+  build:
+    name: Build Python Package
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build wheel
+    
+    - name: Build package
+      run: |
+        python -m build
+    
+    - name: Check package contents
+      run: |
+        ls -lh dist/
+        python -m pip install twine
+        twine check dist/*
+    
+    - name: Test wheel installation
+      run: |
+        pip install dist/*.whl
+        python -c "from amorsize import optimize; print('✓ Wheel installs and imports successfully')"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+        retention-days: 7
