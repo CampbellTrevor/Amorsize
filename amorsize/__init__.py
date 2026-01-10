@@ -42,6 +42,14 @@ from .config import (
     get_default_config_dir,
     ConfigData
 )
+from .performance import (
+    run_performance_benchmark,
+    run_performance_suite,
+    compare_performance_results,
+    get_standard_workloads,
+    WorkloadSpec,
+    PerformanceResult
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -74,6 +82,10 @@ __all__ = [
     "load_config",
     "list_configs",
     "get_default_config_dir",
+    "run_performance_benchmark",
+    "run_performance_suite",
+    "compare_performance_results",
+    "get_standard_workloads",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
@@ -83,5 +95,7 @@ __all__ = [
     "ComparisonResult",
     "HistoryEntry",
     "TuningResult",
-    "ConfigData"
+    "ConfigData",
+    "WorkloadSpec",
+    "PerformanceResult"
 ]
