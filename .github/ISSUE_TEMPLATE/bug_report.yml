@@ -1,0 +1,94 @@
+name: Bug Report
+description: File a bug report
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below.
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+  
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Import amorsize
+        2. Call optimize() with...
+        3. See error
+    validations:
+      required: true
+  
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Sample
+      description: Provide a minimal code sample that reproduces the issue
+      render: python
+      placeholder: |
+        from amorsize import optimize
+        
+        def my_func(x):
+            return x ** 2
+        
+        result = optimize(my_func, range(100))
+  
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: What version of Python are you using?
+      placeholder: e.g., 3.12.0
+    validations:
+      required: true
+  
+  - type: input
+    id: amorsize-version
+    attributes:
+      label: Amorsize Version
+      description: What version of Amorsize are you using?
+      placeholder: e.g., 0.1.0
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you using?
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here
+      placeholder: |
+        - Number of CPU cores
+        - Available memory
+        - Multiprocessing start method
+        - Any relevant environment variables
