@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, Iterate, develop ]
+  pull_request:
+    branches: [ main, Iterate, develop ]
+
+jobs:
+  build:
+    name: Build and Verify Package
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build wheel
+    
+    - name: Build package
+      run: |
+        python -m build
+    
+    - name: Verify wheel contents
+      run: |
+        pip install dist/*.whl
+        python -c "from amorsize import optimize; print('✓ Package installs and imports correctly')"
+    
+    - name: Test basic functionality
+      run: |
+        python -c "
+        from amorsize import optimize
+        
+        def test_func(x):
+            return x * 2
+        
+        data = range(100)
+        result = optimize(test_func, data, verbose=False)
+        print(f'✓ Basic optimization works: n_jobs={result.n_jobs}, chunksize={result.chunksize}')
+        "
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+        retention-days: 7
