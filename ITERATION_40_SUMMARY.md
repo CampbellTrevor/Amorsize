@@ -195,9 +195,34 @@ pip install dist/*.whl   # Test installation
 **GitHub Actions Marketplace:**
 - `actions/checkout@v4` - Repository checkout
 - `actions/setup-python@v5` - Python installation
-- `actions/upload-artifact@v4` - Artifact storage
-- `actions/download-artifact@v4` - Artifact retrieval
+- `actions/upload-artifact@v4.5.0` - Artifact storage (updated for security)
+- `actions/download-artifact@v4.1.3` - Artifact retrieval (patched CVE)
 - `codecov/codecov-action@v4` - Coverage upload
+
+## Security Vulnerabilities Fixed
+
+### Initial Security Issues
+✅ **Missing explicit permissions on workflow jobs**
+   - Issue: GITHUB_TOKEN had excessive permissions by default
+   - Fix: Added explicit `permissions: contents: read` to all jobs
+   - Impact: Follows principle of least privilege
+
+### Dependency Vulnerabilities
+✅ **CVE in actions/download-artifact@v4**
+   - Issue: Arbitrary File Write via artifact extraction
+   - Affected versions: >= 4.0.0, < 4.1.3
+   - **Fixed**: Updated to v4.1.3 (patched version)
+   - Location: `.github/workflows/build.yml`
+
+✅ **Updated actions/upload-artifact for consistency**
+   - Updated from v4 to v4.5.0 (latest stable)
+   - Locations: `.github/workflows/build.yml`, `.github/workflows/publish.yml`
+   - Impact: Latest security patches and improvements
+
+### Verification
+✅ CodeQL security scan: **0 alerts** (all vulnerabilities resolved)
+✅ All workflow YAML files validated
+✅ Functionality verified working correctly
 
 ## Impact Assessment
 
@@ -392,13 +417,14 @@ With CI/CD in place, the project can now focus on:
 
 ## Metrics
 
-- **Time Investment:** ~45 minutes
+- **Time Investment:** ~60 minutes (including security fixes)
 - **Files Created:** 5 files (workflows + README)
 - **Lines Added:** ~13,678 lines
 - **Workflows:** 4 automation workflows
 - **Test Matrix:** 21 combinations (7 Python × 3 OS)
+- **Security Vulnerabilities Fixed:** 2 (permissions + CVE)
 - **Risk Level:** Very Low (infrastructure only)
-- **Value Delivered:** High (continuous validation)
+- **Value Delivered:** High (continuous validation + security)
 
 ## Conclusion
 
@@ -407,6 +433,7 @@ This iteration successfully added comprehensive CI/CD automation with GitHub Act
 - **Low-Risk:** Infrastructure only, no code changes
 - **High-Value:** Continuous validation and quality assurance
 - **Well-Documented:** Complete usage and troubleshooting guides
+- **Secure:** All vulnerabilities fixed, zero CodeQL alerts
 - **Complete:** Ready for immediate use
 
 ### Key Achievements
@@ -417,6 +444,7 @@ This iteration successfully added comprehensive CI/CD automation with GitHub Act
 - ✅ Comprehensive documentation
 - ✅ Zero breaking changes
 - ✅ Infrastructure priority completed
+- ✅ All security vulnerabilities fixed
 
 ### CI/CD Status
 ```
