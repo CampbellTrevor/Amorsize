@@ -167,6 +167,11 @@ class TestBooleanParametersValidation:
         with pytest.raises(ValueError, match="profile must be a boolean"):
             optimize(simple_function, [1, 2, 3], profile="false")
     
+    def test_use_cache_not_boolean_raises_error(self):
+        """Test that non-boolean use_cache raises ValueError."""
+        with pytest.raises(ValueError, match="use_cache must be a boolean"):
+            optimize(simple_function, [1, 2, 3], use_cache="true")
+    
     def test_valid_boolean_combinations(self):
         """Test that all valid boolean combinations work."""
         # All False
@@ -175,17 +180,25 @@ class TestBooleanParametersValidation:
             verbose=False,
             use_spawn_benchmark=False,
             use_chunking_benchmark=False,
-            profile=False
+            profile=False,
+            use_cache=False
         )
         assert result is not None
         
-        # All True
+        # All True (note: profile=True disables cache, so separate test)
         result = optimize(
             simple_function, [1, 2, 3],
             verbose=True,
             use_spawn_benchmark=True,
             use_chunking_benchmark=True,
             profile=True
+        )
+        assert result is not None
+        
+        # Test use_cache=True with profile=False
+        result = optimize(
+            simple_function, [1, 2, 3],
+            use_cache=True
         )
         assert result is not None
 
