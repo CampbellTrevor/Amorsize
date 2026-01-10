@@ -78,9 +78,9 @@ jobs:
     - name: Lint with flake8
       run: |
         # Check for critical errors (syntax errors, undefined names)
-        flake8 amorsize/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics || echo "::error title=Flake8 Critical::Found syntax errors or undefined names. Run 'flake8 amorsize/ tests/ --select=E9,F63,F7,F82' to see details."
+        flake8 amorsize/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics || echo "::error title=Flake8 Critical::Found syntax errors or undefined names."
         # Check for style issues (warnings only)
-        flake8 amorsize/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics || true
+        flake8 amorsize/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       continue-on-error: true
     
     - name: Type check with mypy
@@ -149,9 +149,4 @@ jobs:
     
     - name: Test basic functionality
       run: |
-        python -c "
-        from amorsize import optimize
-        def f(x): return x**2
-        result = optimize(f, range(100))
-        print(f'✓ Basic optimization works: n_jobs={result.n_jobs}, chunksize={result.chunksize}')
-        "
+        python -c "from amorsize import optimize; result = optimize(lambda x: x**2, range(100)); print(f'✓ Basic optimization works: n_jobs={result.n_jobs}, chunksize={result.chunksize}')"
