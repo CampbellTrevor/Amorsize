@@ -1,0 +1,78 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, Iterate ]
+  pull_request:
+    branches: [ main, Iterate ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[full,dev]"
+        
+    - name: Run tests with coverage
+      run: |
+        pytest tests/ -v --cov=amorsize --cov-report=xml --cov-report=term
+        
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  test-minimal:
+    name: Test without psutil (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.8', '3.11']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install minimal dependencies (no psutil)
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        pip install -e .
+        
+    - name: Verify psutil is not installed
+      run: |
+        python -c "import sys; import psutil; sys.exit(1)" && echo "✓ psutil not installed (expected)" || (echo "✗ psutil is installed (unexpected)" && exit 1)
+        
+    - name: Run tests without psutil
+      run: |
+        pytest tests/ -v
