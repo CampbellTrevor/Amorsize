@@ -1,0 +1,85 @@
+name: Build & Package
+
+on:
+  push:
+    branches: [ main, Iterate, develop ]
+  pull_request:
+    branches: [ main, Iterate, develop ]
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Distribution
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    
+    - name: Validate pyproject.toml
+      run: |
+        python -c "import tomllib; tomllib.load(open('pyproject.toml', 'rb'))" || python -c "import tomli; tomli.load(open('pyproject.toml', 'rb'))"
+    
+    - name: Build package
+      run: |
+        python -m build
+    
+    - name: Check distribution
+      run: |
+        twine check dist/*
+    
+    - name: Test wheel installation
+      run: |
+        pip install dist/*.whl
+        python -c "from amorsize import optimize; print('✓ Package installed and imports successfully')"
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: distribution-packages
+        path: dist/
+        retention-days: 7
+  
+  verify-install:
+    name: Verify Installation Methods
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: distribution-packages
+        path: dist/
+    
+    - name: Test wheel installation
+      run: |
+        pip install dist/*.whl
+        python -c "from amorsize import optimize, execute; print('✓ Wheel installation works')"
+        pip uninstall -y amorsize
+    
+    - name: Test editable installation
+      run: |
+        pip install -e ".[full]"
+        python -c "from amorsize import optimize; print('✓ Editable installation works')"
+        pytest tests/test_optimizer.py -v
