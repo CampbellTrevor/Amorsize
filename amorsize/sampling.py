@@ -41,7 +41,9 @@ class SamplingResult:
         thread_activity: Dict[str, int] = None,
         workload_type: str = "cpu_bound",
         cpu_time_ratio: float = 1.0,
-        function_profiler_stats: Optional[pstats.Stats] = None
+        function_profiler_stats: Optional[pstats.Stats] = None,
+        avg_data_pickle_time: float = 0.0,
+        data_size: int = 0
     ):
         self.avg_time = avg_time
         self.return_size = return_size
@@ -64,6 +66,8 @@ class SamplingResult:
         self.workload_type = workload_type
         self.cpu_time_ratio = cpu_time_ratio
         self.function_profiler_stats = function_profiler_stats
+        self.avg_data_pickle_time = avg_data_pickle_time
+        self.data_size = data_size
 
 
 def check_picklability(func: Callable) -> bool:
@@ -558,8 +562,24 @@ def perform_dry_run(
         times = []
         return_sizes = []
         pickle_times = []
+        data_pickle_times = []
+        data_sizes = []
         
         for item in sample:
+            # Measure INPUT data pickle time (The "Pickle Tax" - part 1: data → workers)
+            try:
+                data_pickle_start = time.perf_counter()
+                pickled_data = pickle.dumps(item)
+                data_pickle_end = time.perf_counter()
+                
+                data_pickle_times.append(data_pickle_end - data_pickle_start)
+                data_sizes.append(len(pickled_data))
+            except:
+                # If data pickling fails, we already detected this in check_data_picklability
+                # Use fallback measurements
+                data_sizes.append(sys.getsizeof(item))
+                data_pickle_times.append(0.0)
+            
             # Measure execution time
             start_time = time.perf_counter()
             
@@ -576,7 +596,7 @@ def perform_dry_run(
             
             times.append(end_time - start_time)
             
-            # Measure return object size and pickle time
+            # Measure OUTPUT result pickle time (The "Pickle Tax" - part 2: results → main)
             try:
                 # Measure pickle serialization time (IPC overhead)
                 pickle_start = time.perf_counter()
@@ -598,6 +618,8 @@ def perform_dry_run(
         avg_time = sum(times) / len(times) if times else 0.0
         avg_return_size = sum(return_sizes) // len(return_sizes) if return_sizes else 0
         avg_pickle_time = sum(pickle_times) / len(pickle_times) if pickle_times else 0.0
+        avg_data_pickle_time = sum(data_pickle_times) / len(data_pickle_times) if data_pickle_times else 0.0
+        avg_data_size = sum(data_sizes) // len(data_sizes) if data_sizes else 0
         
         # Calculate variance and coefficient of variation for heterogeneous workload detection
         # Variance measures spread of execution times
@@ -646,7 +668,9 @@ def perform_dry_run(
             thread_activity=thread_info,
             workload_type=workload_type,
             cpu_time_ratio=cpu_time_ratio,
-            function_profiler_stats=profiler_stats
+            function_profiler_stats=profiler_stats,
+            avg_data_pickle_time=avg_data_pickle_time,
+            data_size=avg_data_size
         )
     
     except Exception as e:
