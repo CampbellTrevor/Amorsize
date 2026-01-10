@@ -1,11 +1,11 @@
-# Context for Next Agent - Iteration 73 Complete
+# Context for Next Agent - Iteration 74 Complete
 
 ## What Was Accomplished
 
-**CACHE INTROSPECTION AND STATISTICS** - Enhanced the caching system with comprehensive statistics and monitoring capabilities. Users can now track cache effectiveness, disk usage, entry health, and identify maintenance needs without external tools.
+**THREAD-SAFE GLOBAL CACHE** - Enhanced the system measurement caching infrastructure with thread-safe locking mechanisms. Global caches for spawn cost and chunking overhead now handle concurrent access safely, preventing race conditions in multi-threaded applications.
 
-### Previous Iteration Summary (Iteration 72)
-- **Iteration 72**: Automatic cache pruning (maintenance-free cache management, 794 tests passing)
+### Previous Iteration Summary (Iteration 73)
+- **Iteration 73**: Cache introspection and statistics (comprehensive cache monitoring, 815 tests passing)
 
 ### Previous Iteration Summary
 - **Iteration 71**: Benchmark result caching (5-100x speedup for repeated validations, 782 tests passing)
@@ -14,6 +14,213 @@
 - **Iteration 68**: Cache transparency enhancement (cache_hit flag added, all 739 tests passing)
 - **Iteration 67**: Parameter validation fix (use_cache validation added, all 733 tests passing)
 - **Iteration 66**: Comprehensive system validation (all 732 tests passing)
+
+### Critical Achievement (Iteration 74)
+**SAFETY ENHANCEMENT - Thread-Safe Global Cache**
+
+**The Mission**: After Iteration 73's cache statistics, perform detailed code review to identify any remaining safety gaps. While the system is production-ready with comprehensive features, concurrent usage scenarios needed validation.
+
+**Problem Identified**: 
+Global caches for spawn cost and chunking overhead measurements lacked thread-safety mechanisms. The caches used simple global variables without synchronization:
+
+```python
+_CACHED_SPAWN_COST: Optional[float] = None
+_CACHED_CHUNKING_OVERHEAD: Optional[float] = None
+```
+
+If multiple threads called `optimize()` simultaneously, race conditions could occur:
+1. Multiple threads checking cache simultaneously (all see None)
+2. Multiple threads performing expensive measurements concurrently
+3. Multiple threads writing to cache simultaneously (potential corruption)
+4. Wasted computation from redundant measurements
+
+This was particularly problematic for:
+- Web applications with multi-threaded request handlers
+- Concurrent task processing systems
+- Parallel testing frameworks
+- Any application using threading with Amorsize
+
+**Enhancement Implemented**:
+Added comprehensive thread-safety with double-check locking pattern:
+
+1. **Threading locks added**:
+   - `_spawn_cost_lock = threading.Lock()` for spawn cost cache
+   - `_chunking_overhead_lock = threading.Lock()` for chunking overhead cache
+   - Independent locks prevent deadlock between measurements
+
+2. **Double-check locking pattern**:
+   ```python
+   # Quick check without lock (fast path - 99% of calls)
+   if _CACHED_SPAWN_COST is not None:
+       return _CACHED_SPAWN_COST
+   
+   # Acquire lock for measurement
+   with _spawn_cost_lock:
+       # Double-check after acquiring lock
+       if _CACHED_SPAWN_COST is not None:
+           return _CACHED_SPAWN_COST
+       
+       # Perform measurement (only one thread)
+       ... measurement code ...
+       _CACHED_SPAWN_COST = result
+       return result
+   ```
+
+3. **Thread-safe cache clearing**:
+   - `_clear_spawn_cost_cache()` now uses lock
+   - `_clear_chunking_overhead_cache()` now uses lock
+   - Safe for concurrent clearing operations
+
+4. **Updated documentation**:
+   - Docstrings now mention thread-safety
+   - Clear explanation of locking behavior
+   - Performance characteristics documented
+
+5. **Comprehensive test coverage**:
+   - 14 new tests added to test_thread_safe_cache.py
+   - Tests for concurrent measurements (20 threads)
+   - Tests for cache clearing from multiple threads
+   - Tests for double-check locking performance
+   - Tests for race condition prevention
+   - Tests for independent lock operation
+   - Tests for backward compatibility
+
+**Impact**: 
+- **Concurrent safety**: Multiple threads can call optimize() safely
+- **Single measurement**: Only one thread performs measurement, others wait/reuse
+- **Zero overhead**: Fast path (cached) adds <0.001ms overhead
+- **Atomic updates**: Cache writes are atomic and consistent
+- **Production ready**: Safe for web apps, concurrent systems, parallel testing
+- **Backward compatible**: No API changes, all existing tests pass
+- **Comprehensive testing**: 14 new tests, all 829 tests passing
+
+**Changes Made (Iteration 74)**:
+
+**Files Modified (1 file):**
+
+1. **`amorsize/system_info.py`** - Added thread-safe caching
+   - Line 11: Added `import threading`
+   - Line 22: Added `_spawn_cost_lock = threading.Lock()`
+   - Line 26: Added `_chunking_overhead_lock = threading.Lock()`
+   - Lines 45-50: Updated `_clear_spawn_cost_cache()` to use lock
+   - Lines 53-58: Updated `_clear_chunking_overhead_cache()` to use lock
+   - Lines 216-273: Enhanced `measure_spawn_cost()` with double-check locking
+   - Lines 376-432: Enhanced `measure_chunking_overhead()` with double-check locking
+   - Updated docstrings to document thread-safety
+   - Total: ~30 lines of changes (mostly indentation for lock context)
+
+**Files Created (1 file):**
+
+1. **`tests/test_thread_safe_cache.py`** - Comprehensive thread-safety tests
+   - `TestThreadSafeSpawnCostCache`: 4 tests for spawn cost thread-safety
+     - test_concurrent_spawn_cost_calls_single_measurement
+     - test_spawn_cost_cache_clear_is_thread_safe
+     - test_spawn_cost_double_check_locking
+     - test_spawn_cost_no_race_on_write
+   - `TestThreadSafeChunkingOverheadCache`: 4 tests for chunking overhead
+     - test_concurrent_chunking_overhead_calls_single_measurement
+     - test_chunking_overhead_cache_clear_is_thread_safe
+     - test_chunking_overhead_double_check_locking
+     - test_chunking_overhead_no_race_on_write
+   - `TestThreadSafetyCombined`: 2 tests for concurrent operations
+     - test_concurrent_mixed_operations
+     - test_independent_cache_locks
+   - `TestBackwardCompatibility`: 4 tests for existing functionality
+     - test_get_spawn_cost_still_works
+     - test_get_chunking_overhead_still_works
+     - test_caching_still_works
+     - test_cache_clear_still_works
+   - Total: 14 new tests (~400 lines)
+
+### Why This Approach (Iteration 74)
+
+- **High-value safety improvement**: Critical for concurrent usage scenarios
+- **Minimal changes**: Only ~30 lines of production code (plus indentation)
+- **Surgical precision**: Enhanced existing functionality without breaking changes
+- **Zero API changes**: All existing code works identically
+- **Performance optimized**: Double-check locking minimizes lock contention
+- **Comprehensive testing**: 14 new tests cover all concurrent scenarios
+- **Production quality**: Follows best practices for thread-safe caching
+- **Strategic Priority #2**: Addresses SAFETY & ACCURACY (guardrails)
+- **Real-world relevance**: Solves actual problems in multi-threaded applications
+
+### Validation Results (Iteration 74)
+
+✅ **Full Test Suite:**
+```bash
+pytest tests/ -q --tb=line
+# 829 passed, 48 skipped in 20.52s
+# Zero failures, zero errors
+# +14 new tests from Iteration 74
+```
+
+✅ **Thread-Safety Behavior:**
+```python
+# Test: 20 concurrent threads calling measure_spawn_cost()
+results = []
+threads = [threading.Thread(target=lambda: results.append(measure_spawn_cost())) 
+           for _ in range(20)]
+[t.start() for t in threads]
+[t.join() for t in threads]
+
+# ✓ All threads get identical value (no race condition)
+# ✓ Only ONE measurement performed (efficient)
+# ✓ No cache corruption (atomic updates)
+
+# Test: Cache clearing from 5 threads simultaneously
+threads = [threading.Thread(target=_clear_spawn_cost_cache) for _ in range(5)]
+[t.start() for t in threads]
+[t.join() for t in threads]
+
+# ✓ No deadlocks
+# ✓ Clean cache state
+# ✓ Can measure again after clearing
+```
+
+✅ **Performance Validation:**
+```python
+# First call (measurement): ~15-200ms (OS-dependent)
+start = time.perf_counter()
+cost1 = measure_spawn_cost()
+elapsed1 = time.perf_counter() - start
+# elapsed1: ~15-200ms
+
+# Cached calls (fast path): <0.001ms (instant)
+start = time.perf_counter()
+cost2 = measure_spawn_cost()
+elapsed2 = time.perf_counter() - start
+# elapsed2: <0.001ms ✓
+
+# No performance degradation from locks ✓
+```
+
+✅ **Concurrent Mixed Operations:**
+```python
+# Test: 10 threads measuring spawn cost + 10 threads measuring chunking overhead
+spawn_results = []
+chunking_results = []
+
+spawn_threads = [threading.Thread(target=lambda: spawn_results.append(measure_spawn_cost())) 
+                 for _ in range(10)]
+chunking_threads = [threading.Thread(target=lambda: chunking_results.append(measure_chunking_overhead())) 
+                    for _ in range(10)]
+
+# Start all threads
+[t.start() for t in spawn_threads + chunking_threads]
+[t.join() for t in spawn_threads + chunking_threads]
+
+# ✓ Each cache has consistent values
+# ✓ No deadlocks (independent locks)
+# ✓ All measurements valid
+```
+
+✅ **Backward Compatibility:**
+- All existing 815 tests still pass
+- No API changes
+- Existing code works identically
+- Cache performance maintained
+- get_spawn_cost() works as before
+- get_chunking_overhead() works as before
 
 ### Critical Achievement (Iteration 73)
 **UX ENHANCEMENT - Cache Introspection and Statistics**
