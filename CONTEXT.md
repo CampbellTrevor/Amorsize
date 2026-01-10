@@ -1,108 +1,148 @@
-# Context for Next Agent - Iteration 39 Complete
+# Context for Next Agent - Iteration 40 Complete
 
 ## What Was Accomplished
 
-Successfully added **modern Python packaging with pyproject.toml** (PEP 517/518 compliance).
+Successfully added **CI/CD automation with GitHub Actions** for continuous testing and building.
 
 ### Issue Addressed
-- Project only had legacy setup.py for packaging
-- Missing modern pyproject.toml standard (PEP 517/518)
-- This affects tooling support and future-proofing
+- No automated testing on PR/push events
+- No continuous validation of the infrastructure built in previous iterations
+- Missing automated package building verification
+- No Python version matrix testing (3.7-3.13)
 
 ### Changes Made
-**File: `pyproject.toml` (NEW)**
-- Added PEP 517/518 compliant build configuration
-- Declared build system requirements (setuptools>=45, wheel)
-- Migrated all metadata from setup.py to declarative format
-- Added Python 3.13 classifier (already supported, just not declared)
-- Configured optional dependencies (full, dev)
-- Added project URLs (homepage, bug reports, source)
-- Used setuptools build backend for compatibility
+
+**Files Created:**
+1. `.github/workflows/test.yml` - Comprehensive test suite automation
+2. `.github/workflows/build.yml` - Package build and verification
+
+### Workflow Details
+
+#### Test Workflow (`test.yml`)
+**Triggers:** Push/PR to main, Iterate, develop branches
+
+**Test Matrix:**
+- Tests Python 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, 3.13
+- Tests both minimal (no psutil) and full (with psutil) dependencies
+- Runs 630+ tests with pytest
+- Validates import and CLI functionality
+
+**Coverage Job:**
+- Runs pytest with coverage reporting
+- Uses Python 3.12 with full dependencies
+- Generates coverage reports
+
+#### Build Workflow (`build.yml`)
+**Triggers:** Push/PR to main, Iterate, develop branches + releases
+
+**Jobs:**
+1. **Build Job** - Creates distribution packages (wheel + sdist)
+2. **Verify Job** - Tests installation from both wheel and sdist
+
+**Validation Steps:**
+- Builds package with `python -m build`
+- Checks with `twine check`
+- Tests installation from wheel
+- Tests installation from source distribution
+- Stores artifacts for 7 days
 
 ### Why This Approach
-- **PEP 517/518 Standard**: Modern Python packaging uses pyproject.toml
-- **Tool Support**: Better integration with pip, build, poetry, and other tools
-- **Declarative Config**: Cleaner than imperative setup.py
-- **Future-Proof**: setup.py is being phased out by the Python community
-- **Backward Compatible**: Kept setup.py for now to maintain compatibility
-- **Single Source**: pyproject.toml becomes the authoritative source for metadata
-
-### Technical Details
-**Build System:**
-- Uses setuptools as build backend (most compatible)
-- Requires setuptools>=45 and wheel
-- No dynamic versioning (static 0.1.0 for simplicity)
-
-**Package Configuration:**
-- All metadata moved from setup.py
-- Python 3.7+ requirement maintained
-- Optional dependencies preserved (psutil, pytest)
-- Package discovery simplified
+- **Continuous Validation**: Automatically tests every change
+- **Python Version Coverage**: Tests all supported versions (3.7-3.13)
+- **Dependency Variants**: Tests with/without optional dependencies
+- **Build Verification**: Ensures package builds correctly
+- **Early Bug Detection**: Catches issues before they reach main
+- **Production Ready**: Prepares for PyPI publication
 
 ### Testing Results
-✅ Package builds successfully with `python -m build`
-✅ Wheel installs correctly (`pip install dist/amorsize-0.1.0-py3-none-any.whl`)
-✅ All 630 tests passing (26 skipped)
-✅ Zero warnings maintained
-✅ No regressions - all functionality preserved
+✅ All 630 tests passing locally (26 skipped)
+✅ Build creates wheel and sdist successfully
+✅ CLI works correctly (`python -m amorsize --help`)
+✅ Package installs from both wheel and sdist
+✅ Import test successful
 
-### Build Verification
+### Verification Commands
 ```bash
-# Clean build
-python3 -m build --wheel --no-isolation
-# Successfully built amorsize-0.1.0-py3-none-any.whl
+# Test suite
+pytest tests/ -v --tb=short --durations=10
+# 630 passed, 26 skipped in 16.89s
 
-# Install and test
-pip install dist/amorsize-0.1.0-py3-none-any.whl
-python3 -c "from amorsize import optimize; print('✓ Works')"
+# Build package
+python3 -m build
+# Successfully built amorsize-0.1.0.tar.gz and amorsize-0.1.0-py3-none-any.whl
+
+# CLI test
+python -m amorsize --help
+python -m amorsize optimize math.factorial --data-range 10
 ```
 
 ### Status
-✅ Production ready - Modern packaging infrastructure in place
+✅ CI/CD infrastructure in place and ready for GitHub
 
 ## Recommended Next Steps
-1. **CI/CD Automation** (HIGH VALUE) - Add GitHub Actions for automated testing and building
-2. Advanced tuning (Bayesian optimization)
-3. Profiling integration (cProfile, flame graphs)
-4. Pipeline optimization (multi-function)
-5. Documentation improvements (API reference, advanced guides)
+
+With CI/CD now in place, consider these high-value increments:
+
+1. **Performance Benchmarking Suite** - Add automated performance regression testing
+2. **Advanced Tuning** - Bayesian optimization for parameter tuning
+3. **Profiling Integration** - cProfile/flame graph integration
+4. **Documentation** - Auto-generated API reference documentation
+5. **PyPI Publication** - Prepare and publish to PyPI with automated workflow
 
 ## Notes for Next Agent
-The codebase is in **EXCELLENT** shape with enhanced packaging:
+
+The codebase is in **EXCELLENT** shape with full CI/CD automation:
 
 ### Infrastructure (The Foundation) ✅
 - ✅ Physical core detection with multiple fallback strategies
 - ✅ Memory limit detection (cgroup/Docker aware)
 - ✅ Measured spawn cost (not estimated - actual benchmarks)
-- ✅ **Modern Python packaging (pyproject.toml - PEP 517/518)**
+- ✅ Modern Python packaging (pyproject.toml - PEP 517/518)
+- ✅ **CI/CD automation with GitHub Actions** ← NEW
 
 ### Safety & Accuracy (The Guardrails) ✅
-- ✅ Generator safety with `itertools.chain` 
+- ✅ Generator safety with `itertools.chain`
 - ✅ OS spawning overhead actually measured
 - ✅ Comprehensive pickle checks (function + data)
+- ✅ **Automated testing across Python 3.7-3.13** ← NEW
 
 ### Core Logic (The Optimizer) ✅
 - ✅ Full Amdahl's Law implementation
 - ✅ Chunksize based on 0.2s target duration
 - ✅ Memory-aware worker calculation
+- ✅ Adaptive chunking for heterogeneous workloads
 
 ### UX & Robustness (The Polish) ✅
 - ✅ Edge cases handled (empty data, unpicklable, etc.)
 - ✅ Clean API (`from amorsize import optimize`)
-- ✅ Python 3.7-3.13 compatibility (declared in pyproject.toml)
+- ✅ Python 3.7-3.13 compatibility
 - ✅ Zero warnings in test suite
-- ✅ **Modern packaging with pyproject.toml**
+- ✅ Modern packaging with pyproject.toml
+- ✅ CLI interface
+- ✅ Configuration export/import
+- ✅ Benchmark validation
+- ✅ Diagnostic profiling
+- ✅ **Continuous integration/deployment** ← NEW
 
-### Key Enhancement
-**pyproject.toml adds:**
-- PEP 517/518 compliance for modern Python packaging
-- Better tooling integration (pip, build, poetry)
-- Declarative configuration (easier to maintain)
-- Future-proof approach as setup.py is being phased out
-- Python 3.13 officially declared as supported
+### Key Enhancement: CI/CD Automation
 
-All foundational work is complete. The **highest-value next increment** would be:
-- **CI/CD Automation**: Add GitHub Actions workflow for automated testing, linting, and package building on PR/push
-- This provides continuous validation and prepares for PyPI publication
+**GitHub Actions workflows provide:**
+- Automated testing on every PR/push
+- Python version matrix testing (3.7-3.13)
+- Dependency variant testing (minimal vs full)
+- Package build verification
+- Coverage reporting
+- Distribution artifact storage
+- Continuous validation of all 39+ previous iterations
+
+**Workflow Features:**
+- **Fast feedback**: Tests run in parallel across Python versions
+- **Comprehensive**: Tests code, imports, CLI, and package building
+- **Flexible**: Separate jobs for testing and building
+- **Future-proof**: Ready for PyPI publication automation
+
+All foundational work complete. All guardrails in place. All core logic implemented. All UX features done. **CI/CD automation now operational.**
+
+The project is production-ready with automated continuous validation. The highest-value next increment would be **performance benchmarking suite** or **PyPI publication**.
 
 Good luck! 🚀
