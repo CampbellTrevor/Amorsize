@@ -176,7 +176,7 @@ Created comprehensive GitHub Actions CI/CD infrastructure with 4 workflows:
 - uses: actions/checkout@v4           # Latest v4.x
 - uses: actions/setup-python@v5       # Latest v5.x
 - uses: actions/upload-artifact@v4    # Latest v4.x
-- uses: actions/download-artifact@v4  # Latest v4.x
+- uses: actions/download-artifact@v4.1.3  # Patched v4.1.3 (CVE fix)
 ```
 
 **Matrix Strategies:**

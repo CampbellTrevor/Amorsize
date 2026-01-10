@@ -151,6 +151,10 @@ Manual updates required for:
 - Python version specifications
 - pip package versions in workflows
 
+**Security Note:** We explicitly pin `actions/download-artifact@v4.1.3` (not `@v4`) 
+due to a security vulnerability (arbitrary file write via artifact extraction) in 
+versions >= 4.0.0, < 4.1.3. This ensures the patched version is always used.
+
 ## Troubleshooting
 
 ### Test Failures
