@@ -39,7 +39,7 @@ jobs:
         pip install -e .
         python -c "from amorsize import optimize, execute, process_in_batches"
         python -c "from amorsize import validate_optimization, load_config"
-        python -c "from amorsize import compare_configs, tune_parameters"
+        python -c "from amorsize import compare_strategies, tune_parameters"
         python -c "import amorsize.system_info"
         python -c "import amorsize.sampling"
         python -c "import amorsize.optimizer"
