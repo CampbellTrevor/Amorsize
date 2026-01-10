@@ -309,11 +309,20 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
         1. Execute workload with large chunks (fewer chunks, less overhead)
         2. Execute workload with small chunks (more chunks, more overhead)
         3. Calculate marginal cost: (time_small - time_large) / (chunks_small - chunks_large)
+        4. Validate measurement quality with multiple criteria
+        5. Use intelligent fallback if measurement is unreliable
         
         This isolates the per-chunk overhead from the actual computation time.
         
+    Improvements:
+        - Multiple validation checks for measurement quality
+        - Detects and handles measurement noise
+        - Adaptive chunk size selection
+        - More robust fallback strategies
+        
     Fallback Strategy:
-        If benchmarking fails, falls back to the default estimate (0.5ms per chunk).
+        If benchmarking fails or produces unreliable results, falls back to
+        the default estimate (0.5ms per chunk).
     """
     global _CACHED_CHUNKING_OVERHEAD
     
@@ -356,15 +365,43 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
         time_diff = time_small - time_large
         chunk_diff = num_small_chunks - num_large_chunks
         
+        # Enhanced validation: Check multiple quality criteria
         if chunk_diff > 0 and time_diff > 0:
             per_chunk_overhead = time_diff / chunk_diff
             
-            # Sanity check: overhead should be positive and reasonable (< 10ms per chunk)
-            if 0 < per_chunk_overhead < 0.01:
-                _CACHED_CHUNKING_OVERHEAD = per_chunk_overhead
-                return per_chunk_overhead
+            # Quality check 1: Overhead should be positive and reasonable (< 10ms per chunk)
+            if not (0 < per_chunk_overhead < 0.01):
+                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                return DEFAULT_CHUNKING_OVERHEAD
+            
+            # Quality check 2: Measurement should show clear signal
+            # The small-chunk run should take at least 5% longer than large-chunk
+            # This ensures we're measuring real overhead, not noise
+            if time_small < time_large * 1.05:
+                # Signal too weak - likely measurement noise
+                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                return DEFAULT_CHUNKING_OVERHEAD
+            
+            # Quality check 3: Per-chunk overhead should be reasonable fraction of total time
+            # If per-chunk overhead * num_chunks > 50% of total time, something is wrong
+            estimated_total_overhead = per_chunk_overhead * num_small_chunks
+            if estimated_total_overhead > time_small * 0.5:
+                # Overhead seems unrealistically high
+                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                return DEFAULT_CHUNKING_OVERHEAD
+            
+            # Quality check 4: The overhead should be in a reasonable range
+            # Based on empirical observations, overhead is typically 0.1ms to 5ms per chunk
+            if not (0.0001 < per_chunk_overhead < 0.005):
+                # Outside reasonable bounds - use default
+                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                return DEFAULT_CHUNKING_OVERHEAD
+            
+            # All quality checks passed - use measured value
+            _CACHED_CHUNKING_OVERHEAD = per_chunk_overhead
+            return per_chunk_overhead
         
-        # If measurement seems unreasonable, fall back to default
+        # If measurement conditions not met, fall back to default
         _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
         return DEFAULT_CHUNKING_OVERHEAD
         
