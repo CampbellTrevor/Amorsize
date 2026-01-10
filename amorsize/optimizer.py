@@ -389,7 +389,8 @@ def _validate_optimize_parameters(
     progress_callback: Any,
     prefer_threads_for_io: bool,
     enable_function_profiling: bool,
-    use_cache: bool
+    use_cache: bool,
+    enable_memory_tracking: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -407,6 +408,8 @@ def _validate_optimize_parameters(
         progress_callback: Progress callback to validate
         prefer_threads_for_io: Prefer threads for I/O flag to validate
         enable_function_profiling: Enable function profiling flag to validate
+        use_cache: Use cache flag to validate
+        enable_memory_tracking: Enable memory tracking flag to validate
     
     Returns:
         None if all parameters are valid, error message string otherwise
@@ -456,6 +459,8 @@ def _validate_optimize_parameters(
         return f"enable_function_profiling must be a boolean, got {type(enable_function_profiling).__name__}"
     if not isinstance(use_cache, bool):
         return f"use_cache must be a boolean, got {type(use_cache).__name__}"
+    if not isinstance(enable_memory_tracking, bool):
+        return f"enable_memory_tracking must be a boolean, got {type(enable_memory_tracking).__name__}"
     
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
@@ -568,7 +573,8 @@ def optimize(
     progress_callback: Optional[Callable[[str, float], None]] = None,
     prefer_threads_for_io: bool = True,
     enable_function_profiling: bool = False,
-    use_cache: bool = True
+    use_cache: bool = True,
+    enable_memory_tracking: bool = True
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -657,6 +663,11 @@ def optimize(
                 dry-run sampling and benchmarking. Cache entries are automatically validated
                 for system compatibility and expire after 7 days. (default: True).
                 Set to False to force fresh optimization. Must be a boolean.
+        enable_memory_tracking: If True, use tracemalloc to track peak memory usage during
+                dry run sampling. Memory tracking adds ~2-3% overhead during sampling.
+                When disabled, worker calculation falls back to using physical cores without
+                memory constraints. (default: True). Must be a boolean.
+                Set to False for fastest optimization when memory constraints are not needed.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -698,7 +709,7 @@ def optimize(
         func, data, sample_size, target_chunk_duration,
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
         auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io,
-        enable_function_profiling, use_cache
+        enable_function_profiling, use_cache, enable_memory_tracking
     )
     
     if validation_error:
@@ -821,7 +832,7 @@ def optimize(
     
     _report_progress("Sampling function", 0.1)
     
-    sampling_result = perform_dry_run(func, data, sample_size, enable_function_profiling)
+    sampling_result = perform_dry_run(func, data, sample_size, enable_function_profiling, enable_memory_tracking)
     
     _report_progress("Sampling complete", 0.3)
     
