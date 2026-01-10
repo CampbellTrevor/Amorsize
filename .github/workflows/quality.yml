@@ -1,0 +1,47 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, Iterate, develop ]
+  pull_request:
+    branches: [ main, Iterate, develop ]
+
+jobs:
+  quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[full,dev]"
+    
+    - name: Check package metadata
+      run: |
+        python -c "import amorsize; print(f'Package version: {amorsize.__version__}')"
+        python -c "from amorsize import optimize, execute, process_in_batches, optimize_streaming; print('✓ All main exports available')"
+    
+    - name: Verify pyproject.toml
+      run: |
+        python -c "import tomli; tomli.load(open('pyproject.toml', 'rb'))" 2>/dev/null || python -c "import tomllib; tomllib.load(open('pyproject.toml', 'rb'))" || python -c "import toml; toml.load('pyproject.toml')"
+    
+    - name: Check for common issues
+      run: |
+        # Check for syntax errors
+        python -m py_compile amorsize/*.py
+        echo "✓ No syntax errors found"
+    
+    - name: Verify examples
+      run: |
+        # Check that example files are valid Python
+        python -m py_compile examples/*.py
+        echo "✓ All examples have valid syntax"
