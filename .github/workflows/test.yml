@@ -36,7 +36,7 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest tests/ -v --tb=short --cov=amorsize --cov-report=term-missing
+        pytest tests/ -v --tb=short --cov=amorsize --cov-report=term-missing --cov-report=xml
       env:
         AMORSIZE_TESTING: "1"
     
