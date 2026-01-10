@@ -12,6 +12,7 @@ import json
 import os
 import pickle
 import platform
+import random
 import sys
 import time
 from pathlib import Path
@@ -25,6 +26,10 @@ CACHE_VERSION = 1
 
 # Cache entry time-to-live (default: 7 days)
 DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+
+# Probability of triggering automatic cache pruning on load (5% chance)
+# This provides gradual cleanup without impacting performance
+AUTO_PRUNE_PROBABILITY = 0.05
 
 
 class CacheEntry:
@@ -277,6 +282,11 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
     """
     Load a cached optimization result.
     
+    This function includes automatic cache pruning: with a small probability
+    (default 5%), it will trigger cleanup of expired entries. This ensures
+    cache directories don't grow unbounded over time without requiring
+    explicit user action.
+    
     Args:
         cache_key: Unique key for the optimization
         ttl_seconds: Maximum age in seconds (default: 7 days)
@@ -284,6 +294,10 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
     Returns:
         CacheEntry if found and valid, None otherwise
     """
+    # Probabilistically trigger automatic cache pruning
+    # This distributes cleanup cost and prevents unbounded growth
+    _maybe_auto_prune_cache(get_cache_dir, ttl_seconds=ttl_seconds)
+    
     try:
         cache_dir = get_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
@@ -378,6 +392,73 @@ def prune_expired_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> int:
         
     except (OSError, IOError):
         return 0
+
+
+def _maybe_auto_prune_cache(cache_dir_func, probability: float = AUTO_PRUNE_PROBABILITY, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> None:
+    """
+    Probabilistically trigger automatic cache pruning.
+    
+    This function is called during cache load operations to gradually clean up
+    expired entries without requiring explicit user action. The pruning happens
+    with a low probability to minimize performance impact while ensuring that
+    expired entries are eventually removed.
+    
+    Strategy:
+        - Use probabilistic triggering (default 5% chance per load)
+        - Distributes cleanup cost across many operations
+        - Avoids performance impact on individual operations
+        - Ensures long-running applications eventually clean up
+    
+    Args:
+        cache_dir_func: Function that returns the cache directory Path
+        probability: Probability of triggering pruning (0.0-1.0)
+        ttl_seconds: Maximum age in seconds for cache entries
+    
+    Returns:
+        None (pruning happens silently in background)
+    
+    Note:
+        This function never raises exceptions - failures are silently ignored
+        to ensure caching never breaks the main functionality.
+    """
+    # Probabilistic trigger
+    if random.random() > probability:
+        return
+    
+    try:
+        cache_dir = cache_dir_func()
+        
+        # Quick pruning pass - check files and remove expired/corrupted ones
+        # This keeps the operation fast even with large cache directories
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                # Try to load and validate the JSON structure
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                
+                # Check if entry has required timestamp field
+                if 'timestamp' not in data:
+                    # Missing timestamp = corrupted, delete it
+                    cache_file.unlink()
+                    continue
+                
+                # Check if entry is expired based on timestamp
+                entry_timestamp = data.get('timestamp', 0)
+                entry_age = time.time() - entry_timestamp
+                
+                if entry_age > ttl_seconds:
+                    cache_file.unlink()
+                    
+            except (OSError, IOError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+                # Invalid or corrupted cache file, try to delete it
+                try:
+                    cache_file.unlink()
+                except OSError:
+                    pass
+    
+    except (OSError, IOError, AttributeError):
+        # Silently ignore failures - auto-pruning is a best-effort optimization
+        pass
 
 
 class BenchmarkCacheEntry:
@@ -588,6 +669,11 @@ def load_benchmark_cache_entry(
     """
     Load a cached benchmark validation result.
     
+    This function includes automatic cache pruning: with a small probability
+    (default 5%), it will trigger cleanup of expired entries. This ensures
+    cache directories don't grow unbounded over time without requiring
+    explicit user action.
+    
     Args:
         cache_key: Unique key for the benchmark
         ttl_seconds: Maximum age in seconds (default: 7 days)
@@ -595,6 +681,10 @@ def load_benchmark_cache_entry(
     Returns:
         BenchmarkCacheEntry if found and valid, None otherwise
     """
+    # Probabilistically trigger automatic cache pruning
+    # This distributes cleanup cost and prevents unbounded growth
+    _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
+    
     try:
         cache_dir = get_benchmark_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"

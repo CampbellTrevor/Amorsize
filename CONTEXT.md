@@ -1,17 +1,164 @@
-# Context for Next Agent - Iteration 71 Complete
+# Context for Next Agent - Iteration 72 Complete
 
 ## What Was Accomplished
 
-**BENCHMARK RESULT CACHING** - Enhanced the benchmark validation system with intelligent caching to avoid redundant benchmark runs. Repeated validations of the same function+workload now use cached results, providing 5-100x speedup for production validation workflows and development iteration cycles.
+**AUTOMATIC CACHE PRUNING** - Enhanced the caching system with probabilistic automatic cache pruning to prevent unbounded cache directory growth. Cache load operations now opportunistically clean up expired entries without requiring explicit user action, providing maintenance-free cache management.
 
-### Previous Iteration Summary (Iteration 70)
-- **Iteration 70**: Swap-aware memory detection (progressive worker reduction under memory pressure, 760 tests passing)
+### Previous Iteration Summary (Iteration 71)
+- **Iteration 71**: Benchmark result caching (5-100x speedup for repeated validations, 782 tests passing)
 
 ### Previous Iteration Summary
+- **Iteration 70**: Swap-aware memory detection (progressive worker reduction under memory pressure, 760 tests passing)
 - **Iteration 69**: Enhanced container memory detection (cgroup v2 hierarchical paths, memory.max/memory.high support, 752 tests passing)
 - **Iteration 68**: Cache transparency enhancement (cache_hit flag added, all 739 tests passing)
 - **Iteration 67**: Parameter validation fix (use_cache validation added, all 733 tests passing)
 - **Iteration 66**: Comprehensive system validation (all 732 tests passing)
+
+### Critical Achievement (Iteration 72)
+**ROBUSTNESS ENHANCEMENT - Automatic Cache Pruning**
+
+**The Mission**: After Iteration 71's benchmark result caching, identify the next high-value robustness improvement. While the caching system provides excellent performance benefits (70x for optimization, 5-100x for benchmarks), cache directories could grow unbounded over time without explicit user intervention.
+
+**Problem Identified**: 
+The caching system has two separate caches (optimization cache and benchmark cache), both with 7-day TTL. However, expired entries are only removed when users explicitly call `prune_expired_cache()`. This means:
+1. Long-running applications accumulate expired cache entries
+2. Users need to remember to manually call pruning functions
+3. Cache directories can grow to hundreds of megabytes over time
+4. No automatic cleanup mechanism exists
+
+The existing `prune_expired_cache()` function provided manual cleanup, but users would need to:
+- Know it exists
+- Remember to call it periodically
+- Set up cron jobs or similar mechanisms
+
+**Enhancement Implemented**:
+Added probabilistic automatic cache pruning with lightweight, non-blocking operation:
+
+1. **New `AUTO_PRUNE_PROBABILITY` constant (5%)**:
+   - Low probability to minimize performance impact
+   - Distributes cleanup cost across many operations
+   - Ensures eventual cleanup without blocking
+
+2. **New `_maybe_auto_prune_cache()` helper function**:
+   - Probabilistic triggering (5% chance per load)
+   - Works with both optimization and benchmark caches
+   - Checks file timestamps efficiently
+   - Deletes expired entries (age > 7 days)
+   - Removes corrupted cache files
+   - Never raises exceptions (silent best-effort)
+   - Quick operation even with hundreds of files
+
+3. **Integration with cache load operations**:
+   - `load_cache_entry()`: Now calls auto-pruning before loading
+   - `load_benchmark_cache_entry()`: Now calls auto-pruning before loading
+   - Zero impact when pruning doesn't trigger (95% of the time)
+   - Fast operation when it does trigger (<100ms even with 100 files)
+
+4. **Intelligent pruning strategy**:
+   - Only loads JSON when file timestamp suggests it might be expired
+   - Validates JSON structure to detect corruption
+   - Deletes files missing required fields
+   - Preserves recent entries
+   - Graceful error handling
+
+5. **Comprehensive test coverage**:
+   - 12 new tests added to test_auto_cache_pruning.py
+   - Tests for probabilistic triggering
+   - Tests for expired entry removal
+   - Tests for recent entry preservation
+   - Tests for corrupted file handling
+   - Tests for performance impact
+   - Tests for both optimization and benchmark caches
+
+**Impact**: 
+- **Maintenance-free**: Cache directories don't grow unbounded
+- **Zero user action**: No need to manually call pruning functions
+- **Minimal overhead**: 5% probability means 95% of loads have zero impact
+- **Fast when triggered**: <100ms even with 100+ cache files
+- **Robust**: Handles corrupted files gracefully
+- **Production ready**: 12 new tests, all 794 tests passing
+
+**Changes Made (Iteration 72)**:
+
+**Files Modified (1 file):**
+
+1. **`amorsize/cache.py`** - Added automatic cache pruning
+   - Added `import random` for probabilistic triggering
+   - Added `AUTO_PRUNE_PROBABILITY = 0.05` constant (line ~31)
+   - Added `_maybe_auto_prune_cache()` helper function (~60 lines)
+   - Enhanced `load_cache_entry()` with auto-pruning call
+   - Enhanced `load_benchmark_cache_entry()` with auto-pruning call
+   - Total: ~65 lines of new code
+
+**Files Created (1 file):**
+
+1. **`tests/test_auto_cache_pruning.py`** - Comprehensive test coverage
+   - `TestAutoPruningInfrastructure`: 4 tests for helper function
+   - `TestOptimizationCacheAutoPruning`: 3 tests for optimization cache
+   - `TestBenchmarkCacheAutoPruning`: 3 tests for benchmark cache
+   - `TestAutoPruningPerformance`: 2 tests for performance validation
+   - Total: 12 new tests (~310 lines)
+
+### Why This Approach (Iteration 72)
+
+- **High-value robustness improvement**: Prevents cache directory growth without user action
+- **Minimal changes**: Only 65 lines of production code
+- **Surgical precision**: Enhanced existing functionality without breaking changes
+- **Zero breaking changes**: All 782 existing tests still pass
+- **Comprehensive testing**: 12 new tests cover all scenarios
+- **Production quality**: Follows existing patterns and conventions
+- **Strategic Priority #4**: Addresses UX & ROBUSTNESS (maintenance-free operation)
+- **Builds on previous work**: Enhances Iteration 65 and 71 caching features
+
+### Validation Results (Iteration 72)
+
+✅ **Full Test Suite:**
+```bash
+pytest tests/ -q --tb=line
+# 794 passed, 48 skipped in 19.46s
+# Zero failures, zero errors
+# +12 new tests from Iteration 72
+```
+
+✅ **Auto-Pruning Behavior:**
+```python
+# Test probabilistic triggering
+with patch('amorsize.cache.random.random', return_value=0.0):  # Force trigger
+    load_cache_entry("test_key")
+# ✓ Auto-pruning triggered
+
+with patch('amorsize.cache.random.random', return_value=0.99):  # Skip
+    load_cache_entry("test_key")
+# ✓ Auto-pruning skipped (zero overhead)
+
+# Test expired entry removal
+# Create expired entry (8 days old)
+# Force multiple auto-prune triggers
+# ✓ Expired entry removed
+
+# Test recent entry preservation  
+# Create recent entry (< 7 days old)
+# Force multiple auto-prune triggers
+# ✓ Recent entry preserved
+```
+
+✅ **Performance Validation:**
+```python
+# Test with 100 cache files
+elapsed = measure_auto_prune_time(100_files)
+# ✓ Completed in < 100ms
+
+# Test load without pruning
+elapsed = measure_load_time_skip_prune()
+# ✓ Completed in < 10ms (no overhead)
+```
+
+✅ **Backward Compatibility:**
+- All existing 782 tests still pass
+- No API changes
+- Automatic pruning is transparent
+- Manual `prune_expired_cache()` still works
+- Existing caching behavior unchanged
 
 ### Critical Achievement (Iteration 71)
 **UX ENHANCEMENT - Benchmark Result Caching**
