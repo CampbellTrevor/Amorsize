@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import multiprocessing
+import threading
 from typing import Tuple, Optional
 
 try:
@@ -18,9 +19,11 @@ except ImportError:
 
 # Global cache for spawn cost measurement
 _CACHED_SPAWN_COST: Optional[float] = None
+_spawn_cost_lock = threading.Lock()
 
 # Global cache for chunking overhead measurement
 _CACHED_CHUNKING_OVERHEAD: Optional[float] = None
+_chunking_overhead_lock = threading.Lock()
 
 # Minimum reasonable marginal cost threshold (1ms)
 # Below this, we assume measurement noise and fall back to single-worker measurement
@@ -42,9 +45,12 @@ def _clear_spawn_cost_cache():
     
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
+    
+    Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_SPAWN_COST
-    _CACHED_SPAWN_COST = None
+    with _spawn_cost_lock:
+        _CACHED_SPAWN_COST = None
 
 
 def _clear_chunking_overhead_cache():
@@ -53,9 +59,12 @@ def _clear_chunking_overhead_cache():
     
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
+    
+    Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_CHUNKING_OVERHEAD
-    _CACHED_CHUNKING_OVERHEAD = None
+    with _chunking_overhead_lock:
+        _CACHED_CHUNKING_OVERHEAD = None
 
 
 def _parse_proc_cpuinfo() -> Optional[int]:
@@ -213,6 +222,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
     a more accurate per-worker cost than measuring a single worker pool.
     
     The measurement is cached globally to avoid repeated benchmarking.
+    Thread-safe: Uses lock to prevent concurrent measurements.
     
     Enhanced with quality validation to ensure reliable measurements across
     diverse system conditions (similar to chunking overhead measurement).
@@ -241,109 +251,121 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
     Fallback Strategy:
         If benchmarking fails or produces unreliable results, falls back to
         OS-based estimates based on the multiprocessing start method.
+        
+    Thread Safety:
+        Uses a lock to ensure only one thread performs the measurement. If
+        multiple threads call this function simultaneously, the first one
+        performs the measurement while others wait for the result.
     """
     global _CACHED_SPAWN_COST
     
-    # Return cached value if available
+    # Quick check without lock (optimization for common case)
     if _CACHED_SPAWN_COST is not None:
         return _CACHED_SPAWN_COST
     
-    # Get fallback value early for quality checks
-    fallback_estimate = get_spawn_cost_estimate()
-    
-    try:
-        # Measure time to create pool with 1 worker
-        start_1 = time.perf_counter()
-        with multiprocessing.Pool(processes=1) as pool:
-            result = pool.apply_async(_noop_worker, (None,))
-            result.get(timeout=timeout)
-        end_1 = time.perf_counter()
-        time_1_worker = end_1 - start_1
+    # Acquire lock for measurement
+    with _spawn_cost_lock:
+        # Double-check after acquiring lock (another thread may have measured)
+        if _CACHED_SPAWN_COST is not None:
+            return _CACHED_SPAWN_COST
         
-        # Measure time to create pool with 2 workers
-        start_2 = time.perf_counter()
-        with multiprocessing.Pool(processes=2) as pool:
-            # Submit tasks to ensure both workers are initialized
-            results = [pool.apply_async(_noop_worker, (None,)) for _ in range(2)]
-            for result in results:
+        # Perform measurement (only one thread reaches here)
+        # Get fallback value early for quality checks
+        fallback_estimate = get_spawn_cost_estimate()
+        
+        try:
+            # Measure time to create pool with 1 worker
+            start_1 = time.perf_counter()
+            with multiprocessing.Pool(processes=1) as pool:
+                result = pool.apply_async(_noop_worker, (None,))
                 result.get(timeout=timeout)
-        end_2 = time.perf_counter()
-        time_2_workers = end_2 - start_2
-        
-        # Calculate marginal cost per worker
-        # This removes fixed pool initialization overhead
-        marginal_cost = time_2_workers - time_1_worker
-        
-        # Enhanced validation: Check multiple quality criteria
-        # If marginal cost is positive and reasonable, use it with validation
-        if marginal_cost > MIN_REASONABLE_MARGINAL_COST:
-            per_worker_cost = marginal_cost
+            end_1 = time.perf_counter()
+            time_1_worker = end_1 - start_1
             
-            # Quality check 1: Reasonable range based on start method
-            # fork: 1ms to 100ms, spawn: 50ms to 1000ms, forkserver: 10ms to 500ms
-            start_method = get_multiprocessing_start_method()
-            if start_method == 'fork':
-                min_bound, max_bound = 0.001, 0.1  # 1ms to 100ms
-            elif start_method == 'spawn':
-                min_bound, max_bound = 0.05, 1.0   # 50ms to 1000ms
-            elif start_method == 'forkserver':
-                min_bound, max_bound = 0.01, 0.5   # 10ms to 500ms
+            # Measure time to create pool with 2 workers
+            start_2 = time.perf_counter()
+            with multiprocessing.Pool(processes=2) as pool:
+                # Submit tasks to ensure both workers are initialized
+                results = [pool.apply_async(_noop_worker, (None,)) for _ in range(2)]
+                for result in results:
+                    result.get(timeout=timeout)
+            end_2 = time.perf_counter()
+            time_2_workers = end_2 - start_2
+            
+            # Calculate marginal cost per worker
+            # This removes fixed pool initialization overhead
+            marginal_cost = time_2_workers - time_1_worker
+            
+            # Enhanced validation: Check multiple quality criteria
+            # If marginal cost is positive and reasonable, use it with validation
+            if marginal_cost > MIN_REASONABLE_MARGINAL_COST:
+                per_worker_cost = marginal_cost
+                
+                # Quality check 1: Reasonable range based on start method
+                # fork: 1ms to 100ms, spawn: 50ms to 1000ms, forkserver: 10ms to 500ms
+                start_method = get_multiprocessing_start_method()
+                if start_method == 'fork':
+                    min_bound, max_bound = 0.001, 0.1  # 1ms to 100ms
+                elif start_method == 'spawn':
+                    min_bound, max_bound = 0.05, 1.0   # 50ms to 1000ms
+                elif start_method == 'forkserver':
+                    min_bound, max_bound = 0.01, 0.5   # 10ms to 500ms
+                else:
+                    # Unknown start method - use conservative bounds
+                    min_bound, max_bound = 0.001, 1.0
+                
+                if not (min_bound <= per_worker_cost <= max_bound):
+                    # Outside reasonable bounds for this start method
+                    _CACHED_SPAWN_COST = fallback_estimate
+                    return fallback_estimate
+                
+                # Quality check 2: Signal strength validation
+                # 2-worker measurement should be at least 10% longer than 1-worker
+                # This ensures we're measuring real spawn cost, not noise
+                if time_2_workers < time_1_worker * 1.1:
+                    # Signal too weak - likely measurement noise
+                    _CACHED_SPAWN_COST = fallback_estimate
+                    return fallback_estimate
+                
+                # Quality check 3: Consistency with start method expectations
+                # Measured value should be within 10x of the expected value
+                # This catches measurements that are wildly off
+                if not (fallback_estimate / 10 <= per_worker_cost <= fallback_estimate * 10):
+                    # Measurement inconsistent with expectations
+                    _CACHED_SPAWN_COST = fallback_estimate
+                    return fallback_estimate
+                
+                # Quality check 4: Overhead fraction validation
+                # Marginal cost should be reasonable fraction of 2-worker time
+                # If marginal cost > 90% of total time, something is wrong
+                if marginal_cost > time_2_workers * 0.9:
+                    # Overhead seems unrealistically high relative to total
+                    _CACHED_SPAWN_COST = fallback_estimate
+                    return fallback_estimate
+                
+                # All quality checks passed - use measured value
+                _CACHED_SPAWN_COST = per_worker_cost
+                return per_worker_cost
             else:
-                # Unknown start method - use conservative bounds
-                min_bound, max_bound = 0.001, 1.0
+                # Marginal cost too small or negative - fall back to 1-worker measurement
+                # But validate it first
+                if MIN_REASONABLE_MARGINAL_COST <= time_1_worker <= max(0.1, fallback_estimate * 5):
+                    # 1-worker measurement seems reasonable
+                    _CACHED_SPAWN_COST = time_1_worker
+                    return time_1_worker
+                else:
+                    # Even 1-worker measurement seems unreliable
+                    _CACHED_SPAWN_COST = fallback_estimate
+                    return fallback_estimate
             
-            if not (min_bound <= per_worker_cost <= max_bound):
-                # Outside reasonable bounds for this start method
-                _CACHED_SPAWN_COST = fallback_estimate
-                return fallback_estimate
-            
-            # Quality check 2: Signal strength validation
-            # 2-worker measurement should be at least 10% longer than 1-worker
-            # This ensures we're measuring real spawn cost, not noise
-            if time_2_workers < time_1_worker * 1.1:
-                # Signal too weak - likely measurement noise
-                _CACHED_SPAWN_COST = fallback_estimate
-                return fallback_estimate
-            
-            # Quality check 3: Consistency with start method expectations
-            # Measured value should be within 10x of the expected value
-            # This catches measurements that are wildly off
-            if not (fallback_estimate / 10 <= per_worker_cost <= fallback_estimate * 10):
-                # Measurement inconsistent with expectations
-                _CACHED_SPAWN_COST = fallback_estimate
-                return fallback_estimate
-            
-            # Quality check 4: Overhead fraction validation
-            # Marginal cost should be reasonable fraction of 2-worker time
-            # If marginal cost > 90% of total time, something is wrong
-            if marginal_cost > time_2_workers * 0.9:
-                # Overhead seems unrealistically high relative to total
-                _CACHED_SPAWN_COST = fallback_estimate
-                return fallback_estimate
-            
-            # All quality checks passed - use measured value
-            _CACHED_SPAWN_COST = per_worker_cost
-            return per_worker_cost
-        else:
-            # Marginal cost too small or negative - fall back to 1-worker measurement
-            # But validate it first
-            if MIN_REASONABLE_MARGINAL_COST <= time_1_worker <= max(0.1, fallback_estimate * 5):
-                # 1-worker measurement seems reasonable
-                _CACHED_SPAWN_COST = time_1_worker
-                return time_1_worker
-            else:
-                # Even 1-worker measurement seems unreliable
-                _CACHED_SPAWN_COST = fallback_estimate
-                return fallback_estimate
-        
-    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
-        # If measurement fails, fall back to OS-based estimate
-        # OSError: System-level issues (e.g., resource exhaustion)
-        # TimeoutError: Benchmark took too long
-        # ValueError: Invalid parameter values
-        # ProcessError: Multiprocessing-specific failures
-        _CACHED_SPAWN_COST = fallback_estimate
-        return fallback_estimate
+        except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
+            # If measurement fails, fall back to OS-based estimate
+            # OSError: System-level issues (e.g., resource exhaustion)
+            # TimeoutError: Benchmark took too long
+            # ValueError: Invalid parameter values
+            # ProcessError: Multiprocessing-specific failures
+            _CACHED_SPAWN_COST = fallback_estimate
+            return fallback_estimate
 
 
 def _minimal_worker(x):
@@ -362,6 +384,7 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
     - Task scheduling and management
     
     The measurement is cached globally to avoid repeated benchmarking.
+    Thread-safe: Uses lock to prevent concurrent measurements.
     
     Args:
         timeout: Maximum time to wait for measurement in seconds
@@ -387,92 +410,104 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
     Fallback Strategy:
         If benchmarking fails or produces unreliable results, falls back to
         the default estimate (0.5ms per chunk).
+        
+    Thread Safety:
+        Uses a lock to ensure only one thread performs the measurement. If
+        multiple threads call this function simultaneously, the first one
+        performs the measurement while others wait for the result.
     """
     global _CACHED_CHUNKING_OVERHEAD
     
-    # Return cached value if available
+    # Quick check without lock (optimization for common case)
     if _CACHED_CHUNKING_OVERHEAD is not None:
         return _CACHED_CHUNKING_OVERHEAD
     
-    try:
-        # Use 2 workers for consistency with real use cases
-        n_workers = 2
+    # Acquire lock for measurement
+    with _chunking_overhead_lock:
+        # Double-check after acquiring lock (another thread may have measured)
+        if _CACHED_CHUNKING_OVERHEAD is not None:
+            return _CACHED_CHUNKING_OVERHEAD
         
-        # Use a reasonable workload size
-        total_items = 1000
-        data = range(total_items)
-        
-        # Test with large chunks (fewer chunks, less overhead)
-        # Use chunks of 100 items -> 10 chunks
-        large_chunksize = 100
-        num_large_chunks = (total_items + large_chunksize - 1) // large_chunksize
-        
-        start_large = time.perf_counter()
-        with multiprocessing.Pool(processes=n_workers) as pool:
-            list(pool.map(_minimal_worker, data, chunksize=large_chunksize))
-        end_large = time.perf_counter()
-        time_large = end_large - start_large
-        
-        # Test with small chunks (more chunks, more overhead)
-        # Use chunks of 10 items -> 100 chunks
-        small_chunksize = 10
-        num_small_chunks = (total_items + small_chunksize - 1) // small_chunksize
-        
-        start_small = time.perf_counter()
-        with multiprocessing.Pool(processes=n_workers) as pool:
-            list(pool.map(_minimal_worker, data, chunksize=small_chunksize))
-        end_small = time.perf_counter()
-        time_small = end_small - start_small
-        
-        # Calculate marginal cost per chunk
-        # Difference in execution time divided by difference in number of chunks
-        time_diff = time_small - time_large
-        chunk_diff = num_small_chunks - num_large_chunks
-        
-        # Enhanced validation: Check multiple quality criteria
-        if chunk_diff > 0 and time_diff > 0:
-            per_chunk_overhead = time_diff / chunk_diff
+        # Perform measurement (only one thread reaches here)
+        try:
+            # Use 2 workers for consistency with real use cases
+            n_workers = 2
             
-            # Quality check 1: Overhead should be positive and reasonable (< 10ms per chunk)
-            if not (0 < per_chunk_overhead < 0.01):
-                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
-                return DEFAULT_CHUNKING_OVERHEAD
+            # Use a reasonable workload size
+            total_items = 1000
+            data = range(total_items)
             
-            # Quality check 2: Measurement should show clear signal
-            # The small-chunk run should take at least 5% longer than large-chunk
-            # This ensures we're measuring real overhead, not noise
-            if time_small < time_large * 1.05:
-                # Signal too weak - likely measurement noise
-                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
-                return DEFAULT_CHUNKING_OVERHEAD
+            # Test with large chunks (fewer chunks, less overhead)
+            # Use chunks of 100 items -> 10 chunks
+            large_chunksize = 100
+            num_large_chunks = (total_items + large_chunksize - 1) // large_chunksize
             
-            # Quality check 3: Per-chunk overhead should be reasonable fraction of total time
-            # If per-chunk overhead * num_chunks > 50% of total time, something is wrong
-            estimated_total_overhead = per_chunk_overhead * num_small_chunks
-            if estimated_total_overhead > time_small * 0.5:
-                # Overhead seems unrealistically high
-                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
-                return DEFAULT_CHUNKING_OVERHEAD
+            start_large = time.perf_counter()
+            with multiprocessing.Pool(processes=n_workers) as pool:
+                list(pool.map(_minimal_worker, data, chunksize=large_chunksize))
+            end_large = time.perf_counter()
+            time_large = end_large - start_large
             
-            # Quality check 4: The overhead should be in a reasonable range
-            # Based on empirical observations, overhead is typically 0.1ms to 5ms per chunk
-            if not (0.0001 < per_chunk_overhead < 0.005):
-                # Outside reasonable bounds - use default
-                _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
-                return DEFAULT_CHUNKING_OVERHEAD
+            # Test with small chunks (more chunks, more overhead)
+            # Use chunks of 10 items -> 100 chunks
+            small_chunksize = 10
+            num_small_chunks = (total_items + small_chunksize - 1) // small_chunksize
             
-            # All quality checks passed - use measured value
-            _CACHED_CHUNKING_OVERHEAD = per_chunk_overhead
-            return per_chunk_overhead
-        
-        # If measurement conditions not met, fall back to default
-        _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
-        return DEFAULT_CHUNKING_OVERHEAD
-        
-    except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
-        # If measurement fails, fall back to default estimate
-        _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
-        return DEFAULT_CHUNKING_OVERHEAD
+            start_small = time.perf_counter()
+            with multiprocessing.Pool(processes=n_workers) as pool:
+                list(pool.map(_minimal_worker, data, chunksize=small_chunksize))
+            end_small = time.perf_counter()
+            time_small = end_small - start_small
+            
+            # Calculate marginal cost per chunk
+            # Difference in execution time divided by difference in number of chunks
+            time_diff = time_small - time_large
+            chunk_diff = num_small_chunks - num_large_chunks
+            
+            # Enhanced validation: Check multiple quality criteria
+            if chunk_diff > 0 and time_diff > 0:
+                per_chunk_overhead = time_diff / chunk_diff
+                
+                # Quality check 1: Overhead should be positive and reasonable (< 10ms per chunk)
+                if not (0 < per_chunk_overhead < 0.01):
+                    _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                    return DEFAULT_CHUNKING_OVERHEAD
+                
+                # Quality check 2: Measurement should show clear signal
+                # The small-chunk run should take at least 5% longer than large-chunk
+                # This ensures we're measuring real overhead, not noise
+                if time_small < time_large * 1.05:
+                    # Signal too weak - likely measurement noise
+                    _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                    return DEFAULT_CHUNKING_OVERHEAD
+                
+                # Quality check 3: Per-chunk overhead should be reasonable fraction of total time
+                # If per-chunk overhead * num_chunks > 50% of total time, something is wrong
+                estimated_total_overhead = per_chunk_overhead * num_small_chunks
+                if estimated_total_overhead > time_small * 0.5:
+                    # Overhead seems unrealistically high
+                    _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                    return DEFAULT_CHUNKING_OVERHEAD
+                
+                # Quality check 4: The overhead should be in a reasonable range
+                # Based on empirical observations, overhead is typically 0.1ms to 5ms per chunk
+                if not (0.0001 < per_chunk_overhead < 0.005):
+                    # Outside reasonable bounds - use default
+                    _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+                    return DEFAULT_CHUNKING_OVERHEAD
+                
+                # All quality checks passed - use measured value
+                _CACHED_CHUNKING_OVERHEAD = per_chunk_overhead
+                return per_chunk_overhead
+            
+            # If measurement conditions not met, fall back to default
+            _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+            return DEFAULT_CHUNKING_OVERHEAD
+            
+        except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
+            # If measurement fails, fall back to default estimate
+            _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
+            return DEFAULT_CHUNKING_OVERHEAD
 
 
 def get_chunking_overhead(use_benchmark: bool = True) -> float:
