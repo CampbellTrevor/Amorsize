@@ -1,18 +1,209 @@
-# Context for Next Agent - Iteration 72 Complete
+# Context for Next Agent - Iteration 73 Complete
 
 ## What Was Accomplished
 
-**AUTOMATIC CACHE PRUNING** - Enhanced the caching system with probabilistic automatic cache pruning to prevent unbounded cache directory growth. Cache load operations now opportunistically clean up expired entries without requiring explicit user action, providing maintenance-free cache management.
+**CACHE INTROSPECTION AND STATISTICS** - Enhanced the caching system with comprehensive statistics and monitoring capabilities. Users can now track cache effectiveness, disk usage, entry health, and identify maintenance needs without external tools.
 
-### Previous Iteration Summary (Iteration 71)
-- **Iteration 71**: Benchmark result caching (5-100x speedup for repeated validations, 782 tests passing)
+### Previous Iteration Summary (Iteration 72)
+- **Iteration 72**: Automatic cache pruning (maintenance-free cache management, 794 tests passing)
 
 ### Previous Iteration Summary
+- **Iteration 71**: Benchmark result caching (5-100x speedup for repeated validations, 782 tests passing)
 - **Iteration 70**: Swap-aware memory detection (progressive worker reduction under memory pressure, 760 tests passing)
 - **Iteration 69**: Enhanced container memory detection (cgroup v2 hierarchical paths, memory.max/memory.high support, 752 tests passing)
 - **Iteration 68**: Cache transparency enhancement (cache_hit flag added, all 739 tests passing)
 - **Iteration 67**: Parameter validation fix (use_cache validation added, all 733 tests passing)
 - **Iteration 66**: Comprehensive system validation (all 732 tests passing)
+
+### Critical Achievement (Iteration 73)
+**UX ENHANCEMENT - Cache Introspection and Statistics**
+
+**The Mission**: After Iteration 72's automatic cache pruning, identify the next high-value UX improvement. While the caching system provides excellent performance benefits (70x for optimization, 5-100x for benchmarks) with automatic maintenance, users had no visibility into cache effectiveness, health, or disk usage.
+
+**Problem Identified**: 
+The caching system (Iterations 65, 71, 72) provides comprehensive functionality but lacked operational visibility. Users could not:
+1. See how many cache entries exist
+2. Monitor total disk space used by caches
+3. Identify expired or incompatible entries
+4. Understand cache age distribution
+5. Track cache effectiveness over time
+6. Debug cache-related issues in production
+
+This made it difficult for production users to:
+- Monitor cache health and effectiveness
+- Plan disk space requirements
+- Understand when manual cleanup might be beneficial (beyond automatic pruning)
+- Debug cache behavior in production environments
+- Optimize cache TTL settings based on usage patterns
+
+**Enhancement Implemented**:
+Added comprehensive cache statistics with rich introspection capabilities:
+
+1. **New `CacheStats` class**:
+   - `total_entries`: Total number of cache entries
+   - `valid_entries`: Number of valid (non-expired, compatible) entries
+   - `expired_entries`: Number of expired entries (beyond TTL)
+   - `incompatible_entries`: Number of system-incompatible entries
+   - `total_size_bytes`: Total disk space used by cache
+   - `oldest_entry_age`: Age of oldest entry (seconds)
+   - `newest_entry_age`: Age of newest entry (seconds)
+   - `cache_dir`: Path to cache directory
+   - Human-readable `__str__` with formatted sizes and ages
+   - Concise `__repr__` for debugging
+
+2. **New `get_cache_stats()` function**:
+   - Analyzes optimization cache directory
+   - Categorizes entries (valid, expired, incompatible)
+   - Calculates total disk usage
+   - Tracks age distribution
+   - Respects custom TTL parameter
+   - Fast operation (<100ms even with hundreds of entries)
+   - Graceful error handling (never breaks functionality)
+
+3. **New `get_benchmark_cache_stats()` function**:
+   - Analyzes benchmark cache directory
+   - Same categorization and metrics as optimization cache
+   - Independent monitoring of benchmark cache
+   - Same performance characteristics
+
+4. **Human-readable formatting**:
+   - Byte formatting: B, KB, MB, GB
+   - Age formatting: seconds, minutes, hours, days
+   - Clear, informative output for both `str()` and `repr()`
+
+5. **Comprehensive test coverage**:
+   - 21 new tests added to test_cache_stats.py
+   - Tests for CacheStats class (6 tests)
+   - Tests for get_cache_stats() (5 tests)
+   - Tests for get_benchmark_cache_stats() (4 tests)
+   - Integration tests (3 tests)
+   - Export tests (3 tests)
+   - All tests cover edge cases and error handling
+
+**Impact**: 
+- **Operational visibility**: Production users can monitor cache effectiveness
+- **Maintenance insights**: Clear view of expired/incompatible entries
+- **Disk usage tracking**: Monitor cache size growth over time
+- **Debugging support**: Understand cache behavior in production
+- **Planning tool**: Inform decisions about cache TTL and cleanup policies
+- **Zero overhead**: Statistics collection is fast (<100ms)
+- **Production ready**: 21 new tests, all 815 tests passing
+
+**Changes Made (Iteration 73)**:
+
+**Files Modified (2 files):**
+
+1. **`amorsize/cache.py`** - Added cache statistics functionality
+   - Added `CacheStats` class (~85 lines)
+     - Comprehensive attributes for cache health
+     - `__repr__` and `__str__` methods
+     - `_format_bytes()` helper for human-readable sizes
+     - `_format_age()` helper for human-readable ages
+   - Added `get_cache_stats()` function (~85 lines)
+     - Analyzes optimization cache directory
+     - Categorizes entries by validity
+     - Calculates disk usage and ages
+   - Added `get_benchmark_cache_stats()` function (~85 lines)
+     - Analyzes benchmark cache directory
+     - Same metrics as optimization cache
+   - Total: ~270 lines of new code
+
+2. **`amorsize/__init__.py`** - Exported new public API
+   - Added `get_cache_stats` to imports
+   - Added `get_benchmark_cache_stats` to imports
+   - Added `CacheStats` to imports
+   - Added all three to `__all__`
+
+**Files Created (1 file):**
+
+1. **`tests/test_cache_stats.py`** - Comprehensive test coverage
+   - `TestCacheStatsClass`: 6 tests for CacheStats class
+   - `TestGetCacheStats`: 5 tests for optimization cache stats
+   - `TestGetBenchmarkCacheStats`: 4 tests for benchmark cache stats
+   - `TestCacheStatsIntegration`: 3 tests for integration scenarios
+   - `TestCacheStatsExport`: 3 tests for public API exports
+   - Total: 21 new tests (~415 lines)
+
+### Why This Approach (Iteration 73)
+
+- **High-value UX improvement**: Addresses common operational need (cache monitoring)
+- **Minimal changes**: Only 685 lines total (270 production, ~415 tests)
+- **Surgical precision**: Only adds new functions, zero breaking changes
+- **Zero breaking changes**: All 794 existing tests still pass
+- **Comprehensive testing**: 21 new tests cover all scenarios
+- **Production quality**: Follows existing patterns and conventions
+- **Strategic Priority #4**: Addresses UX & ROBUSTNESS (operational visibility)
+- **Builds on previous work**: Enhances Iterations 65, 71, and 72's caching features
+
+### Validation Results (Iteration 73)
+
+✅ **Full Test Suite:**
+```bash
+pytest tests/ -q --tb=line
+# 815 passed, 48 skipped in 19.20s
+# Zero failures, zero errors
+# +21 new tests from Iteration 73
+```
+
+✅ **Cache Statistics Behavior:**
+```python
+# Test empty cache
+stats = get_cache_stats()
+# ✓ Shows 0 entries, 0 bytes
+
+# Test with optimization cache entries
+for size in [5, 50, 500, 5000]:
+    optimize(func, list(range(size)), use_cache=True)
+stats = get_cache_stats()
+# ✓ Shows 4 entries (one per bucket)
+# ✓ Shows disk usage: 1.67KB
+# ✓ Shows ages: 0.0 seconds (very recent)
+
+# Test with benchmark cache entries
+for size in [20, 30]:
+    validate_optimization(func, list(range(size)), use_cache=True)
+bench_stats = get_benchmark_cache_stats()
+# ✓ Shows 2 entries
+# ✓ Shows disk usage: 728B
+# ✓ Independent from optimization cache
+
+# Test human-readable output
+print(stats)
+# === Cache Statistics ===
+# Cache directory: /home/user/.cache/amorsize/optimization_cache
+# Total entries: 4
+#   Valid entries: 4
+#   Expired entries: 0
+#   Incompatible entries: 0
+# Total cache size: 1.67KB
+# Oldest entry age: 0.0 seconds
+# Newest entry age: 0.0 seconds
+
+print(repr(stats))
+# CacheStats(total=4, valid=4, expired=0, incompatible=0, size=1.67KB)
+```
+
+✅ **Performance Validation:**
+```python
+# Create multiple cache entries
+for size in [5, 50, 500, 5000, 15000, 8, 80, 800, 8000, 20000]:
+    optimize(func, list(range(size)), use_cache=True)
+
+# Measure stats collection time
+start = time.time()
+stats = get_cache_stats()
+elapsed = time.time() - start
+
+# ✓ Fast operation: <100ms
+# ✓ Accurate counts: 10 entries (5+ buckets)
+```
+
+✅ **Backward Compatibility:**
+- All existing 794 tests still pass
+- No API changes to existing functions
+- New functions are additive only
+- Graceful error handling maintains reliability
+- Existing caching behavior unchanged
 
 ### Critical Achievement (Iteration 72)
 **ROBUSTNESS ENHANCEMENT - Automatic Cache Pruning**
