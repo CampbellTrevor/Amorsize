@@ -785,7 +785,7 @@ def optimize(
             # Use a very rough time estimate for cache key (will refine after dry run)
             # This is just for cache lookup - actual optimization will be more precise
             cache_key = compute_cache_key(func, data_size_estimate, 0.001)  # Assume 1ms per item
-            cache_entry = load_cache_entry(cache_key)
+            cache_entry, cache_miss_reason = load_cache_entry(cache_key)
             
             if cache_entry is not None:
                 if verbose:
@@ -815,7 +815,7 @@ def optimize(
     if verbose:
         # Indicate if we attempted cache lookup but missed
         if use_cache and not profile and cache_key is not None and cache_entry is None:
-            print("✗ Cache miss - performing fresh optimization")
+            print(f"✗ Cache miss - {cache_miss_reason}")
         print("Performing dry run sampling...")
     
     _report_progress("Sampling function", 0.1)

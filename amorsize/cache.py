@@ -104,11 +104,15 @@ class CacheEntry:
         age = time.time() - self.timestamp
         return age > ttl_seconds
     
-    def is_system_compatible(self) -> bool:
+    def is_system_compatible(self) -> Tuple[bool, str]:
         """
         Check if cached result is compatible with current system.
         
-        Returns False if key system parameters have changed:
+        Returns tuple of (is_compatible, reason):
+        - is_compatible: False if key system parameters have changed
+        - reason: Human-readable explanation of why cache is incompatible
+        
+        Checks:
         - Physical core count
         - Multiprocessing start method
         - Available memory (within 20% tolerance)
@@ -123,19 +127,21 @@ class CacheEntry:
         
         # Check core count match
         if cached_cores != current_cores:
-            return False
+            return False, f"Physical core count changed (cached: {cached_cores}, current: {current_cores})"
         
         # Check start method match
         if cached_start_method != current_start_method:
-            return False
+            return False, f"Multiprocessing start method changed (cached: {cached_start_method}, current: {current_start_method})"
         
         # Check memory within 20% tolerance
         if cached_memory > 0:
             memory_ratio = current_memory / cached_memory
             if not (0.8 <= memory_ratio <= 1.2):
-                return False
+                cached_gb = cached_memory / (1024**3)
+                current_gb = current_memory / (1024**3)
+                return False, f"Available memory changed significantly (cached: {cached_gb:.2f}GB, current: {current_gb:.2f}GB)"
         
-        return True
+        return True, ""
 
 
 def get_cache_dir() -> Path:
@@ -278,7 +284,7 @@ def save_cache_entry(
         pass
 
 
-def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> Optional[CacheEntry]:
+def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> Tuple[Optional[CacheEntry], str]:
     """
     Load a cached optimization result.
     
@@ -292,7 +298,9 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
         ttl_seconds: Maximum age in seconds (default: 7 days)
     
     Returns:
-        CacheEntry if found and valid, None otherwise
+        Tuple of (CacheEntry, miss_reason):
+        - CacheEntry if found and valid, None if invalid/missing
+        - miss_reason: Empty string on success, or explanation why cache missed
     """
     # Probabilistically trigger automatic cache pruning
     # This distributes cleanup cost and prevents unbounded growth
@@ -303,7 +311,7 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
         cache_file = cache_dir / f"{cache_key}.json"
         
         if not cache_file.exists():
-            return None
+            return None, "No cached entry found for this workload"
         
         # Load cache entry
         with open(cache_file, 'r') as f:
@@ -314,20 +322,24 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
         # Validate cache entry
         if entry.cache_version != CACHE_VERSION:
             # Cache format changed, invalidate
-            return None
+            return None, f"Cache format version mismatch (cached: v{entry.cache_version}, current: v{CACHE_VERSION})"
         
         if entry.is_expired(ttl_seconds):
             # Cache entry too old, invalidate
-            return None
+            age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
+            ttl_days = ttl_seconds / (24 * 60 * 60)
+            return None, f"Cache entry expired (age: {age_days:.1f} days, TTL: {ttl_days:.1f} days)"
         
-        if not entry.is_system_compatible():
+        is_compatible, incompatibility_reason = entry.is_system_compatible()
+        if not is_compatible:
             # System configuration changed, invalidate
-            return None
+            return None, incompatibility_reason
         
-        return entry
+        return entry, ""
         
-    except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
-        # Invalid or corrupted cache entry
+    except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
+        # Silently fail - caching should never break functionality
+        return None, f"Failed to load cache: {type(e).__name__}"
         return None
 
 
@@ -528,11 +540,14 @@ class BenchmarkCacheEntry:
         age = time.time() - self.timestamp
         return age > ttl_seconds
     
-    def is_system_compatible(self) -> bool:
+    def is_system_compatible(self) -> Tuple[bool, str]:
         """
         Check if cached benchmark is compatible with current system.
         
-        Returns False if key system parameters have changed.
+        Returns tuple of (is_compatible, reason):
+        - is_compatible: False if key system parameters have changed
+        - reason: Human-readable explanation of why cache is incompatible
+        
         Benchmark results are highly system-dependent.
         """
         current_cores = get_physical_cores()
@@ -545,18 +560,20 @@ class BenchmarkCacheEntry:
         
         # Benchmark results are system-specific - require exact match
         if cached_cores != current_cores:
-            return False
+            return False, f"Physical core count changed (cached: {cached_cores}, current: {current_cores})"
         
         if cached_start_method != current_start_method:
-            return False
+            return False, f"Multiprocessing start method changed (cached: {cached_start_method}, current: {current_start_method})"
         
         # Memory within 10% tolerance (stricter than optimization cache)
         if cached_memory > 0:
             memory_ratio = current_memory / cached_memory
             if not (0.9 <= memory_ratio <= 1.1):
-                return False
+                cached_gb = cached_memory / (1024**3)
+                current_gb = current_memory / (1024**3)
+                return False, f"Available memory changed significantly (cached: {cached_gb:.2f}GB, current: {current_gb:.2f}GB)"
         
-        return True
+        return True, ""
 
 
 def get_benchmark_cache_dir() -> Path:
@@ -665,7 +682,7 @@ def save_benchmark_cache_entry(
 def load_benchmark_cache_entry(
     cache_key: str,
     ttl_seconds: int = DEFAULT_TTL_SECONDS
-) -> Optional[BenchmarkCacheEntry]:
+) -> Tuple[Optional[BenchmarkCacheEntry], str]:
     """
     Load a cached benchmark validation result.
     
@@ -679,7 +696,9 @@ def load_benchmark_cache_entry(
         ttl_seconds: Maximum age in seconds (default: 7 days)
     
     Returns:
-        BenchmarkCacheEntry if found and valid, None otherwise
+        Tuple of (BenchmarkCacheEntry, miss_reason):
+        - BenchmarkCacheEntry if found and valid, None if invalid/missing
+        - miss_reason: Empty string on success, or explanation why cache missed
     """
     # Probabilistically trigger automatic cache pruning
     # This distributes cleanup cost and prevents unbounded growth
@@ -690,7 +709,7 @@ def load_benchmark_cache_entry(
         cache_file = cache_dir / f"{cache_key}.json"
         
         if not cache_file.exists():
-            return None
+            return None, "No cached benchmark result found for this workload"
         
         # Load cache entry
         with open(cache_file, 'r') as f:
@@ -700,18 +719,21 @@ def load_benchmark_cache_entry(
         
         # Validate cache entry
         if entry.cache_version != CACHE_VERSION:
-            return None
+            return None, f"Cache format version mismatch (cached: v{entry.cache_version}, current: v{CACHE_VERSION})"
         
         if entry.is_expired(ttl_seconds):
-            return None
+            age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
+            ttl_days = ttl_seconds / (24 * 60 * 60)
+            return None, f"Cache entry expired (age: {age_days:.1f} days, TTL: {ttl_days:.1f} days)"
         
-        if not entry.is_system_compatible():
-            return None
+        is_compatible, incompatibility_reason = entry.is_system_compatible()
+        if not is_compatible:
+            return None, incompatibility_reason
         
-        return entry
+        return entry, ""
         
-    except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
-        return None
+    except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
+        return None, f"Failed to load cache: {type(e).__name__}"
 
 
 def clear_benchmark_cache() -> int:
