@@ -7,10 +7,15 @@ on:
     branches: [ main, develop, Iterate ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -51,6 +56,8 @@ jobs:
   lint:
     name: Linting and Code Quality
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
     - name: Check out code
@@ -93,6 +100,8 @@ jobs:
   build:
     name: Build and Verify Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
     - name: Check out code
@@ -131,6 +140,8 @@ jobs:
   docs-check:
     name: Documentation Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
     - name: Check out code
@@ -169,6 +180,8 @@ jobs:
   status-check:
     name: CI Status Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [test, lint, build, docs-check]
     if: always()
     
