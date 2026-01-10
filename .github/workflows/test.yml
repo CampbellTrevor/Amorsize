@@ -35,7 +35,7 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest -v --cov=amorsize --cov-report=xml --cov-report=term
+        pytest --cov=amorsize --cov-report=xml --cov-report=term
     
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
@@ -67,4 +67,4 @@ jobs:
     
     - name: Run tests without psutil
       run: |
-        pytest -v -k "not psutil"
+        pytest -k "not psutil"

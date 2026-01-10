@@ -75,7 +75,15 @@ jobs:
     - name: Install wheel
       shell: bash
       run: |
-        pip install dist/*.whl
+        # Install the built wheel - should be exactly one file
+        wheel_count=$(ls dist/*.whl 2>/dev/null | wc -l)
+        if [ "$wheel_count" -eq 1 ]; then
+          pip install dist/*.whl
+        else
+          echo "Error: Expected exactly 1 wheel file, found $wheel_count"
+          ls -l dist/ || true
+          exit 1
+        fi
     
     - name: Test import
       run: |
