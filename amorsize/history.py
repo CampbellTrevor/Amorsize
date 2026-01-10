@@ -12,7 +12,7 @@ import json
 import os
 import platform
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
 
@@ -185,7 +185,7 @@ def save_result(
         >>> entry_id = save_result(result, "v1.0-baseline", "my_func", 1000)
         >>> print(f"Saved as {entry_id}")
     """
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
     entry_id = _generate_id(name, timestamp)
     system_info = get_system_fingerprint()
     
