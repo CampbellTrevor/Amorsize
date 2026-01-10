@@ -8,7 +8,6 @@ are thread-safe and handle concurrent access correctly.
 import pytest
 import threading
 import time
-from unittest.mock import patch
 
 from amorsize.system_info import (
     measure_spawn_cost,
@@ -24,44 +23,31 @@ class TestThreadSafeSpawnCostCache:
     """Test thread-safe caching of spawn cost measurements."""
     
     def test_concurrent_spawn_cost_calls_single_measurement(self):
-        """Test that concurrent calls result in only one measurement."""
+        """Test that concurrent calls result in consistent cached values."""
         # Clear cache before test
         _clear_spawn_cost_cache()
         
-        measurement_count = [0]  # Use list to make it mutable in nested function
-        original_measure = measure_spawn_cost.__wrapped__ if hasattr(measure_spawn_cost, '__wrapped__') else measure_spawn_cost
+        # Create 10 threads that will all try to measure simultaneously
+        threads = []
+        results = []
         
-        def counting_measure(timeout=2.0):
-            measurement_count[0] += 1
-            # Simulate slow measurement
-            time.sleep(0.1)
-            return 0.015  # Return reasonable value
+        def call_measure():
+            result = measure_spawn_cost()
+            results.append(result)
         
-        # Patch the actual measurement with a counter
-        with patch('amorsize.system_info.measure_spawn_cost', side_effect=counting_measure):
-            # Create 10 threads that will all try to measure simultaneously
-            threads = []
-            results = []
-            
-            def call_measure():
-                result = get_spawn_cost()
-                results.append(result)
-            
-            # Start threads
-            for _ in range(10):
-                t = threading.Thread(target=call_measure)
-                threads.append(t)
-                t.start()
-            
-            # Wait for all threads
-            for t in threads:
-                t.join()
-            
-            # All threads should get the same result
-            assert len(set(results)) == 1, "All threads should get same cached value"
-            
-            # Only one measurement should have occurred
-            # Note: This test may need adjustment based on actual implementation
+        # Start threads
+        for _ in range(10):
+            t = threading.Thread(target=call_measure)
+            threads.append(t)
+            t.start()
+        
+        # Wait for all threads
+        for t in threads:
+            t.join()
+        
+        # All threads should get the same result (no race condition)
+        assert len(set(results)) == 1, "All threads should get same cached value"
+        assert results[0] > 0, "Cached value should be valid"
     
     def test_spawn_cost_cache_clear_is_thread_safe(self):
         """Test that cache clearing is thread-safe."""
@@ -128,7 +114,7 @@ class TestThreadSafeChunkingOverheadCache:
     """Test thread-safe caching of chunking overhead measurements."""
     
     def test_concurrent_chunking_overhead_calls_single_measurement(self):
-        """Test that concurrent calls result in only one measurement."""
+        """Test that concurrent calls result in consistent cached values."""
         # Clear cache before test
         _clear_chunking_overhead_cache()
         
