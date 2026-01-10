@@ -1,68 +1,50 @@
-# Context for Next Agent - Iteration 81 Complete
+# Context for Next Agent - Iteration 82 Complete
 
 ## What Was Accomplished
 
-**EDGE CASE HARDENING** - Added 21 comprehensive tests covering extreme workload scenarios to ensure the optimizer handles production edge cases gracefully. All tests pass with zero security vulnerabilities.
+**PERFORMANCE MICRO-OPTIMIZATION** - Implemented function hash caching to eliminate redundant SHA256 computations during cache key generation. Achieved 4x speedup for repeated cache operations with comprehensive test coverage. All tests pass with zero security vulnerabilities.
 
-### Critical Achievement (Iteration 81)
+### Critical Achievement (Iteration 82)
 
-**Extreme Workload Testing Suite**
+**Function Hash Caching Optimization**
 
-Following the problem statement's guidance to select "ONE atomic, high-value task" and analyzing the mature codebase (all Strategic Priorities complete), I implemented comprehensive edge case testing to validate the optimizer's robustness in extreme production scenarios.
+Following the problem statement's guidance to select "ONE atomic, high-value task" and the CONTEXT.md recommendation for "Performance Micro-Optimizations", I implemented a targeted optimization that provides measurable performance improvements without changing external behavior.
 
-**Tests Added (21 new tests, 940 total passing)**:
+**Optimization Details**:
 
-1. **Very Large Datasets (3 tests)**:
-   - 100,000 items with fast function - validates scalability
-   - 1,000,000 items with iterator - validates memory efficiency
-   - 500,000 items safety check - validates no OOM scenarios
+1. **Test Infrastructure Fix**:
+   - Fixed flaky test in `test_cache_validation.py` that used hardcoded memory values
+   - Test now uses actual system memory to avoid environment-specific failures
+   - Ensures test suite is robust across different hardware configurations
 
-2. **Very Fast Functions (3 tests)**:
-   - Trivial identity function - validates overhead detection
-   - Simple arithmetic operations - validates minimal work handling
-   - Bitwise operations with 100K items - validates chunksize calculation
+2. **Function Hash Caching Implementation**:
+   - Added thread-safe cache for function bytecode hashes in `amorsize/cache.py`
+   - Implemented `_compute_function_hash()` helper with double-check locking pattern
+   - Updated `compute_cache_key()` to use cached hashes instead of recomputing SHA256
+   - Cache uses function `id()` as key (stable during function lifetime)
 
-3. **Very Slow Functions (2 tests)**:
-   - Functions with 100ms delays - validates parallelization benefits
-   - Functions with 10ms delays - validates optimal chunksize calculation
+3. **Comprehensive Testing** (9 new tests):
+   - Hash caching correctness and consistency
+   - Thread safety with concurrent access
+   - Performance validation (4x speedup verified)
+   - Edge cases (built-in functions, lambdas, different functions)
+   - Cache behavior with multiple functions
 
-4. **Extreme Memory Scenarios (2 tests)**:
-   - Large return objects (40KB+ per item) - validates memory warnings
-   - Peak memory tracking - validates memory profiling accuracy
-
-5. **Pathological Chunking (3 tests)**:
-   - Chunksize larger than dataset - validates capping logic
-   - Single-item datasets - validates minimum case
-   - Extreme variance in execution - validates heterogeneous workload handling
-
-6. **Edge Case Data Types (3 tests)**:
-   - None values in data - validates robustness
-   - Negative numbers - validates numeric handling
-   - Floating point data - validates type flexibility
-
-7. **Graceful Degradation (3 tests)**:
-   - Sampling failure fallback - validates error recovery
-   - Near-zero execution time - validates division by zero protection
-   - Perfectly consistent execution - validates homogeneous workload detection
-
-8. **Execute() with Extremes (2 tests)**:
-   - 50,000 item execution - validates end-to-end scalability
-   - Extreme optimization respect - validates parameter consistency
-
-**Impact**:
-- **Robustness**: Validates optimizer behavior across extreme scenarios
-- **Production-Ready**: Ensures graceful handling of pathological cases
-- **Test Coverage**: 940 tests (919 → 940), 0 failures, 0 security issues
-- **Documentation**: Tests serve as examples for extreme use cases
-- **Confidence**: No regressions, all existing functionality intact
+**Performance Impact**:
+- **First call**: ~3μs per cache key computation (includes SHA256 + bucketing)
+- **Cached calls**: ~0.7μs per cache key computation (dictionary lookup + bucketing)
+- **Measured speedup**: 4x for repeated optimizations of same function
+- **Real-world benefit**: Faster cache operations when same function is optimized multiple times
+- **Thread-safe**: Double-check locking ensures no race conditions
 
 **Quality Assurance**:
-- ✅ All 940 tests passing
-- ✅ Code review passed (1 minor fix applied)
+- ✅ All 949 tests passing (940 existing + 9 new)
+- ✅ Code review passed (addressed 3 comments about documentation consistency)
 - ✅ Security scan passed (0 vulnerabilities)
-- ✅ No regressions introduced
+- ✅ No behavioral changes - pure performance optimization
+- ✅ Thread-safe implementation verified with concurrent tests
 
-### Comprehensive Analysis Results (Iteration 81)
+### Comprehensive Analysis Results (Iteration 82)
 
 **Strategic Priority Verification:**
 
@@ -90,56 +72,56 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
    - Diagnostics: Extensive profiling with `profile=True`
 
 **Previous Iterations Summary:**
+- **Iteration 81**: Extreme workload testing suite (940 tests passing, +21 tests)
 - **Iteration 80**: Race condition fix in benchmark cache (919 tests passing)
 - **Iteration 79**: Race condition fix in optimization cache (919 tests passing)
 - **Iteration 78**: Cache validation and health checks (919 tests passing, +33 tests)
-- **Iteration 77**: Cache export/import for team collaboration (886 tests passing)
-- **Iteration 76**: Cache prewarming for zero first-run penalty (866 tests passing, 14.5x+ speedup)
 
 
 ### Test Coverage Summary
 
-**Test Suite Status**: 940 tests passing, 0 failures, 48 skipped
+**Test Suite Status**: 949 tests passing, 0 failures, 48 skipped
 
-**New Tests (Iteration 81)**: +21 extreme workload tests
-- Very large datasets (100K-1M items)
-- Very fast/slow functions (μs to seconds)
-- Extreme memory scenarios
-- Pathological chunking edge cases
-- Graceful degradation validation
+**New Tests (Iteration 82)**: +9 function hash caching tests
+- Hash caching correctness and consistency
+- Different functions produce different hashes
+- Performance validation (4x speedup)
+- Thread safety with concurrent access
+- Built-in function handling
+- Lambda function handling
+- Cache reduces redundant computations
 
 **Performance Validation**:
 - Optimization time: ~28ms (first run), ~1ms (cached) = 32x speedup from cache
+- Cache key computation: ~3μs (first), ~0.7μs (cached) = 4x speedup from hash cache
 - Spawn cost measurement: Cached globally with quality validation
 - Chunking overhead measurement: Cached globally with multi-criteria checks
 - Pickle tax: Correctly measured for both input data and output results
 
-**Reliability**: Zero flaky tests, deterministic test suite, both caching systems use consistent safe patterns.
+**Reliability**: Zero flaky tests, deterministic test suite, all caching systems use consistent safe patterns.
 
 **Security**: Zero vulnerabilities (CodeQL scan passed)
 
-## Iteration 81: The "Missing Piece" Analysis
+## Iteration 82: The "Missing Piece" Analysis
 
-After comprehensive analysis of the codebase against the problem statement's Strategic Priorities, **no critical missing pieces were identified**. All foundations are solid:
+After comprehensive analysis of the codebase against the problem statement's Strategic Priorities, **no critical missing pieces were identified**. All foundations are solid and the codebase has reached high maturity.
 
-- Infrastructure is robust and production-ready
-- Safety mechanisms are comprehensive  
-- Core optimization logic is mathematically sound
-- Caching system is feature-complete and bug-free
-- UX is mature with extensive diagnostics
-
-The system has reached a state of **high maturity** where further improvements would be **incremental enhancements** rather than **critical missing pieces**.
+Selected task: **Performance Micro-Optimization** (as recommended in previous CONTEXT.md)
+- Targeted the hot path of cache key computation
+- Implemented function hash caching for 4x speedup
+- Added comprehensive tests with no regressions
+- Zero security vulnerabilities introduced
 
 ## Recommended Focus for Next Agent
 
-Given the mature state of the codebase (all Strategic Priorities complete, 940 tests passing, comprehensive edge case coverage), the next high-value increments should focus on:
+Given the mature state of the codebase (all Strategic Priorities complete, 949 tests passing, comprehensive edge case coverage, now with performance optimizations), the next high-value increments should focus on:
 
-### Option 1: Performance Micro-Optimizations (RECOMMENDED)
-- Profile hot paths in the optimizer with real workloads
-- Optimize repeated calculations in dry runs
-- Reduce memory allocations during sampling
-- Consider caching computed function bytecode hashes
-- **Why**: Would provide immediate measurable performance improvements
+### Option 1: Additional Performance Optimizations (RECOMMENDED)
+- Profile sampling.py hot paths during dry runs
+- Optimize memory allocations during dry run sampling
+- Cache workload characteristic computations
+- Consider lazy import optimization for heavy dependencies
+- **Why**: Would provide additional measurable performance improvements
 
 ### Option 2: Advanced Features
 - Distributed caching across machines (Redis/memcached backend)
@@ -166,4 +148,4 @@ Given the mature state of the codebase (all Strategic Priorities complete, 940 t
 - Test with different Python versions (3.7-3.13)
 - **Why**: Would validate compatibility in diverse real-world scenarios
 
-**Recommendation**: Option 1 (Performance Micro-Optimizations) would provide the most immediate, measurable value given the current mature state. The system is robust and feature-complete; optimization would make it even faster.
+**Recommendation**: Continue with Option 1 (Additional Performance Optimizations) to further improve the already-fast library. Next targets could include optimizing dry run sampling or reducing memory allocations.
