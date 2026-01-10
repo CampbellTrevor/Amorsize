@@ -193,6 +193,11 @@ class TestValidateCacheEntry:
     def test_validate_valid_entry(self, tmp_path):
         """Test validation of a valid cache entry."""
         valid_file = tmp_path / "valid.json"
+        # Use actual system values to avoid false negatives from system differences
+        current_cores = get_physical_cores()
+        current_memory = get_available_memory()
+        current_start_method = get_multiprocessing_start_method()
+        
         valid_file.write_text(json.dumps({
             "n_jobs": 2,
             "chunksize": 100,
@@ -202,9 +207,9 @@ class TestValidateCacheEntry:
             "warnings": [],
             "timestamp": time.time(),
             "system_info": {
-                "physical_cores": 2,
-                "available_memory": 1073741824,
-                "start_method": "fork"
+                "physical_cores": current_cores,
+                "available_memory": current_memory,
+                "start_method": current_start_method
             },
             "cache_version": 1
         }))
