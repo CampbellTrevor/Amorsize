@@ -855,16 +855,61 @@ def get_available_memory() -> int:
     return 1024 * 1024 * 1024
 
 
+def get_swap_usage() -> Tuple[float, int, int]:
+    """
+    Get current swap memory usage information.
+    
+    Returns:
+        Tuple of (swap_percent, swap_used_bytes, swap_total_bytes) where:
+        - swap_percent: Percentage of swap being used (0-100)
+        - swap_used_bytes: Amount of swap currently used in bytes
+        - swap_total_bytes: Total swap space available in bytes
+        
+        Returns (0.0, 0, 0) if psutil is not available or swap detection fails.
+        
+    Rationale:
+        When a system is actively using swap, it indicates memory pressure.
+        Spawning additional workers in this state can cause severe performance
+        degradation due to disk I/O thrashing as the kernel swaps memory pages
+        to/from disk.
+        
+    Note:
+        Some systems (like containers) may have no swap configured, which is
+        normal and not an error condition.
+    """
+    if not HAS_PSUTIL:
+        return 0.0, 0, 0
+    
+    try:
+        swap = psutil.swap_memory()
+        return swap.percent, swap.used, swap.total
+    except (AttributeError, OSError):
+        # AttributeError: Method not available on this platform
+        # OSError: System call failed
+        return 0.0, 0, 0
+
+
 def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
     """
     Calculate maximum number of workers based on memory constraints.
+    
+    Enhanced in Iteration 70 to account for swap usage. When the system
+    is actively swapping, worker count is reduced to prevent disk thrashing.
     
     Args:
         physical_cores: Number of physical CPU cores
         estimated_job_ram: Estimated RAM usage per job in bytes
     
     Returns:
-        Maximum number of workers
+        Maximum number of workers, potentially reduced if system is swapping
+        
+    Swap-Aware Logic:
+        - If swap usage < 10%: No adjustment (normal operation)
+        - If swap usage 10-50%: Reduce workers by 25% (moderate pressure)
+        - If swap usage > 50%: Reduce workers by 50% (severe pressure)
+        
+        This prevents spawning too many workers when the system is already
+        under memory pressure, which would cause severe performance degradation.
     """
     available_ram = get_available_memory()
     
@@ -877,7 +922,23 @@ def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
     else:
         memory_limit = physical_cores
     
-    return min(physical_cores, memory_limit)
+    # Apply swap-aware adjustment
+    base_workers = min(physical_cores, memory_limit)
+    
+    # Check swap usage
+    swap_percent, _, _ = get_swap_usage()
+    
+    if swap_percent > 50.0:
+        # Severe swap usage - reduce workers by 50%
+        adjusted_workers = max(1, base_workers // 2)
+    elif swap_percent > 10.0:
+        # Moderate swap usage - reduce workers by 25%
+        adjusted_workers = max(1, int(base_workers * 0.75))
+    else:
+        # No significant swap usage - use full worker count
+        adjusted_workers = base_workers
+    
+    return adjusted_workers
 
 
 def get_system_info() -> Tuple[int, float, int]:

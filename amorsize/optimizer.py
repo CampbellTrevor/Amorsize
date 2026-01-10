@@ -13,7 +13,8 @@ from .system_info import (
     calculate_max_workers,
     check_start_method_mismatch,
     get_multiprocessing_start_method,
-    get_available_memory
+    get_available_memory,
+    get_swap_usage
 )
 from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator, estimate_internal_threads, check_parallel_environment_vars
 
@@ -1230,6 +1231,22 @@ def optimize(
     # Consider memory constraints
     estimated_job_ram = peak_memory if peak_memory > 0 else 0
     max_workers = calculate_max_workers(physical_cores, estimated_job_ram)
+    
+    # Check for swap usage and warn if system is under memory pressure
+    swap_percent, swap_used, swap_total = get_swap_usage()
+    if swap_percent > 10.0:
+        # System is using swap - workers have been reduced by calculate_max_workers
+        swap_warning = (
+            f"System is using swap memory ({swap_percent:.1f}% of {swap_total / (1024**3):.2f}GB). "
+            f"Worker count has been reduced to prevent disk thrashing. "
+            f"Consider freeing memory or reducing job memory footprint."
+        )
+        result_warnings.append(swap_warning)
+        if diag:
+            diag.constraints.append(swap_warning)
+        if verbose:
+            print(f"WARNING: System is using swap memory ({swap_percent:.1f}%)")
+            print(f"  Worker count has been reduced to prevent disk thrashing")
     
     # Apply nested parallelism adjustment if enabled
     if auto_adjust_for_nested_parallelism and estimated_internal_threads > 1:
