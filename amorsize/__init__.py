@@ -60,7 +60,11 @@ from .cache import (
     CacheStats,
     prewarm_cache,
     export_cache,
-    import_cache
+    import_cache,
+    validate_cache_entry,
+    validate_cache,
+    repair_cache,
+    CacheValidationResult
 )
 
 __version__ = "0.1.0"
@@ -108,6 +112,9 @@ __all__ = [
     "prewarm_cache",
     "export_cache",
     "import_cache",
+    "validate_cache_entry",
+    "validate_cache",
+    "repair_cache",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
@@ -119,5 +126,6 @@ __all__ = [
     "TuningResult",
     "ConfigData",
     "WorkloadSpec",
-    "PerformanceResult"
+    "PerformanceResult",
+    "CacheValidationResult"
 ]
