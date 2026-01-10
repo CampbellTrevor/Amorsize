@@ -17,7 +17,8 @@ from amorsize.sampling import (
     detect_parallel_libraries,
     check_parallel_environment_vars,
     detect_thread_activity,
-    perform_dry_run
+    perform_dry_run,
+    _clear_workload_caches
 )
 
 
@@ -110,6 +111,9 @@ class TestEnvironmentVariables:
             if var in os.environ:
                 del os.environ[var]
         
+        # Clear cache so we get fresh detection
+        _clear_workload_caches()
+        
         try:
             env_vars = check_parallel_environment_vars()
             assert isinstance(env_vars, dict)
@@ -121,13 +125,20 @@ class TestEnvironmentVariables:
             for var, value in original_values.items():
                 if value is not None:
                     os.environ[var] = value
+            # Clear cache again for other tests
+            _clear_workload_caches()
     
     def test_check_parallel_env_vars_set(self):
         """Test when parallel env vars are set."""
         original = os.getenv('OMP_NUM_THREADS')
         
+        # Clear cache so we get fresh detection
+        _clear_workload_caches()
+        
         try:
             os.environ['OMP_NUM_THREADS'] = '4'
+            # Clear cache again after setting env var
+            _clear_workload_caches()
             env_vars = check_parallel_environment_vars()
             
             assert isinstance(env_vars, dict)
@@ -138,6 +149,8 @@ class TestEnvironmentVariables:
                 os.environ['OMP_NUM_THREADS'] = original
             elif 'OMP_NUM_THREADS' in os.environ:
                 del os.environ['OMP_NUM_THREADS']
+            # Clear cache again for other tests
+            _clear_workload_caches()
     
     def test_check_parallel_env_vars_multiple(self):
         """Test multiple environment variables set."""
@@ -151,10 +164,15 @@ class TestEnvironmentVariables:
         for var in vars_to_set:
             original_values[var] = os.getenv(var)
         
+        # Clear cache so we get fresh detection
+        _clear_workload_caches()
+        
         try:
             for var, value in vars_to_set.items():
                 os.environ[var] = value
             
+            # Clear cache again after setting env vars
+            _clear_workload_caches()
             env_vars = check_parallel_environment_vars()
             
             assert isinstance(env_vars, dict)
@@ -167,6 +185,8 @@ class TestEnvironmentVariables:
                     os.environ[var] = value
                 elif var in os.environ:
                     del os.environ[var]
+            # Clear cache again for other tests
+            _clear_workload_caches()
 
 
 class TestThreadActivity:
