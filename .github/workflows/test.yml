@@ -17,7 +17,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
-        # Python 3.13 may not be available on all runners yet
+        # Python 3.13 excluded from Windows/macOS (as of 2026-01-10)
+        # Review this exclusion quarterly as runner support improves
         exclude:
           - os: windows-latest
             python-version: '3.13'
