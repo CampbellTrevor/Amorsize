@@ -38,13 +38,14 @@ This directory contains the CI/CD automation workflows for Amorsize.
 ### Publish Workflow (`publish.yml`)
 
 **Triggers:**
-- Automatic: When a GitHub release is published
-- Manual: Can be manually dispatched via GitHub Actions UI
+- Automatic: When a GitHub release is published (publishes to PyPI)
+- Manual: Can be manually dispatched via GitHub Actions UI (publishes to Test PyPI only)
 
 **Job:**
 - Builds package
 - Validates with twine
-- Publishes to PyPI (on release) or Test PyPI (on manual dispatch)
+- Publishes to PyPI (releases only) or Test PyPI (manual dispatch only)
+- **Safety**: Manual dispatch always uses Test PyPI to prevent accidental production releases
 
 **Required Secrets:**
 - `PYPI_API_TOKEN` - For publishing to PyPI

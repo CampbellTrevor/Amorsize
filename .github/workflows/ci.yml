@@ -67,12 +67,12 @@ jobs:
     
     - name: Check code formatting with black
       run: |
-        black --check amorsize/ tests/ || echo "::warning::Code formatting issues found. Run 'black amorsize/ tests/' to fix."
+        black --check amorsize/ tests/ || echo "::warning title=Black Check::Code formatting issues found. Run 'black amorsize/ tests/' to fix."
       continue-on-error: true
     
     - name: Check import sorting with isort
       run: |
-        isort --check-only amorsize/ tests/ || echo "::warning::Import sorting issues found. Run 'isort amorsize/ tests/' to fix."
+        isort --check-only amorsize/ tests/ || echo "::warning title=Import Sorting::Import sorting issues found. Run 'isort amorsize/ tests/' to fix."
       continue-on-error: true
     
     - name: Lint with flake8
@@ -80,12 +80,12 @@ jobs:
         # Stop the build if there are Python syntax errors or undefined names
         flake8 amorsize/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
         # Exit-zero treats all errors as warnings
-        flake8 amorsize/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics || true
+        flake8 amorsize/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       continue-on-error: true
     
     - name: Type check with mypy
       run: |
-        mypy amorsize/ --ignore-missing-imports || echo "::warning::Type checking issues found."
+        mypy amorsize/ --ignore-missing-imports || echo "::warning title=Type Checking::Type checking issues found."
       continue-on-error: true
 
   build:
