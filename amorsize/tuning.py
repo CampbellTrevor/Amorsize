@@ -11,9 +11,19 @@ from typing import Any, Callable, List, Union, Iterator, Optional, Tuple, Dict
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
 import itertools
+import warnings
 
 from .optimizer import optimize, OptimizationResult
 from .system_info import get_physical_cores
+
+# Check for scikit-optimize availability
+try:
+    from skopt import gp_minimize
+    from skopt.space import Integer
+    from skopt.utils import use_named_args
+    HAS_SKOPT = True
+except ImportError:
+    HAS_SKOPT = False
 
 
 class TuningResult:
@@ -448,4 +458,293 @@ def quick_tune(
         use_optimizer_hint=True,
         verbose=verbose,
         prefer_threads_for_io=prefer_threads_for_io
+    )
+
+
+def bayesian_tune_parameters(
+    func: Callable,
+    data: Union[List, range, Iterator],
+    n_iterations: int = 20,
+    n_jobs_min: int = 1,
+    n_jobs_max: Optional[int] = None,
+    chunksize_min: int = 1,
+    chunksize_max: Optional[int] = None,
+    use_optimizer_hint: bool = True,
+    verbose: bool = False,
+    timeout_per_config: Optional[float] = None,
+    prefer_threads_for_io: bool = False,
+    random_state: Optional[int] = None
+) -> TuningResult:
+    """
+    Automatically find optimal n_jobs and chunksize using Bayesian Optimization.
+    
+    This function uses Gaussian Process-based Bayesian Optimization to intelligently
+    explore the parameter space and find optimal configurations with fewer benchmarks
+    than grid search. This is especially useful when benchmarking is expensive.
+    
+    Bayesian optimization builds a probabilistic model (surrogate) of the objective
+    function and uses an acquisition function to decide which configuration to try
+    next, balancing exploration and exploitation.
+    
+    Requires:
+        scikit-optimize (skopt) - Install with: pip install scikit-optimize
+    
+    Args:
+        func: Function to optimize (must accept single argument)
+        data: Input data (list, range, or iterator)
+        n_iterations: Number of configurations to benchmark (default: 20)
+                     More iterations = better results but longer runtime
+        n_jobs_min: Minimum number of workers to consider (default: 1)
+        n_jobs_max: Maximum number of workers to consider (default: physical_cores)
+        chunksize_min: Minimum chunk size to consider (default: 1)
+        chunksize_max: Maximum chunk size to consider (default: data_size // 2)
+        use_optimizer_hint: If True, starts search near optimizer recommendation
+        verbose: If True, prints progress during search
+        timeout_per_config: Maximum seconds per configuration (None = no limit)
+        prefer_threads_for_io: If True, uses ThreadPoolExecutor instead of multiprocessing.Pool
+        random_state: Random seed for reproducibility (default: None)
+    
+    Returns:
+        TuningResult with optimal parameters and benchmark data
+    
+    Examples:
+        >>> def expensive_func(x):
+        ...     return sum(i**2 for i in range(x))
+        >>> data = range(100, 500)
+        >>> 
+        >>> # Find optimal configuration with 30 intelligent trials
+        >>> result = bayesian_tune_parameters(expensive_func, data, n_iterations=30, verbose=True)
+        >>> print(f"Optimal: n_jobs={result.best_n_jobs}, chunksize={result.best_chunksize}")
+        >>> print(f"Speedup: {result.best_speedup:.2f}x")
+        
+        >>> # Custom search bounds
+        >>> result = bayesian_tune_parameters(
+        ...     expensive_func, data,
+        ...     n_jobs_min=2, n_jobs_max=8,
+        ...     chunksize_min=5, chunksize_max=100,
+        ...     n_iterations=25
+        ... )
+    
+    Note:
+        Falls back to grid search if scikit-optimize is not installed.
+        For quick results, use n_iterations=15-20. For thorough search, use 30-50.
+    """
+    # Check for scikit-optimize
+    if not HAS_SKOPT:
+        warnings.warn(
+            "scikit-optimize not available. Falling back to grid search. "
+            "Install with: pip install scikit-optimize",
+            RuntimeWarning
+        )
+        # Fall back to grid search with reasonable defaults
+        physical_cores = get_physical_cores()
+        n_jobs_range = [1, max(1, physical_cores // 2), physical_cores]
+        
+        data_list = list(data) if hasattr(data, '__iter__') and not isinstance(data, (list, range)) else data
+        n_items = len(list(data_list))
+        chunksize_range = [1, max(1, n_items // 20), max(1, n_items // 10)]
+        
+        return tune_parameters(
+            func, data,
+            n_jobs_range=n_jobs_range,
+            chunksize_range=chunksize_range,
+            use_optimizer_hint=use_optimizer_hint,
+            verbose=verbose,
+            timeout_per_config=timeout_per_config,
+            prefer_threads_for_io=prefer_threads_for_io
+        )
+    
+    # Convert iterator to list if needed
+    if hasattr(data, '__iter__') and not isinstance(data, (list, range)):
+        data = list(data)
+    
+    data_list = list(data)
+    n_items = len(data_list)
+    
+    if n_items == 0:
+        raise ValueError("Cannot tune on empty dataset")
+    
+    if n_iterations < 5:
+        raise ValueError("n_iterations must be at least 5 for Bayesian optimization")
+    
+    # Determine executor type
+    executor_type = "thread" if prefer_threads_for_io else "process"
+    
+    # Set default bounds
+    if n_jobs_max is None:
+        n_jobs_max = get_physical_cores()
+    
+    if chunksize_max is None:
+        chunksize_max = max(1, n_items // 2)
+    
+    # Validate bounds
+    if n_jobs_min < 1:
+        raise ValueError("n_jobs_min must be at least 1")
+    if n_jobs_max < n_jobs_min:
+        raise ValueError("n_jobs_max must be >= n_jobs_min")
+    if chunksize_min < 1:
+        raise ValueError("chunksize_min must be at least 1")
+    if chunksize_max < chunksize_min:
+        raise ValueError("chunksize_max must be >= chunksize_min")
+    
+    # Get optimizer hint if requested
+    optimization_hint = None
+    initial_x = None
+    if use_optimizer_hint:
+        try:
+            optimization_hint = optimize(
+                func, data_list,
+                verbose=False,
+                prefer_threads_for_io=prefer_threads_for_io
+            )
+            if verbose:
+                print(f"Optimizer hint: n_jobs={optimization_hint.n_jobs}, "
+                      f"chunksize={optimization_hint.chunksize}")
+            
+            # Use optimizer hint as initial point (if within bounds)
+            hint_n_jobs = max(n_jobs_min, min(n_jobs_max, optimization_hint.n_jobs))
+            hint_chunksize = max(chunksize_min, min(chunksize_max, optimization_hint.chunksize))
+            initial_x = [hint_n_jobs, hint_chunksize]
+        except Exception as e:
+            if verbose:
+                print(f"Warning: Could not get optimizer hint: {e}")
+    
+    if verbose:
+        print(f"\n=== Bayesian Optimization Configuration ===")
+        print(f"Function: {func.__name__}")
+        print(f"Data items: {n_items}")
+        print(f"Executor: {executor_type}")
+        print(f"Search space: n_jobs=[{n_jobs_min}, {n_jobs_max}], chunksize=[{chunksize_min}, {chunksize_max}]")
+        print(f"Iterations: {n_iterations}")
+        print(f"\nStarting optimization...\n")
+    
+    # Check if search space is too small for Bayesian optimization
+    # If n_jobs range is 1 or chunksize range is 1, fall back to grid search
+    if n_jobs_max == n_jobs_min or chunksize_max == chunksize_min:
+        if verbose:
+            print("Search space too small for Bayesian optimization. Using grid search...")
+        
+        # Fall back to grid search for tiny search spaces
+        n_jobs_range = [n_jobs_min, n_jobs_max] if n_jobs_max != n_jobs_min else [n_jobs_min]
+        chunksize_range = [chunksize_min, chunksize_max] if chunksize_max != chunksize_min else [chunksize_min]
+        
+        return tune_parameters(
+            func, data_list,
+            n_jobs_range=n_jobs_range,
+            chunksize_range=chunksize_range,
+            use_optimizer_hint=use_optimizer_hint,
+            verbose=verbose,
+            timeout_per_config=timeout_per_config,
+            prefer_threads_for_io=prefer_threads_for_io
+        )
+    
+    # Benchmark serial execution first
+    if verbose:
+        print("Benchmarking serial execution...")
+    
+    serial_start = time.perf_counter()
+    try:
+        list(map(func, data_list))
+    except Exception as e:
+        raise RuntimeError(f"Serial execution failed: {e}")
+    serial_end = time.perf_counter()
+    serial_time = serial_end - serial_start
+    
+    if verbose:
+        print(f"  Serial time: {serial_time:.4f}s\n")
+    
+    # Define search space
+    search_space = [
+        Integer(n_jobs_min, n_jobs_max, name='n_jobs'),
+        Integer(chunksize_min, chunksize_max, name='chunksize')
+    ]
+    
+    # Track all results
+    all_results: Dict[Tuple[int, int], float] = {}
+    iteration_counter = [0]  # Use list to allow modification in nested function
+    
+    # Define objective function for optimization
+    @use_named_args(search_space)
+    def objective(n_jobs, chunksize):
+        """Objective function to minimize: execution time."""
+        iteration_counter[0] += 1
+        
+        if verbose:
+            print(f"[{iteration_counter[0]}/{n_iterations}] Testing n_jobs={n_jobs}, "
+                  f"chunksize={chunksize}...", end=" ")
+        
+        exec_time = _benchmark_configuration(
+            func, data_list, n_jobs, chunksize,
+            executor_type=executor_type,
+            timeout=timeout_per_config
+        )
+        
+        all_results[(n_jobs, chunksize)] = exec_time
+        
+        if verbose:
+            if exec_time == float('inf'):
+                print("FAILED")
+            else:
+                speedup = serial_time / exec_time if exec_time > 0 else 0
+                print(f"{exec_time:.4f}s ({speedup:.2f}x)")
+        
+        return exec_time
+    
+    # Run Bayesian optimization
+    try:
+        result = gp_minimize(
+            objective,
+            search_space,
+            n_calls=n_iterations,
+            n_initial_points=max(3, n_iterations // 5),  # 20% initial random exploration
+            initial_point_generator='random',
+            x0=initial_x if initial_x else None,  # Start near optimizer hint if available
+            random_state=random_state,
+            verbose=False  # We handle our own verbosity
+        )
+        
+        best_n_jobs = int(result.x[0])
+        best_chunksize = int(result.x[1])
+        best_time = result.fun
+    except Exception as e:
+        if verbose:
+            print(f"\nWarning: Bayesian optimization failed: {e}")
+            print("Using best result from completed iterations...")
+        
+        # If optimization fails, use best from what we have
+        if all_results:
+            best_config = min(all_results.items(), key=lambda x: x[1])
+            best_n_jobs, best_chunksize = best_config[0]
+            best_time = best_config[1]
+        else:
+            # Fallback to serial
+            best_n_jobs = 1
+            best_chunksize = 1
+            best_time = serial_time
+    
+    # If serial is still faster, use serial
+    if serial_time < best_time:
+        best_time = serial_time
+        best_n_jobs = 1
+        best_chunksize = 1
+    
+    best_speedup = serial_time / best_time if best_time > 0 else 0
+    
+    if verbose:
+        print(f"\n=== Optimization Complete ===")
+        print(f"Best configuration: n_jobs={best_n_jobs}, chunksize={best_chunksize}")
+        print(f"Best time: {best_time:.4f}s ({best_speedup:.2f}x speedup)")
+        print(f"Configurations tested: {len(all_results) + 1}\n")
+    
+    return TuningResult(
+        best_n_jobs=best_n_jobs,
+        best_chunksize=best_chunksize,
+        best_time=best_time,
+        best_speedup=best_speedup,
+        serial_time=serial_time,
+        configurations_tested=len(all_results) + 1,  # +1 for serial
+        all_results=all_results,
+        optimization_hint=optimization_hint,
+        search_strategy="bayesian",
+        executor_type=executor_type
     )

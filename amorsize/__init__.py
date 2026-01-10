@@ -32,6 +32,7 @@ from .history import (
 from .tuning import (
     tune_parameters,
     quick_tune,
+    bayesian_tune_parameters,
     TuningResult
 )
 from .config import (
@@ -68,6 +69,7 @@ __all__ = [
     "clear_history",
     "tune_parameters",
     "quick_tune",
+    "bayesian_tune_parameters",
     "save_config",
     "load_config",
     "list_configs",
