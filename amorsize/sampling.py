@@ -127,12 +127,17 @@ def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int],
     return True, None, None
 
 
-def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception], List[Tuple[bytes, float, int]]]:
+def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception], List[Tuple[float, int]]]:
     """
     Check if data items can be pickled AND measure pickle time/size for each item.
     
     This is an optimized version of check_data_picklability that also collects
     the pickle measurements, avoiding redundant pickle.dumps() calls in perform_dry_run().
+    
+    Memory Optimization:
+        Only stores timing and size measurements, not the pickled bytes themselves.
+        This significantly reduces memory usage for large objects (numpy arrays,
+        dataframes, etc.) during the optimization phase.
     
     Args:
         data_items: List of data items to check
@@ -142,7 +147,7 @@ def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bo
         - all_picklable: True if all items can be pickled, False otherwise
         - first_unpicklable_index: Index of first unpicklable item, or None
         - exception: The exception raised during pickling, or None
-        - measurements: List of (pickled_data, pickle_time, data_size) tuples for each item
+        - measurements: List of (pickle_time, data_size) tuples for each item
     """
     measurements = []
     
@@ -154,7 +159,8 @@ def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bo
             
             pickle_time = data_pickle_end - data_pickle_start
             data_size = len(pickled_data)
-            measurements.append((pickled_data, pickle_time, data_size))
+            # Memory optimization: only store time and size, not the pickled bytes
+            measurements.append((pickle_time, data_size))
         except (pickle.PicklingError, AttributeError, TypeError) as e:
             return False, idx, e, []
     
@@ -602,7 +608,7 @@ def perform_dry_run(
         # Extract pre-measured data pickle times and sizes
         # This avoids redundant pickle.dumps() calls that were already done
         # during the picklability check
-        for _pickled_data, pickle_time, data_size in data_measurements:
+        for pickle_time, data_size in data_measurements:
             data_pickle_times.append(pickle_time)
             data_sizes.append(data_size)
         
