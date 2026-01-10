@@ -14,6 +14,23 @@ import io
 from typing import Any, Callable, Iterator, List, Tuple, Union, Optional, Dict
 import itertools
 
+# Global caches for workload characteristic detection
+# These values don't change during program execution, so we cache them
+_CACHED_PARALLEL_LIBRARIES: Optional[List[str]] = None
+_CACHED_ENVIRONMENT_VARS: Optional[Dict[str, str]] = None
+
+
+def _clear_workload_caches():
+    """
+    Clear cached workload characteristic detection results.
+    
+    This is primarily for testing purposes to ensure tests don't
+    interfere with each other's cached values.
+    """
+    global _CACHED_PARALLEL_LIBRARIES, _CACHED_ENVIRONMENT_VARS
+    _CACHED_PARALLEL_LIBRARIES = None
+    _CACHED_ENVIRONMENT_VARS = None
+
 
 
 class SamplingResult:
@@ -190,7 +207,18 @@ def detect_parallel_libraries() -> List[str]:
         This function excludes concurrent.futures and multiprocessing.pool
         because they are loaded by Amorsize itself and don't indicate that
         the user's function uses internal parallelism.
+        
+    Performance:
+        Results are cached after first call. Once a module is loaded into
+        sys.modules, it stays loaded for the lifetime of the process, so
+        the detection result remains valid.
     """
+    global _CACHED_PARALLEL_LIBRARIES
+    
+    # Return cached result if available
+    if _CACHED_PARALLEL_LIBRARIES is not None:
+        return _CACHED_PARALLEL_LIBRARIES
+    
     detected = []
     
     # Check for loaded modules
@@ -210,6 +238,8 @@ def detect_parallel_libraries() -> List[str]:
         if module_name in sys.modules:
             detected.append(display_name)
     
+    # Cache the result
+    _CACHED_PARALLEL_LIBRARIES = detected
     return detected
 
 
@@ -227,7 +257,18 @@ def check_parallel_environment_vars() -> Dict[str, str]:
         - NUMEXPR_NUM_THREADS: NumExpr thread count
         - VECLIB_MAXIMUM_THREADS: macOS Accelerate framework
         - NUMBA_NUM_THREADS: Numba JIT thread count
+        
+    Performance:
+        Results are cached after first call. Environment variables don't
+        change during program execution, so the detection result remains
+        valid for the process lifetime.
     """
+    global _CACHED_ENVIRONMENT_VARS
+    
+    # Return cached result if available
+    if _CACHED_ENVIRONMENT_VARS is not None:
+        return _CACHED_ENVIRONMENT_VARS
+    
     env_vars = {
         'OMP_NUM_THREADS': os.getenv('OMP_NUM_THREADS'),
         'MKL_NUM_THREADS': os.getenv('MKL_NUM_THREADS'),
@@ -237,8 +278,10 @@ def check_parallel_environment_vars() -> Dict[str, str]:
         'NUMBA_NUM_THREADS': os.getenv('NUMBA_NUM_THREADS')
     }
     
-    # Return only variables that are set
-    return {k: v for k, v in env_vars.items() if v is not None}
+    # Return only variables that are set, and cache the result
+    result = {k: v for k, v in env_vars.items() if v is not None}
+    _CACHED_ENVIRONMENT_VARS = result
+    return result
 
 
 def estimate_internal_threads(parallel_libraries: List[str], thread_activity: Dict[str, int], env_vars: Dict[str, str]) -> int:
