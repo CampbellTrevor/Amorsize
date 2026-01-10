@@ -736,3 +736,268 @@ def clear_benchmark_cache() -> int:
         
     except (OSError, IOError):
         return 0
+
+
+class CacheStats:
+    """
+    Statistics about cache usage and effectiveness.
+    
+    Attributes:
+        total_entries: Total number of cache entries
+        valid_entries: Number of valid (non-expired, compatible) entries
+        expired_entries: Number of expired entries
+        incompatible_entries: Number of system-incompatible entries
+        total_size_bytes: Total disk space used by cache (bytes)
+        oldest_entry_age: Age of oldest entry (seconds), None if no entries
+        newest_entry_age: Age of newest entry (seconds), None if no entries
+        cache_dir: Path to cache directory
+    """
+    
+    def __init__(
+        self,
+        total_entries: int = 0,
+        valid_entries: int = 0,
+        expired_entries: int = 0,
+        incompatible_entries: int = 0,
+        total_size_bytes: int = 0,
+        oldest_entry_age: Optional[float] = None,
+        newest_entry_age: Optional[float] = None,
+        cache_dir: Optional[str] = None
+    ):
+        self.total_entries = total_entries
+        self.valid_entries = valid_entries
+        self.expired_entries = expired_entries
+        self.incompatible_entries = incompatible_entries
+        self.total_size_bytes = total_size_bytes
+        self.oldest_entry_age = oldest_entry_age
+        self.newest_entry_age = newest_entry_age
+        self.cache_dir = cache_dir
+    
+    def __repr__(self):
+        return (f"CacheStats(total={self.total_entries}, valid={self.valid_entries}, "
+                f"expired={self.expired_entries}, incompatible={self.incompatible_entries}, "
+                f"size={self._format_bytes(self.total_size_bytes)})")
+    
+    def __str__(self):
+        lines = [
+            "=== Cache Statistics ===",
+            f"Cache directory: {self.cache_dir}",
+            f"Total entries: {self.total_entries}",
+            f"  Valid entries: {self.valid_entries}",
+            f"  Expired entries: {self.expired_entries}",
+            f"  Incompatible entries: {self.incompatible_entries}",
+            f"Total cache size: {self._format_bytes(self.total_size_bytes)}",
+        ]
+        
+        if self.oldest_entry_age is not None:
+            lines.append(f"Oldest entry age: {self._format_age(self.oldest_entry_age)}")
+        if self.newest_entry_age is not None:
+            lines.append(f"Newest entry age: {self._format_age(self.newest_entry_age)}")
+        
+        return "\n".join(lines)
+    
+    def _format_bytes(self, bytes_val: int) -> str:
+        """Format bytes in human-readable form."""
+        if bytes_val < 1024:
+            return f"{bytes_val}B"
+        elif bytes_val < 1024 ** 2:
+            return f"{bytes_val / 1024:.2f}KB"
+        elif bytes_val < 1024 ** 3:
+            return f"{bytes_val / (1024**2):.2f}MB"
+        else:
+            return f"{bytes_val / (1024**3):.2f}GB"
+    
+    def _format_age(self, seconds: float) -> str:
+        """Format age in human-readable form."""
+        if seconds < 60:
+            return f"{seconds:.1f} seconds"
+        elif seconds < 3600:
+            return f"{seconds / 60:.1f} minutes"
+        elif seconds < 86400:
+            return f"{seconds / 3600:.1f} hours"
+        else:
+            return f"{seconds / 86400:.1f} days"
+
+
+def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
+    """
+    Get statistics about the optimization cache.
+    
+    This function analyzes the cache directory and returns comprehensive
+    statistics including entry counts, disk usage, and age information.
+    Useful for monitoring cache effectiveness and identifying cleanup needs.
+    
+    Args:
+        ttl_seconds: Maximum age for valid entries (default: 7 days)
+    
+    Returns:
+        CacheStats object with cache statistics
+    
+    Example:
+        >>> stats = get_cache_stats()
+        >>> print(stats)
+        === Cache Statistics ===
+        Cache directory: /home/user/.cache/amorsize/optimization_cache
+        Total entries: 42
+          Valid entries: 38
+          Expired entries: 3
+          Incompatible entries: 1
+        Total cache size: 156.45KB
+        Oldest entry age: 6.2 days
+        Newest entry age: 2.3 hours
+    """
+    try:
+        cache_dir = get_cache_dir()
+        
+        total_entries = 0
+        valid_entries = 0
+        expired_entries = 0
+        incompatible_entries = 0
+        total_size_bytes = 0
+        oldest_timestamp = None
+        newest_timestamp = None
+        current_time = time.time()
+        
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                # Count file and get size
+                total_entries += 1
+                total_size_bytes += cache_file.stat().st_size
+                
+                # Load and validate entry
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                
+                entry = CacheEntry.from_dict(data)
+                
+                # Track timestamps
+                entry_timestamp = entry.timestamp
+                if oldest_timestamp is None or entry_timestamp < oldest_timestamp:
+                    oldest_timestamp = entry_timestamp
+                if newest_timestamp is None or entry_timestamp > newest_timestamp:
+                    newest_timestamp = entry_timestamp
+                
+                # Categorize entry
+                if entry.cache_version != CACHE_VERSION:
+                    incompatible_entries += 1
+                elif entry.is_expired(ttl_seconds):
+                    expired_entries += 1
+                elif not entry.is_system_compatible():
+                    incompatible_entries += 1
+                else:
+                    valid_entries += 1
+                    
+            except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
+                # Corrupted entry - count as incompatible
+                incompatible_entries += 1
+        
+        # Calculate ages
+        oldest_age = None if oldest_timestamp is None else (current_time - oldest_timestamp)
+        newest_age = None if newest_timestamp is None else (current_time - newest_timestamp)
+        
+        return CacheStats(
+            total_entries=total_entries,
+            valid_entries=valid_entries,
+            expired_entries=expired_entries,
+            incompatible_entries=incompatible_entries,
+            total_size_bytes=total_size_bytes,
+            oldest_entry_age=oldest_age,
+            newest_entry_age=newest_age,
+            cache_dir=str(cache_dir)
+        )
+        
+    except (OSError, IOError):
+        # Cache directory doesn't exist or isn't accessible
+        return CacheStats(cache_dir=str(get_cache_dir()))
+
+
+def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
+    """
+    Get statistics about the benchmark cache.
+    
+    This function analyzes the benchmark cache directory and returns comprehensive
+    statistics including entry counts, disk usage, and age information.
+    Useful for monitoring cache effectiveness and identifying cleanup needs.
+    
+    Args:
+        ttl_seconds: Maximum age for valid entries (default: 7 days)
+    
+    Returns:
+        CacheStats object with benchmark cache statistics
+    
+    Example:
+        >>> stats = get_benchmark_cache_stats()
+        >>> print(stats)
+        === Cache Statistics ===
+        Cache directory: /home/user/.cache/amorsize/benchmark_cache
+        Total entries: 15
+          Valid entries: 14
+          Expired entries: 1
+          Incompatible entries: 0
+        Total cache size: 42.18KB
+        Oldest entry age: 4.1 days
+        Newest entry age: 1.5 hours
+    """
+    try:
+        cache_dir = get_benchmark_cache_dir()
+        
+        total_entries = 0
+        valid_entries = 0
+        expired_entries = 0
+        incompatible_entries = 0
+        total_size_bytes = 0
+        oldest_timestamp = None
+        newest_timestamp = None
+        current_time = time.time()
+        
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                # Count file and get size
+                total_entries += 1
+                total_size_bytes += cache_file.stat().st_size
+                
+                # Load and validate entry
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                
+                entry = BenchmarkCacheEntry.from_dict(data)
+                
+                # Track timestamps
+                entry_timestamp = entry.timestamp
+                if oldest_timestamp is None or entry_timestamp < oldest_timestamp:
+                    oldest_timestamp = entry_timestamp
+                if newest_timestamp is None or entry_timestamp > newest_timestamp:
+                    newest_timestamp = entry_timestamp
+                
+                # Categorize entry
+                if entry.cache_version != CACHE_VERSION:
+                    incompatible_entries += 1
+                elif entry.is_expired(ttl_seconds):
+                    expired_entries += 1
+                elif not entry.is_system_compatible():
+                    incompatible_entries += 1
+                else:
+                    valid_entries += 1
+                    
+            except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
+                # Corrupted entry - count as incompatible
+                incompatible_entries += 1
+        
+        # Calculate ages
+        oldest_age = None if oldest_timestamp is None else (current_time - oldest_timestamp)
+        newest_age = None if newest_timestamp is None else (current_time - newest_timestamp)
+        
+        return CacheStats(
+            total_entries=total_entries,
+            valid_entries=valid_entries,
+            expired_entries=expired_entries,
+            incompatible_entries=incompatible_entries,
+            total_size_bytes=total_size_bytes,
+            oldest_entry_age=oldest_age,
+            newest_entry_age=newest_age,
+            cache_dir=str(cache_dir)
+        )
+        
+    except (OSError, IOError):
+        # Cache directory doesn't exist or isn't accessible
+        return CacheStats(cache_dir=str(get_benchmark_cache_dir()))
