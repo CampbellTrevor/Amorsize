@@ -63,9 +63,6 @@ Source = "https://github.com/CampbellTrevor/Amorsize"
 
 [tool.setuptools]
 packages = ["amorsize"]
-
-[tool.setuptools.package-data]
-amorsize = ["py.typed"]
 ```
 
 ### Key Features
