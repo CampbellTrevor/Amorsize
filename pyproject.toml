@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Dynamic Parallelism Optimizer & Overhead Calculator - Automatically determines optimal n_jobs and chunksize for Python multiprocessing"
 readme = "README.md"
 requires-python = ">=3.7"
-license = "MIT"
 authors = [
     {name = "Amorsize Contributors"}
 ]
