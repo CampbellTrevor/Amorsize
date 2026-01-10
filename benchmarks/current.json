@@ -1,0 +1,176 @@
+{
+  "cpu_intensive": {
+    "workload_name": "cpu_intensive",
+    "optimizer_result": {
+      "n_jobs": 2,
+      "chunksize": 10,
+      "reason": "Parallelization beneficial: 2 workers with chunks of 10",
+      "estimated_speedup": 1.5932930644162762,
+      "warnings": [],
+      "executor_type": "process"
+    },
+    "benchmark_result": {
+      "serial_time": 0.01298808500001769,
+      "parallel_time": 0.0159163440000043,
+      "actual_speedup": 0.8160218829157111,
+      "predicted_speedup": 1.5932930644162762,
+      "accuracy_percent": 51.2160569289035,
+      "error_percent": -48.7839430710965,
+      "recommendations": [
+        "Parallel execution is slower than serial - overhead dominates benefit",
+        "Consider increasing workload size or function complexity",
+        "Significant deviation from prediction - system-specific factors detected",
+        "Actual speedup below prediction - check for system contention or thermal throttling"
+      ]
+    },
+    "passed": false,
+    "regression_detected": true,
+    "issues": [
+      "Performance regression: Speedup 0.82x is below minimum 1.50x"
+    ],
+    "metadata": {
+      "workload_size": 100,
+      "workload_type": "cpu_bound",
+      "min_speedup_threshold": 1.5,
+      "optimizer_time": 0.0428356179999696
+    }
+  },
+  "mixed_workload": {
+    "workload_name": "mixed_workload",
+    "optimizer_result": {
+      "n_jobs": 1,
+      "chunksize": 495,
+      "reason": "Workload too small: best speedup with 2 workers is 0.97x (threshold: 1.2x)",
+      "estimated_speedup": 1.0,
+      "warnings": [
+        "Workload appears to be io-bound: CPU utilization is 19.0%",
+        "For I/O-bound workloads, consider using threading (concurrent.futures.ThreadPoolExecutor) or asyncio instead of multiprocessing. Multiprocessing has higher overhead and doesn't benefit I/O operations that release the GIL."
+      ],
+      "executor_type": "thread"
+    },
+    "benchmark_result": {
+      "serial_time": 0.0056331679999743756,
+      "parallel_time": 0.0056331679999743756,
+      "actual_speedup": 1.0,
+      "predicted_speedup": 1.0,
+      "accuracy_percent": 100.0,
+      "error_percent": 0.0,
+      "recommendations": [
+        "Serial execution is optimal for this workload"
+      ]
+    },
+    "passed": true,
+    "regression_detected": false,
+    "issues": [],
+    "metadata": {
+      "workload_size": 100,
+      "workload_type": "mixed",
+      "min_speedup_threshold": 1.2,
+      "optimizer_time": 0.004886214999999083
+    }
+  },
+  "memory_intensive": {
+    "workload_name": "memory_intensive",
+    "optimizer_result": {
+      "n_jobs": 2,
+      "chunksize": 5,
+      "reason": "Parallelization beneficial: 2 workers with chunks of 5",
+      "estimated_speedup": 1.5817627627314739,
+      "warnings": [],
+      "executor_type": "process"
+    },
+    "benchmark_result": {
+      "serial_time": 0.014356201999987661,
+      "parallel_time": 0.017565457999978662,
+      "actual_speedup": 0.8172973343481906,
+      "predicted_speedup": 1.5817627627314739,
+      "accuracy_percent": 51.670032548802524,
+      "error_percent": -48.329967451197476,
+      "recommendations": [
+        "Parallel execution is slower than serial - overhead dominates benefit",
+        "Consider increasing workload size or function complexity",
+        "Significant deviation from prediction - system-specific factors detected",
+        "Actual speedup below prediction - check for system contention or thermal throttling"
+      ]
+    },
+    "passed": false,
+    "regression_detected": true,
+    "issues": [
+      "Performance regression: Speedup 0.82x is below minimum 1.30x"
+    ],
+    "metadata": {
+      "workload_size": 50,
+      "workload_type": "cpu_bound",
+      "min_speedup_threshold": 1.3,
+      "optimizer_time": 0.023734149000006255
+    }
+  },
+  "fast_function": {
+    "workload_name": "fast_function",
+    "optimizer_result": {
+      "n_jobs": 1,
+      "chunksize": 1,
+      "reason": "Function is not picklable - cannot use multiprocessing",
+      "estimated_speedup": 1.0,
+      "warnings": [
+        "Function cannot be pickled. Use serial execution."
+      ],
+      "executor_type": "process"
+    },
+    "benchmark_result": {
+      "serial_time": 3.1150000268098665e-06,
+      "parallel_time": 3.1150000268098665e-06,
+      "actual_speedup": 1.0,
+      "predicted_speedup": 1.0,
+      "accuracy_percent": 100.0,
+      "error_percent": 0.0,
+      "recommendations": [
+        "Serial execution is optimal for this workload"
+      ]
+    },
+    "passed": true,
+    "regression_detected": false,
+    "issues": [],
+    "metadata": {
+      "workload_size": 1000,
+      "workload_type": "cpu_bound",
+      "min_speedup_threshold": 0.8,
+      "optimizer_time": 0.0015134619999912502
+    }
+  },
+  "variable_time": {
+    "workload_name": "variable_time",
+    "optimizer_result": {
+      "n_jobs": 1,
+      "chunksize": 1,
+      "reason": "Function is not picklable - cannot use multiprocessing",
+      "estimated_speedup": 1.0,
+      "warnings": [
+        "Function cannot be pickled. Use serial execution."
+      ],
+      "executor_type": "process"
+    },
+    "benchmark_result": {
+      "serial_time": 0.0003489210000111598,
+      "parallel_time": 0.0003489210000111598,
+      "actual_speedup": 1.0,
+      "predicted_speedup": 1.0,
+      "accuracy_percent": 100.0,
+      "error_percent": 0.0,
+      "recommendations": [
+        "Serial execution is optimal for this workload"
+      ]
+    },
+    "passed": false,
+    "regression_detected": true,
+    "issues": [
+      "Performance regression: Speedup 1.00x is below minimum 1.40x"
+    ],
+    "metadata": {
+      "workload_size": 50,
+      "workload_type": "cpu_bound",
+      "min_speedup_threshold": 1.4,
+      "optimizer_time": 0.001571341999976994
+    }
+  }
+}
