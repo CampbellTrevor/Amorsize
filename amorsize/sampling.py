@@ -127,6 +127,40 @@ def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int],
     return True, None, None
 
 
+def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception], List[Tuple[bytes, float, int]]]:
+    """
+    Check if data items can be pickled AND measure pickle time/size for each item.
+    
+    This is an optimized version of check_data_picklability that also collects
+    the pickle measurements, avoiding redundant pickle.dumps() calls in perform_dry_run().
+    
+    Args:
+        data_items: List of data items to check
+    
+    Returns:
+        Tuple of (all_picklable, first_unpicklable_index, exception, measurements)
+        - all_picklable: True if all items can be pickled, False otherwise
+        - first_unpicklable_index: Index of first unpicklable item, or None
+        - exception: The exception raised during pickling, or None
+        - measurements: List of (pickled_data, pickle_time, data_size) tuples for each item
+    """
+    measurements = []
+    
+    for idx, item in enumerate(data_items):
+        try:
+            data_pickle_start = time.perf_counter()
+            pickled_data = pickle.dumps(item)
+            data_pickle_end = time.perf_counter()
+            
+            pickle_time = data_pickle_end - data_pickle_start
+            data_size = len(pickled_data)
+            measurements.append((pickled_data, pickle_time, data_size))
+        except (pickle.PicklingError, AttributeError, TypeError) as e:
+            return False, idx, e, []
+    
+    return True, None, None, measurements
+
+
 def detect_parallel_libraries() -> List[str]:
     """
     Detect commonly used parallel computing libraries that are currently loaded.
@@ -508,8 +542,8 @@ def perform_dry_run(
             is_generator=is_gen
         )
     
-    # Check if data items are picklable
-    data_picklable, unpicklable_idx, pickle_err = check_data_picklability(sample)
+    # Check if data items are picklable AND measure pickle time/size (optimized: single pass)
+    data_picklable, unpicklable_idx, pickle_err, data_measurements = check_data_picklability_with_measurements(sample)
     
     # Detect nested parallelism
     # Skip detection if AMORSIZE_TESTING environment variable is set
@@ -565,20 +599,14 @@ def perform_dry_run(
         data_pickle_times = []
         data_sizes = []
         
+        # Extract pre-measured data pickle times and sizes
+        # This avoids redundant pickle.dumps() calls that were already done
+        # during the picklability check
+        for _pickled_data, pickle_time, data_size in data_measurements:
+            data_pickle_times.append(pickle_time)
+            data_sizes.append(data_size)
+        
         for item in sample:
-            # Measure INPUT data pickle time (The "Pickle Tax" - part 1: data → workers)
-            try:
-                data_pickle_start = time.perf_counter()
-                pickled_data = pickle.dumps(item)
-                data_pickle_end = time.perf_counter()
-                
-                data_pickle_times.append(data_pickle_end - data_pickle_start)
-                data_sizes.append(len(pickled_data))
-            except:
-                # If data pickling fails, we already detected this in check_data_picklability
-                # Use fallback measurements
-                data_sizes.append(sys.getsizeof(item))
-                data_pickle_times.append(0.0)
             
             # Measure execution time
             start_time = time.perf_counter()
