@@ -76,3 +76,6 @@ examples/dns_logs/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# GitHub Copilot agent instructions (private)
+.github/agents/
