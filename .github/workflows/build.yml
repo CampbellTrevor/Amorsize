@@ -42,6 +42,12 @@ jobs:
     
     - name: Test wheel installation
       run: |
+        # Ensure exactly one wheel file exists
+        WHEEL_COUNT=$(ls dist/*.whl 2>/dev/null | wc -l)
+        if [ "$WHEEL_COUNT" -ne 1 ]; then
+          echo "Error: Expected exactly 1 wheel file, found $WHEEL_COUNT"
+          exit 1
+        fi
         WHEEL_FILE=$(ls dist/*.whl)
         pip install "$WHEEL_FILE"
         python -c "from amorsize import optimize; print('✓ Wheel installs successfully')"
@@ -49,6 +55,12 @@ jobs:
     
     - name: Test sdist installation
       run: |
+        # Ensure exactly one source distribution exists
+        SDIST_COUNT=$(ls dist/*.tar.gz 2>/dev/null | wc -l)
+        if [ "$SDIST_COUNT" -ne 1 ]; then
+          echo "Error: Expected exactly 1 source distribution, found $SDIST_COUNT"
+          exit 1
+        fi
         SDIST_FILE=$(ls dist/*.tar.gz)
         pip install "$SDIST_FILE"
         python -c "from amorsize import optimize; print('✓ Source distribution installs successfully')"
