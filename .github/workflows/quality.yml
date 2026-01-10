@@ -34,9 +34,9 @@ jobs:
       run: |
         python -c "from amorsize import optimize, execute, process_in_batches"
         python -c "from amorsize import optimize_streaming, validate_optimization"
-        python -c "from amorsize import compare_configurations, load_config"
-        python -c "from amorsize import OptimizationHistory"
-        python -c "from amorsize import auto_adjust_for_nested_parallelism"
+        python -c "from amorsize import compare_strategies, compare_with_optimizer"
+        python -c "from amorsize import load_config, save_config"
+        python -c "from amorsize import tune_parameters, quick_tune"
         python -c "from amorsize import visualize_comparison_result"
         
     - name: Run a basic smoke test
