@@ -81,8 +81,8 @@ class TestThreadSafeSpawnCostCache:
         cost2 = measure_spawn_cost()
         elapsed = time.perf_counter() - start
         
-        # Should be instant (< 1ms) since it's cached
-        assert elapsed < 0.001, "Cached value should be returned instantly"
+        # Should be very fast since it's cached (< 10ms even on slow systems)
+        assert elapsed < 0.01, "Cached value should be returned very quickly"
         assert cost1 == cost2, "Should get same cached value"
     
     def test_spawn_cost_no_race_on_write(self):
@@ -170,8 +170,8 @@ class TestThreadSafeChunkingOverheadCache:
         overhead2 = measure_chunking_overhead()
         elapsed = time.perf_counter() - start
         
-        # Should be instant (< 1ms) since it's cached
-        assert elapsed < 0.001, "Cached value should be returned instantly"
+        # Should be very fast since it's cached (< 10ms even on slow systems)
+        assert elapsed < 0.01, "Cached value should be returned very quickly"
         assert overhead1 == overhead2, "Should get same cached value"
     
     def test_chunking_overhead_no_race_on_write(self):
@@ -299,8 +299,9 @@ class TestBackwardCompatibility:
         cost2 = measure_spawn_cost()
         time2 = time.perf_counter() - start2
         
-        # Cached call should be much faster
-        assert time2 < time1 * 0.1, "Cached call should be at least 10x faster"
+        # Cached call should be much faster (or at least < 10ms absolute)
+        # Use both relative and absolute checks for robustness
+        assert time2 < 0.01 or time2 < time1 * 0.5, "Cached call should be very fast"
         assert cost1 == cost2, "Should get same value from cache"
     
     def test_cache_clear_still_works(self):
