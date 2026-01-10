@@ -1,0 +1,44 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, Iterate, develop ]
+  pull_request:
+    branches: [ main, Iterate, develop ]
+
+jobs:
+  lint:
+    name: Code quality checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+    
+    - name: Verify package imports
+      run: |
+        python -c "from amorsize import optimize, execute, process_in_batches"
+        python -c "from amorsize import optimize_streaming, validate_optimization"
+        python -c "from amorsize import compare_strategies, tune_parameters"
+        python -c "from amorsize import save_config, load_config"
+        echo "✓ All imports successful"
+    
+    - name: Check for basic syntax errors
+      run: |
+        python -m py_compile amorsize/*.py
+        echo "✓ No syntax errors found"
+    
+    - name: Verify pyproject.toml
+      run: |
+        pip install tomli
+        python -c "import tomli; f = open('pyproject.toml', 'rb'); tomli.load(f); print('✓ pyproject.toml is valid')"
