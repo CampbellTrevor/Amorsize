@@ -1,80 +1,92 @@
-# Context for Next Agent - Iteration 39 Complete
+# Context for Next Agent - Iteration 40 Complete
 
 ## What Was Accomplished
 
-Successfully added **modern Python packaging with pyproject.toml** (PEP 517/518 compliance).
+Successfully added **CI/CD automation with GitHub Actions** for continuous validation.
 
 ### Issue Addressed
-- Project only had legacy setup.py for packaging
-- Missing modern pyproject.toml standard (PEP 517/518)
-- This affects tooling support and future-proofing
+- No automated testing on PR/push (manual testing only)
+- No continuous integration for multi-version/multi-OS testing
+- No automated package build verification
+- Missing automated quality gates before merge
 
 ### Changes Made
-**File: `pyproject.toml` (NEW)**
-- Added PEP 517/518 compliant build configuration
-- Declared build system requirements (setuptools>=45, wheel)
-- Migrated all metadata from setup.py to declarative format
-- Added Python 3.13 classifier (already supported, just not declared)
-- Configured optional dependencies (full, dev)
-- Added project URLs (homepage, bug reports, source)
-- Used setuptools build backend for compatibility
+**Directory: `.github/workflows/` (NEW)**
+
+**File: `test.yml` (NEW)**
+- Automated test suite execution on PR/push
+- Tests Python 3.7-3.13 across Linux, macOS, Windows
+- Matrix strategy for comprehensive coverage (21 combinations)
+- Runs all 656 tests with pytest
+- Validates basic import functionality
+- Triggers on main and Iterate branches
+
+**File: `build.yml` (NEW)**
+- Automated package build verification
+- Uses python -m build (modern standard)
+- Validates package metadata with twine check
+- Tests wheel installation
+- Uploads build artifacts for inspection
+- Triggers on main and Iterate branches
 
 ### Why This Approach
-- **PEP 517/518 Standard**: Modern Python packaging uses pyproject.toml
-- **Tool Support**: Better integration with pip, build, poetry, and other tools
-- **Declarative Config**: Cleaner than imperative setup.py
-- **Future-Proof**: setup.py is being phased out by the Python community
-- **Backward Compatible**: Kept setup.py for now to maintain compatibility
-- **Single Source**: pyproject.toml becomes the authoritative source for metadata
+- **Continuous Validation**: Catch issues immediately on PR/push
+- **Multi-Platform**: Test on all supported platforms (Linux, macOS, Windows)
+- **Multi-Version**: Test all Python versions (3.7-3.13) as declared
+- **Automated Quality**: No manual testing needed before merge
+- **Fast Feedback**: Developers know immediately if changes break anything
+- **Standard Actions**: Uses official GitHub Actions (checkout@v4, setup-python@v5)
 
 ### Technical Details
-**Build System:**
-- Uses setuptools as build backend (most compatible)
-- Requires setuptools>=45 and wheel
-- No dynamic versioning (static 0.1.0 for simplicity)
+**Test Workflow:**
+- Matrix strategy: 3 OS × 7 Python versions = 21 test jobs
+- fail-fast: false (run all combinations even if one fails)
+- Installs with [dev,full] extras (pytest, psutil)
+- Runs full test suite (656 tests)
+- Validates import after tests
 
-**Package Configuration:**
-- All metadata moved from setup.py
-- Python 3.7+ requirement maintained
-- Optional dependencies preserved (psutil, pytest)
-- Package discovery simplified
+**Build Workflow:**
+- Single job on ubuntu-latest with Python 3.11
+- Uses modern build tools (build, twine)
+- Validates package metadata compliance
+- Tests wheel installation and import
+- Uploads artifacts for review
 
-### Testing Results
-✅ Package builds successfully with `python -m build`
-✅ Wheel installs correctly (`pip install dist/amorsize-0.1.0-py3-none-any.whl`)
-✅ All 630 tests passing (26 skipped)
-✅ Zero warnings maintained
-✅ No regressions - all functionality preserved
+### Workflow Triggers
+Both workflows trigger on:
+- Push to `main` or `Iterate` branches
+- Pull requests to `main` or `Iterate` branches
 
-### Build Verification
-```bash
-# Clean build
-python3 -m build --wheel --no-isolation
-# Successfully built amorsize-0.1.0-py3-none-any.whl
+This ensures continuous validation for all development work.
 
-# Install and test
-pip install dist/amorsize-0.1.0-py3-none-any.whl
-python3 -c "from amorsize import optimize; print('✓ Works')"
-```
+### Validation
+✅ YAML syntax validated (both files parse correctly)
+✅ Uses official GitHub Actions (v4/v5 - latest stable)
+✅ Matrix strategy covers all declared Python versions
+✅ All three major platforms tested (Linux, macOS, Windows)
+✅ No new dependencies or changes to code
+✅ Minimal, focused implementation
 
 ### Status
-✅ Production ready - Modern packaging infrastructure in place
+✅ Production ready - CI/CD automation in place
 
 ## Recommended Next Steps
-1. **CI/CD Automation** (HIGH VALUE) - Add GitHub Actions for automated testing and building
+1. **Linting/Formatting** (QUALITY) - Add ruff or black for code formatting automation
 2. Advanced tuning (Bayesian optimization)
 3. Profiling integration (cProfile, flame graphs)
 4. Pipeline optimization (multi-function)
 5. Documentation improvements (API reference, advanced guides)
+6. PyPI publication workflow (after CI stabilizes)
 
 ## Notes for Next Agent
-The codebase is in **EXCELLENT** shape with enhanced packaging:
+The codebase is in **EXCELLENT** shape with CI/CD automation:
 
 ### Infrastructure (The Foundation) ✅
 - ✅ Physical core detection with multiple fallback strategies
 - ✅ Memory limit detection (cgroup/Docker aware)
 - ✅ Measured spawn cost (not estimated - actual benchmarks)
-- ✅ **Modern Python packaging (pyproject.toml - PEP 517/518)**
+- ✅ Modern Python packaging (pyproject.toml - PEP 517/518)
+- ✅ **CI/CD automation (GitHub Actions for testing and building)**
 
 ### Safety & Accuracy (The Guardrails) ✅
 - ✅ Generator safety with `itertools.chain` 
@@ -91,18 +103,21 @@ The codebase is in **EXCELLENT** shape with enhanced packaging:
 - ✅ Clean API (`from amorsize import optimize`)
 - ✅ Python 3.7-3.13 compatibility (declared in pyproject.toml)
 - ✅ Zero warnings in test suite
-- ✅ **Modern packaging with pyproject.toml**
+- ✅ Modern packaging with pyproject.toml
+- ✅ **Continuous integration with GitHub Actions**
 
 ### Key Enhancement
-**pyproject.toml adds:**
-- PEP 517/518 compliance for modern Python packaging
-- Better tooling integration (pip, build, poetry)
-- Declarative configuration (easier to maintain)
-- Future-proof approach as setup.py is being phased out
-- Python 3.13 officially declared as supported
+**GitHub Actions CI/CD adds:**
+- Automated testing on every PR/push
+- Multi-platform validation (Linux, macOS, Windows)
+- Multi-version testing (Python 3.7-3.13)
+- Automated package build verification
+- Fast feedback for developers
+- Quality gates before merge
 
-All foundational work is complete. The **highest-value next increment** would be:
-- **CI/CD Automation**: Add GitHub Actions workflow for automated testing, linting, and package building on PR/push
-- This provides continuous validation and prepares for PyPI publication
+All foundational work and automation is complete. The **highest-value next increment** would be:
+- **Code Linting/Formatting**: Add ruff or black for automated code style enforcement in CI
+- This ensures consistent code quality and catches common issues early
+- Alternatively: Advanced features like Bayesian optimization or profiling integration
 
 Good luck! 🚀
