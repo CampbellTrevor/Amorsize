@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -44,3 +44,6 @@ Source = "https://github.com/CampbellTrevor/Amorsize"
 
 [tool.setuptools]
 packages = ["amorsize"]
+
+[tool.setuptools.package-data]
+amorsize = ["py.typed"]
