@@ -65,7 +65,7 @@ jobs:
         python -c "from amorsize import optimize; print('✓ Package installed and imports successfully')"
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4.4.3
       with:
         name: distribution-packages
         path: dist/
@@ -86,7 +86,7 @@ jobs:
         python-version: '3.11'
     
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v4.1.3
       with:
         name: distribution-packages
         path: dist/
