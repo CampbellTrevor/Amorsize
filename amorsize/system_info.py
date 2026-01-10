@@ -214,6 +214,9 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
     
     The measurement is cached globally to avoid repeated benchmarking.
     
+    Enhanced with quality validation to ensure reliable measurements across
+    diverse system conditions (similar to chunking overhead measurement).
+    
     Args:
         timeout: Maximum time to wait for measurement in seconds
     
@@ -224,18 +227,29 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         1. Measure time to create pool with 1 worker
         2. Measure time to create pool with 2 workers
         3. Calculate marginal cost: (time_2_workers - time_1_worker) / 1
+        4. Validate measurement quality with multiple criteria
+        5. Use intelligent fallback if measurement is unreliable
         
         This isolates the per-worker cost from fixed pool initialization overhead.
         
+    Quality Validation:
+        - Check 1: Reasonable range based on start method
+        - Check 2: Signal strength (2-worker measurement significantly larger)
+        - Check 3: Consistency with start method expectations
+        - Check 4: Overhead fraction validation
+        
     Fallback Strategy:
-        If benchmarking fails (e.g., multiprocessing not available,
-        timeout exceeded), falls back to OS-based estimates.
+        If benchmarking fails or produces unreliable results, falls back to
+        OS-based estimates based on the multiprocessing start method.
     """
     global _CACHED_SPAWN_COST
     
     # Return cached value if available
     if _CACHED_SPAWN_COST is not None:
         return _CACHED_SPAWN_COST
+    
+    # Get fallback value early for quality checks
+    fallback_estimate = get_spawn_cost_estimate()
     
     try:
         # Measure time to create pool with 1 worker
@@ -260,17 +274,67 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         # This removes fixed pool initialization overhead
         marginal_cost = time_2_workers - time_1_worker
         
-        # Ensure we have a reasonable positive value
-        # If marginal cost is negative or tiny, fall back to the 1-worker measurement
+        # Enhanced validation: Check multiple quality criteria
+        # If marginal cost is positive and reasonable, use it with validation
         if marginal_cost > MIN_REASONABLE_MARGINAL_COST:
             per_worker_cost = marginal_cost
+            
+            # Quality check 1: Reasonable range based on start method
+            # fork: 1ms to 100ms, spawn: 50ms to 1000ms, forkserver: 10ms to 500ms
+            start_method = get_multiprocessing_start_method()
+            if start_method == 'fork':
+                min_bound, max_bound = 0.001, 0.1  # 1ms to 100ms
+            elif start_method == 'spawn':
+                min_bound, max_bound = 0.05, 1.0   # 50ms to 1000ms
+            elif start_method == 'forkserver':
+                min_bound, max_bound = 0.01, 0.5   # 10ms to 500ms
+            else:
+                # Unknown start method - use conservative bounds
+                min_bound, max_bound = 0.001, 1.0
+            
+            if not (min_bound <= per_worker_cost <= max_bound):
+                # Outside reasonable bounds for this start method
+                _CACHED_SPAWN_COST = fallback_estimate
+                return fallback_estimate
+            
+            # Quality check 2: Signal strength validation
+            # 2-worker measurement should be at least 10% longer than 1-worker
+            # This ensures we're measuring real spawn cost, not noise
+            if time_2_workers < time_1_worker * 1.1:
+                # Signal too weak - likely measurement noise
+                _CACHED_SPAWN_COST = fallback_estimate
+                return fallback_estimate
+            
+            # Quality check 3: Consistency with start method expectations
+            # Measured value should be within 10x of the expected value
+            # This catches measurements that are wildly off
+            if not (fallback_estimate / 10 <= per_worker_cost <= fallback_estimate * 10):
+                # Measurement inconsistent with expectations
+                _CACHED_SPAWN_COST = fallback_estimate
+                return fallback_estimate
+            
+            # Quality check 4: Overhead fraction validation
+            # Marginal cost should be reasonable fraction of 2-worker time
+            # If marginal cost > 90% of total time, something is wrong
+            if marginal_cost > time_2_workers * 0.9:
+                # Overhead seems unrealistically high relative to total
+                _CACHED_SPAWN_COST = fallback_estimate
+                return fallback_estimate
+            
+            # All quality checks passed - use measured value
+            _CACHED_SPAWN_COST = per_worker_cost
+            return per_worker_cost
         else:
-            # Fallback: use the single worker measurement
-            per_worker_cost = time_1_worker
-        
-        # Cache the result
-        _CACHED_SPAWN_COST = per_worker_cost
-        return per_worker_cost
+            # Marginal cost too small or negative - fall back to 1-worker measurement
+            # But validate it first
+            if MIN_REASONABLE_MARGINAL_COST <= time_1_worker <= max(0.1, fallback_estimate * 5):
+                # 1-worker measurement seems reasonable
+                _CACHED_SPAWN_COST = time_1_worker
+                return time_1_worker
+            else:
+                # Even 1-worker measurement seems unreliable
+                _CACHED_SPAWN_COST = fallback_estimate
+                return fallback_estimate
         
     except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
         # If measurement fails, fall back to OS-based estimate
@@ -278,8 +342,8 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         # TimeoutError: Benchmark took too long
         # ValueError: Invalid parameter values
         # ProcessError: Multiprocessing-specific failures
-        _CACHED_SPAWN_COST = get_spawn_cost_estimate()
-        return _CACHED_SPAWN_COST
+        _CACHED_SPAWN_COST = fallback_estimate
+        return fallback_estimate
 
 
 def _minimal_worker(x):
