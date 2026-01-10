@@ -57,7 +57,8 @@ from .cache import (
     clear_benchmark_cache,
     get_cache_stats,
     get_benchmark_cache_stats,
-    CacheStats
+    CacheStats,
+    prewarm_cache
 )
 
 __version__ = "0.1.0"
@@ -102,6 +103,7 @@ __all__ = [
     "get_cache_stats",
     "get_benchmark_cache_stats",
     "CacheStats",
+    "prewarm_cache",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",

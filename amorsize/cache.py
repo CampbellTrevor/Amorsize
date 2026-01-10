@@ -1023,3 +1023,301 @@ def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheSt
     except (OSError, IOError):
         # Cache directory doesn't exist or isn't accessible
         return CacheStats(cache_dir=str(get_benchmark_cache_dir()))
+
+
+def prewarm_cache(
+    func: Callable,
+    workload_profiles: Optional[list] = None,
+    optimization_result: Optional['OptimizationResult'] = None,
+    force: bool = False
+) -> int:
+    """
+    Prewarm the optimization cache to eliminate first-run penalty.
+    
+    This function pre-populates the cache with optimization results, allowing
+    subsequent optimize() calls to return instantly without performing dry runs
+    or overhead measurements. This is especially valuable for:
+    
+    - Serverless/Lambda functions (fast cold starts)
+    - Production deployments (consistent first-run performance)
+    - Development iteration (faster testing cycles)
+    - CI/CD pipelines (predictable build times)
+    
+    Usage:
+        There are two modes of operation:
+        
+        1. **Automatic mode** (workload_profiles specified):
+           Prewarming with common workload patterns for a function.
+           
+           ```python
+           # Prewarm with default patterns (CPU-bound, various sizes)
+           prewarm_cache(my_function)
+           
+           # Prewarm with custom patterns
+           patterns = [
+               {"data_size": 100, "avg_time": 0.001},    # Small, fast
+               {"data_size": 10000, "avg_time": 0.01},   # Large, moderate
+           ]
+           prewarm_cache(my_function, workload_profiles=patterns)
+           ```
+        
+        2. **Manual mode** (optimization_result specified):
+           Prewarming from an actual optimization result.
+           
+           ```python
+           # Run optimization once
+           result = optimize(my_function, sample_data)
+           
+           # Prewarm cache with this result for future runs
+           prewarm_cache(my_function, optimization_result=result)
+           ```
+    
+    Args:
+        func: Function to prewarm cache for
+        workload_profiles: List of workload patterns to prewarm with.
+                          Each dict should have "data_size" and "avg_time" keys.
+                          If None, uses sensible defaults for common patterns.
+        optimization_result: Existing OptimizationResult to store in cache.
+                           If provided, workload_profiles is ignored.
+        force: If True, overwrites existing cache entries. If False, skips
+               entries that already exist in cache. Default: False.
+    
+    Returns:
+        Number of cache entries created or updated
+    
+    Raises:
+        ValueError: If neither workload_profiles nor optimization_result provided
+        TypeError: If workload_profiles format is invalid
+    
+    Examples:
+        >>> # Prewarm with default patterns
+        >>> count = prewarm_cache(expensive_function)
+        >>> print(f"Prewarmed {count} cache entries")
+        
+        >>> # Prewarm from optimization result
+        >>> result = optimize(func, data)
+        >>> prewarm_cache(func, optimization_result=result)
+        
+        >>> # Custom workload patterns
+        >>> patterns = [
+        ...     {"data_size": 50, "avg_time": 0.005},
+        ...     {"data_size": 500, "avg_time": 0.01},
+        ... ]
+        >>> prewarm_cache(func, workload_profiles=patterns, force=True)
+    
+    Note:
+        - Prewarming does not validate that the function works or that the
+          parameters are optimal. It simply populates the cache.
+        - For accurate prewarming, use optimization_result from a real run.
+        - For quick prewarming, use workload_profiles with estimated patterns.
+        - Cache entries include system information and will be invalidated
+          if system configuration changes (cores, memory, start method).
+    """
+    # Validate inputs
+    if optimization_result is None and workload_profiles is None:
+        # Use default workload profiles for common patterns
+        workload_profiles = _get_default_workload_profiles()
+    
+    entries_created = 0
+    
+    # Mode 1: Prewarm from optimization result
+    if optimization_result is not None:
+        # Extract workload characteristics from the result
+        # We need to estimate data_size and avg_time from the result
+        # Use the cache key from the result if available, or create one
+        
+        try:
+            # Try to get data size from the result
+            if hasattr(optimization_result, 'data') and hasattr(optimization_result.data, '__len__'):
+                data_size = len(optimization_result.data)
+            else:
+                # Estimate from profile if available
+                if hasattr(optimization_result, 'profile') and optimization_result.profile is not None:
+                    data_size = optimization_result.profile.total_items
+                else:
+                    # Default to medium size if unknown
+                    data_size = 1000
+            
+            # Estimate avg time from profile
+            if hasattr(optimization_result, 'profile') and optimization_result.profile is not None:
+                avg_time = optimization_result.profile.avg_execution_time
+            else:
+                # Default to moderate time if unknown
+                avg_time = 0.01
+            
+            # Compute cache key
+            cache_key = compute_cache_key(func, data_size, avg_time)
+            
+            # Check if entry already exists
+            if not force:
+                existing_entry, _ = load_cache_entry(cache_key)
+                if existing_entry is not None:
+                    # Entry already exists, skip
+                    return 0
+            
+            # Save to cache
+            save_cache_entry(
+                cache_key=cache_key,
+                n_jobs=optimization_result.n_jobs,
+                chunksize=optimization_result.chunksize,
+                executor_type=optimization_result.executor_type,
+                estimated_speedup=optimization_result.estimated_speedup,
+                reason=optimization_result.reason,
+                warnings=optimization_result.warnings
+            )
+            entries_created = 1
+            
+        except (AttributeError, TypeError, ValueError):
+            # Invalid optimization result, skip
+            pass
+    
+    # Mode 2: Prewarm from workload profiles
+    else:
+        for profile in workload_profiles:
+            try:
+                # Validate profile format
+                if not isinstance(profile, dict):
+                    continue
+                if "data_size" not in profile or "avg_time" not in profile:
+                    continue
+                
+                data_size = profile["data_size"]
+                avg_time = profile["avg_time"]
+                
+                # Validate values
+                if not isinstance(data_size, int) or data_size <= 0:
+                    continue
+                if not isinstance(avg_time, (int, float)) or avg_time <= 0:
+                    continue
+                
+                # Compute cache key
+                cache_key = compute_cache_key(func, data_size, avg_time)
+                
+                # Check if entry already exists
+                if not force:
+                    existing_entry, _ = load_cache_entry(cache_key)
+                    if existing_entry is not None:
+                        # Entry already exists, skip
+                        continue
+                
+                # Compute reasonable optimization parameters based on workload
+                # This is a simplified heuristic - real optimization would be more sophisticated
+                n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings = \
+                    _estimate_optimization_parameters(data_size, avg_time)
+                
+                # Save to cache
+                save_cache_entry(
+                    cache_key=cache_key,
+                    n_jobs=n_jobs,
+                    chunksize=chunksize,
+                    executor_type=executor_type,
+                    estimated_speedup=estimated_speedup,
+                    reason=reason,
+                    warnings=warnings
+                )
+                entries_created += 1
+                
+            except (TypeError, ValueError, KeyError):
+                # Invalid profile, skip
+                continue
+    
+    return entries_created
+
+
+def _get_default_workload_profiles() -> list:
+    """
+    Get default workload profiles for cache prewarming.
+    
+    These profiles cover common use cases:
+    - Small/fast: Quick operations on small datasets
+    - Medium/moderate: Typical batch processing
+    - Large/slow: Heavy computation on large datasets
+    
+    Returns:
+        List of workload profile dictionaries
+    """
+    return [
+        # Small datasets, fast execution (< 1ms per item)
+        {"data_size": 10, "avg_time": 0.0001},
+        {"data_size": 100, "avg_time": 0.0005},
+        
+        # Medium datasets, moderate execution (1-10ms per item)
+        {"data_size": 100, "avg_time": 0.001},
+        {"data_size": 1000, "avg_time": 0.005},
+        
+        # Large datasets, slow execution (10-100ms per item)
+        {"data_size": 1000, "avg_time": 0.01},
+        {"data_size": 10000, "avg_time": 0.05},
+        
+        # Very large datasets, very slow execution (> 100ms per item)
+        {"data_size": 10000, "avg_time": 0.1},
+    ]
+
+
+def _estimate_optimization_parameters(
+    data_size: int,
+    avg_time: float
+) -> Tuple[int, int, str, float, str, list]:
+    """
+    Estimate optimization parameters for cache prewarming.
+    
+    This is a simplified heuristic that provides reasonable defaults without
+    performing actual measurements. For accurate optimization, use the full
+    optimize() function.
+    
+    Args:
+        data_size: Number of items in workload
+        avg_time: Average time per item (seconds)
+    
+    Returns:
+        Tuple of (n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings)
+    """
+    from .system_info import get_physical_cores, get_spawn_cost_estimate
+    
+    physical_cores = get_physical_cores()
+    spawn_cost_estimate = get_spawn_cost_estimate()
+    
+    # Estimate total serial time
+    total_time = data_size * avg_time
+    
+    # Heuristic: If total time is very short (< spawn cost), use serial
+    if total_time < spawn_cost_estimate:
+        return (
+            1, 1, "process",
+            1.0,
+            "Function too fast - overhead dominates (prewarmed estimate)",
+            ["This is a prewarmed cache entry with estimated parameters"]
+        )
+    
+    # Heuristic: Use physical cores for parallelization
+    n_jobs = min(physical_cores, data_size)
+    
+    # Heuristic: Target ~0.2s per chunk
+    target_chunk_duration = 0.2
+    if avg_time > 0:
+        ideal_chunksize = max(1, int(target_chunk_duration / avg_time))
+        chunksize = min(ideal_chunksize, max(1, data_size // n_jobs))
+    else:
+        chunksize = max(1, data_size // n_jobs)
+    
+    # Estimate speedup (simplified Amdahl's Law)
+    # Assume 95% parallelizable (conservative estimate)
+    parallel_fraction = 0.95
+    overhead_fraction = 0.1  # 10% overhead estimate
+    theoretical_speedup = n_jobs * parallel_fraction
+    estimated_speedup = theoretical_speedup * (1 - overhead_fraction)
+    estimated_speedup = max(1.0, min(estimated_speedup, n_jobs * 0.8))
+    
+    # Determine executor type (always use process for prewarming)
+    executor_type = "process"
+    
+    # Create reason
+    reason = f"Prewarmed: {n_jobs} workers with chunks of {chunksize} (estimated parameters)"
+    
+    # Add warning
+    warnings = [
+        "This is a prewarmed cache entry with estimated parameters",
+        "For accurate optimization, run optimize() once to replace this entry"
+    ]
+    
+    return (n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings)
