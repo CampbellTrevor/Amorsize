@@ -15,6 +15,17 @@ from amorsize.sampling import (
     _clear_workload_caches
 )
 
+# Module-level constant for test environment variables
+# Extracted to avoid duplication and ensure consistency
+TEST_ENV_VARS = [
+    'OMP_NUM_THREADS',
+    'MKL_NUM_THREADS', 
+    'OPENBLAS_NUM_THREADS',
+    'NUMEXPR_NUM_THREADS',
+    'VECLIB_MAXIMUM_THREADS',
+    'NUMBA_NUM_THREADS'
+]
+
 
 class TestParallelLibrariesCaching:
     """Test caching behavior of detect_parallel_libraries()."""
@@ -99,12 +110,10 @@ class TestEnvironmentVarsCaching:
     def setup_method(self):
         """Clear cache before each test."""
         _clear_workload_caches()
-        # Store original env vars
+        # Store original env vars using module-level constant
         self.original_vars = {
             key: os.environ.get(key)
-            for key in ['OMP_NUM_THREADS', 'MKL_NUM_THREADS', 
-                       'OPENBLAS_NUM_THREADS', 'NUMEXPR_NUM_THREADS',
-                       'VECLIB_MAXIMUM_THREADS', 'NUMBA_NUM_THREADS']
+            for key in TEST_ENV_VARS
         }
     
     def teardown_method(self):
@@ -169,8 +178,8 @@ class TestEnvironmentVarsCaching:
     
     def test_cache_with_no_env_vars(self):
         """Test cache behavior when no relevant env vars are set."""
-        # Clear all relevant env vars
-        for key in self.original_vars.keys():
+        # Clear all relevant env vars using module-level constant
+        for key in TEST_ENV_VARS:
             os.environ.pop(key, None)
         
         # Clear cache
@@ -185,8 +194,8 @@ class TestEnvironmentVarsCaching:
     
     def test_cache_returns_only_set_vars(self):
         """Test that cache only returns env vars that are set."""
-        # Clear all vars
-        for key in self.original_vars.keys():
+        # Clear all vars using module-level constant
+        for key in TEST_ENV_VARS:
             os.environ.pop(key, None)
         
         # Set only one

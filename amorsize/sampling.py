@@ -209,9 +209,10 @@ def detect_parallel_libraries() -> List[str]:
         the user's function uses internal parallelism.
         
     Performance:
-        Results are cached after first call. Once a module is loaded into
-        sys.modules, it stays loaded for the lifetime of the process, so
-        the detection result remains valid.
+        Results are cached after first call. Modules typically stay in
+        sys.modules for the process lifetime, though they can be removed
+        programmatically via module reloading. The cache should be cleared
+        (via _clear_workload_caches) if modules are reloaded during testing.
     """
     global _CACHED_PARALLEL_LIBRARIES
     
@@ -259,9 +260,10 @@ def check_parallel_environment_vars() -> Dict[str, str]:
         - NUMBA_NUM_THREADS: Numba JIT thread count
         
     Performance:
-        Results are cached after first call. Environment variables don't
-        change during program execution, so the detection result remains
-        valid for the process lifetime.
+        Results are cached after first call. In typical usage, environment
+        variables are set before program execution and remain constant.
+        If env vars are modified programmatically during runtime via os.environ,
+        call _clear_workload_caches() to force re-detection on next call.
     """
     global _CACHED_ENVIRONMENT_VARS
     
