@@ -28,10 +28,14 @@ jobs:
     
     - name: Lint with flake8
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
+        # Check for critical errors (syntax, undefined names)
         flake8 amorsize/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Exit-zero treats all errors as warnings
-        flake8 amorsize/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: false
+    
+    - name: Check code style with flake8
+      run: |
+        # Check style issues (non-blocking)
+        flake8 amorsize/ --count --max-complexity=10 --max-line-length=127 --statistics
       continue-on-error: true
     
     - name: Check code style with pylint
