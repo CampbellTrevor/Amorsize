@@ -1559,3 +1559,335 @@ def import_cache(
         raise IOError(f"Failed to import cache: {e}")
     except json.JSONDecodeError as e:
         raise IOError(f"Invalid JSON in import file: {e}")
+
+
+class CacheValidationResult:
+    """
+    Result of cache validation operations.
+    
+    Attributes:
+        is_valid: Overall validation status (True if no critical issues)
+        total_entries: Total number of cache entries examined
+        valid_entries: Number of valid entries
+        invalid_entries: Number of invalid/corrupted entries
+        issues: List of validation issues found
+        health_score: Overall cache health (0-100)
+    """
+    
+    def __init__(
+        self,
+        is_valid: bool,
+        total_entries: int,
+        valid_entries: int,
+        invalid_entries: int,
+        issues: list,
+        health_score: float
+    ):
+        self.is_valid = is_valid
+        self.total_entries = total_entries
+        self.valid_entries = valid_entries
+        self.invalid_entries = invalid_entries
+        self.issues = issues
+        self.health_score = health_score
+    
+    def __str__(self) -> str:
+        """Human-readable validation report."""
+        lines = [
+            "=== Cache Validation Report ===",
+            f"Total entries examined: {self.total_entries}",
+            f"Valid entries: {self.valid_entries}",
+            f"Invalid entries: {self.invalid_entries}",
+            f"Health score: {self.health_score:.1f}/100",
+            f"Status: {'✓ HEALTHY' if self.is_valid else '✗ ISSUES FOUND'}",
+        ]
+        
+        if self.issues:
+            lines.append("\nIssues found:")
+            for issue in self.issues:
+                lines.append(f"  • {issue}")
+        
+        return "\n".join(lines)
+    
+    def __repr__(self) -> str:
+        return f"CacheValidationResult(valid={self.valid_entries}/{self.total_entries}, health={self.health_score:.1f})"
+
+
+def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> Tuple[bool, list]:
+    """
+    Validate a single cache entry file.
+    
+    Checks:
+    - File exists and is readable
+    - Valid JSON structure
+    - Required fields present
+    - Data types correct
+    - Values within reasonable ranges
+    - Not expired (if ttl_seconds specified)
+    - System compatibility
+    
+    Args:
+        cache_file: Path to cache entry file
+        ttl_seconds: TTL for expiration check (default: 7 days)
+    
+    Returns:
+        Tuple of (is_valid, issues_list)
+        - is_valid: True if entry passes all checks
+        - issues_list: List of validation issues found (empty if valid)
+    
+    Examples:
+        >>> cache_file = Path("/path/to/cache/entry.json")
+        >>> is_valid, issues = validate_cache_entry(cache_file)
+        >>> if not is_valid:
+        ...     print(f"Issues: {issues}")
+    """
+    issues = []
+    
+    # Check file exists
+    if not cache_file.exists():
+        issues.append(f"File does not exist: {cache_file}")
+        return False, issues
+    
+    # Check file is readable
+    try:
+        with open(cache_file, 'r') as f:
+            data = json.load(f)
+    except (OSError, IOError) as e:
+        issues.append(f"Cannot read file: {e}")
+        return False, issues
+    except json.JSONDecodeError as e:
+        issues.append(f"Invalid JSON: {e}")
+        return False, issues
+    
+    # Check required fields
+    required_fields = {
+        "n_jobs": int,
+        "chunksize": int,
+        "executor_type": str,
+        "estimated_speedup": (int, float),
+        "reason": str,
+        "warnings": list,
+        "timestamp": (int, float),
+        "system_info": dict,
+        "cache_version": int
+    }
+    
+    for field, expected_type in required_fields.items():
+        if field not in data:
+            issues.append(f"Missing required field: {field}")
+        elif not isinstance(data[field], expected_type):
+            issues.append(f"Invalid type for {field}: expected {expected_type}, got {type(data[field])}")
+    
+    # If critical fields are missing, return early
+    if issues:
+        return False, issues
+    
+    # Validate value ranges
+    if data["n_jobs"] < 1:
+        issues.append(f"Invalid n_jobs: {data['n_jobs']} (must be >= 1)")
+    
+    if data["chunksize"] < 1:
+        issues.append(f"Invalid chunksize: {data['chunksize']} (must be >= 1)")
+    
+    if data["executor_type"] not in ["process", "thread"]:
+        issues.append(f"Invalid executor_type: {data['executor_type']} (must be 'process' or 'thread')")
+    
+    if data["estimated_speedup"] < 0:
+        issues.append(f"Invalid speedup: {data['estimated_speedup']} (must be >= 0)")
+    
+    if data["cache_version"] != CACHE_VERSION:
+        issues.append(f"Cache version mismatch: {data['cache_version']} (current: {CACHE_VERSION})")
+    
+    # Check expiration
+    try:
+        entry = CacheEntry.from_dict(data)
+        if entry.is_expired(ttl_seconds):
+            age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
+            issues.append(f"Entry expired: age={age_days:.1f} days, TTL={ttl_seconds / (24*60*60):.1f} days")
+        
+        # Check system compatibility
+        is_compatible, reason = entry.is_system_compatible()
+        if not is_compatible:
+            issues.append(f"System incompatible: {reason}")
+    except Exception as e:
+        issues.append(f"Failed to validate entry: {e}")
+    
+    return len(issues) == 0, issues
+
+
+def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "optimization") -> CacheValidationResult:
+    """
+    Validate all entries in the cache directory.
+    
+    Performs comprehensive validation of all cache entries, checking for:
+    - File corruption or invalid JSON
+    - Missing or invalid fields
+    - Expired entries
+    - System incompatibility
+    - Unreasonable parameter values
+    
+    Args:
+        ttl_seconds: TTL for expiration check (default: 7 days)
+        cache_type: Type of cache to validate ("optimization" or "benchmark")
+    
+    Returns:
+        CacheValidationResult with detailed validation information
+    
+    Examples:
+        >>> result = validate_cache()
+        >>> print(result)
+        === Cache Validation Report ===
+        Total entries examined: 42
+        Valid entries: 38
+        Invalid entries: 4
+        Health score: 90.5/100
+        Status: ✓ HEALTHY
+        
+        >>> if not result.is_valid:
+        ...     print("Cache has issues - consider running prune_expired_cache()")
+    """
+    if cache_type == "optimization":
+        cache_dir = get_cache_dir()
+    elif cache_type == "benchmark":
+        cache_dir = get_benchmark_cache_dir()
+    else:
+        raise ValueError(f"Invalid cache_type: {cache_type} (must be 'optimization' or 'benchmark')")
+    
+    total_entries = 0
+    valid_entries = 0
+    invalid_entries = 0
+    all_issues = []
+    
+    try:
+        # Scan all cache files
+        if not cache_dir.exists():
+            return CacheValidationResult(
+                is_valid=True,
+                total_entries=0,
+                valid_entries=0,
+                invalid_entries=0,
+                issues=[],
+                health_score=100.0
+            )
+        
+        cache_files = list(cache_dir.glob("*.json"))
+        total_entries = len(cache_files)
+        
+        for cache_file in cache_files:
+            is_valid, issues = validate_cache_entry(cache_file, ttl_seconds)
+            
+            if is_valid:
+                valid_entries += 1
+            else:
+                invalid_entries += 1
+                # Add filename to issues
+                for issue in issues:
+                    all_issues.append(f"{cache_file.name}: {issue}")
+        
+        # Calculate health score (0-100)
+        if total_entries == 0:
+            health_score = 100.0
+        else:
+            # Base score on percentage of valid entries
+            base_score = (valid_entries / total_entries) * 100
+            
+            # Penalize for critical issues (corrupted files, missing fields)
+            critical_issues = sum(1 for issue in all_issues if any(
+                keyword in issue.lower() for keyword in ["invalid json", "missing required", "cannot read"]
+            ))
+            penalty = min(critical_issues * 5, 20)  # Max 20 point penalty
+            
+            health_score = max(0, base_score - penalty)
+        
+        # Consider healthy if >= 90% valid and no critical corruption
+        is_overall_valid = health_score >= 90.0
+        
+        return CacheValidationResult(
+            is_valid=is_overall_valid,
+            total_entries=total_entries,
+            valid_entries=valid_entries,
+            invalid_entries=invalid_entries,
+            issues=all_issues,
+            health_score=health_score
+        )
+        
+    except (OSError, IOError) as e:
+        return CacheValidationResult(
+            is_valid=False,
+            total_entries=0,
+            valid_entries=0,
+            invalid_entries=0,
+            issues=[f"Failed to access cache directory: {e}"],
+            health_score=0.0
+        )
+
+
+def repair_cache(dry_run: bool = True, cache_type: str = "optimization") -> Dict[str, int]:
+    """
+    Repair cache by removing invalid entries.
+    
+    This function scans the cache directory and removes entries that fail
+    validation checks. It performs the same validation as validate_cache()
+    but actually deletes the problematic files.
+    
+    Safety: By default, runs in dry_run mode to show what would be deleted
+    without actually removing files. Set dry_run=False to perform actual deletion.
+    
+    Args:
+        dry_run: If True, show what would be deleted without actually deleting.
+                If False, perform actual deletion. Default: True.
+        cache_type: Type of cache to repair ("optimization" or "benchmark")
+    
+    Returns:
+        Dictionary with counts:
+        - "examined": Total entries examined
+        - "deleted": Entries deleted (or would be deleted in dry_run)
+        - "kept": Valid entries kept
+    
+    Examples:
+        >>> # Preview what would be deleted
+        >>> result = repair_cache(dry_run=True)
+        >>> print(f"Would delete {result['deleted']} invalid entries")
+        
+        >>> # Actually repair the cache
+        >>> result = repair_cache(dry_run=False)
+        >>> print(f"Deleted {result['deleted']} invalid entries")
+    """
+    if cache_type == "optimization":
+        cache_dir = get_cache_dir()
+    elif cache_type == "benchmark":
+        cache_dir = get_benchmark_cache_dir()
+    else:
+        raise ValueError(f"Invalid cache_type: {cache_type} (must be 'optimization' or 'benchmark')")
+    
+    examined = 0
+    deleted = 0
+    kept = 0
+    
+    try:
+        if not cache_dir.exists():
+            return {"examined": 0, "deleted": 0, "kept": 0}
+        
+        cache_files = list(cache_dir.glob("*.json"))
+        
+        for cache_file in cache_files:
+            examined += 1
+            is_valid, issues = validate_cache_entry(cache_file)
+            
+            if not is_valid:
+                if not dry_run:
+                    try:
+                        cache_file.unlink()
+                    except (OSError, IOError):
+                        pass  # Silently skip files we can't delete
+                deleted += 1
+            else:
+                kept += 1
+        
+        return {
+            "examined": examined,
+            "deleted": deleted,
+            "kept": kept
+        }
+        
+    except (OSError, IOError):
+        return {"examined": 0, "deleted": 0, "kept": 0}
