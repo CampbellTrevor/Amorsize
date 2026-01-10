@@ -35,8 +35,11 @@ jobs:
     
     - name: Check for common issues
       run: |
-        # Check for trailing whitespace
-        ! git grep -I --line-number '[[:space:]]$' -- '*.py' || (echo "Found trailing whitespace" && exit 1)
+        # Check for trailing whitespace in Python files
+        if git grep -I --line-number '[[:space:]]$' -- '*.py'; then
+          echo "Error: Found trailing whitespace in Python files"
+          exit 1
+        fi
     
     - name: Validate pyproject.toml
       run: |

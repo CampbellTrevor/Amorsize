@@ -35,18 +35,22 @@ jobs:
       run: |
         ls -lh dist/
     
-    # Note: Skipping twine check due to known setuptools metadata warning
-    # Installation tests below will catch any real packaging issues
+    # Note: Skipping twine check due to setuptools generating deprecated 'license-file' 
+    # metadata field (see: https://github.com/pypa/setuptools/issues/2739)
+    # This is cosmetic - package functionality is unaffected
+    # Installation tests below validate actual packaging correctness
     
     - name: Test wheel installation
       run: |
-        pip install dist/*.whl
+        WHEEL_FILE=$(ls dist/*.whl)
+        pip install "$WHEEL_FILE"
         python -c "from amorsize import optimize; print('✓ Wheel installs successfully')"
         pip uninstall -y amorsize
     
     - name: Test sdist installation
       run: |
-        pip install dist/*.tar.gz
+        SDIST_FILE=$(ls dist/*.tar.gz)
+        pip install "$SDIST_FILE"
         python -c "from amorsize import optimize; print('✓ Source distribution installs successfully')"
     
     - name: Upload build artifacts
