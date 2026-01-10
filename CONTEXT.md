@@ -1,51 +1,80 @@
-# Context for Next Agent - Iteration 38 Complete
+# Context for Next Agent - Iteration 39 Complete
 
 ## What Was Accomplished
 
-Successfully fixed **pytest.mark.slow warning** by registering custom marker in pytest configuration.
+Successfully added **modern Python packaging with pyproject.toml** (PEP 517/518 compliance).
 
 ### Issue Addressed
-- pytest was generating "Unknown pytest.mark.slow" warning
-- Custom markers need to be registered in pytest configuration
-- Only remaining warning in the entire test suite
+- Project only had legacy setup.py for packaging
+- Missing modern pyproject.toml standard (PEP 517/518)
+- This affects tooling support and future-proofing
 
 ### Changes Made
-**File: `pytest.ini` (NEW)**
-- Created pytest configuration file
-- Registered custom 'slow' marker with description
-- Added standard pytest settings (strict markers, discovery patterns)
-- Documented usage: `pytest -m slow` or `pytest -m "not slow"`
+**File: `pyproject.toml` (NEW)**
+- Added PEP 517/518 compliant build configuration
+- Declared build system requirements (setuptools>=45, wheel)
+- Migrated all metadata from setup.py to declarative format
+- Added Python 3.13 classifier (already supported, just not declared)
+- Configured optional dependencies (full, dev)
+- Added project URLs (homepage, bug reports, source)
+- Used setuptools build backend for compatibility
 
 ### Why This Approach
-- pytest.ini is the standard location for pytest configuration
-- `--strict-markers` ensures all markers are registered (prevents typos)
-- Properly documents the purpose of the 'slow' marker
-- Follows pytest best practices
+- **PEP 517/518 Standard**: Modern Python packaging uses pyproject.toml
+- **Tool Support**: Better integration with pip, build, poetry, and other tools
+- **Declarative Config**: Cleaner than imperative setup.py
+- **Future-Proof**: setup.py is being phased out by the Python community
+- **Backward Compatible**: Kept setup.py for now to maintain compatibility
+- **Single Source**: pyproject.toml becomes the authoritative source for metadata
+
+### Technical Details
+**Build System:**
+- Uses setuptools as build backend (most compatible)
+- Requires setuptools>=45 and wheel
+- No dynamic versioning (static 0.1.0 for simplicity)
+
+**Package Configuration:**
+- All metadata moved from setup.py
+- Python 3.7+ requirement maintained
+- Optional dependencies preserved (psutil, pytest)
+- Package discovery simplified
 
 ### Testing Results
+✅ Package builds successfully with `python -m build`
+✅ Wheel installs correctly (`pip install dist/amorsize-0.1.0-py3-none-any.whl`)
 ✅ All 630 tests passing (26 skipped)
-✅ **ZERO warnings** - completely clean test output
-✅ Marker functionality verified:
-  - `pytest -m slow` runs 2 slow performance tests
-  - `pytest -m "not slow"` runs 628 tests (2 deselected)
-✅ No regressions - all tests still pass
+✅ Zero warnings maintained
+✅ No regressions - all functionality preserved
+
+### Build Verification
+```bash
+# Clean build
+python3 -m build --wheel --no-isolation
+# Successfully built amorsize-0.1.0-py3-none-any.whl
+
+# Install and test
+pip install dist/amorsize-0.1.0-py3-none-any.whl
+python3 -c "from amorsize import optimize; print('✓ Works')"
+```
 
 ### Status
-✅ Production ready - Test suite is now warning-free
+✅ Production ready - Modern packaging infrastructure in place
 
 ## Recommended Next Steps
-1. Advanced tuning (Bayesian optimization)
-2. Profiling integration (cProfile, flame graphs)  
-3. Pipeline optimization (multi-function)
-4. Documentation improvements (API reference, advanced guides)
+1. **CI/CD Automation** (HIGH VALUE) - Add GitHub Actions for automated testing and building
+2. Advanced tuning (Bayesian optimization)
+3. Profiling integration (cProfile, flame graphs)
+4. Pipeline optimization (multi-function)
+5. Documentation improvements (API reference, advanced guides)
 
 ## Notes for Next Agent
-The codebase is in **EXCELLENT** shape across all strategic priorities:
+The codebase is in **EXCELLENT** shape with enhanced packaging:
 
 ### Infrastructure (The Foundation) ✅
 - ✅ Physical core detection with multiple fallback strategies
 - ✅ Memory limit detection (cgroup/Docker aware)
 - ✅ Measured spawn cost (not estimated - actual benchmarks)
+- ✅ **Modern Python packaging (pyproject.toml - PEP 517/518)**
 
 ### Safety & Accuracy (The Guardrails) ✅
 - ✅ Generator safety with `itertools.chain` 
@@ -60,13 +89,20 @@ The codebase is in **EXCELLENT** shape across all strategic priorities:
 ### UX & Robustness (The Polish) ✅
 - ✅ Edge cases handled (empty data, unpicklable, etc.)
 - ✅ Clean API (`from amorsize import optimize`)
-- ✅ Python 3.13+ compatibility (datetime fix in iteration 37)
-- ✅ **Zero warnings in test suite** (pytest markers fix in iteration 38)
+- ✅ Python 3.7-3.13 compatibility (declared in pyproject.toml)
+- ✅ Zero warnings in test suite
+- ✅ **Modern packaging with pyproject.toml**
 
-All foundational work is complete. Consider high-value enhancements:
-- Performance improvements in hot paths
-- Advanced tuning algorithms
-- Enhanced profiling capabilities
-- Documentation expansion
+### Key Enhancement
+**pyproject.toml adds:**
+- PEP 517/518 compliance for modern Python packaging
+- Better tooling integration (pip, build, poetry)
+- Declarative configuration (easier to maintain)
+- Future-proof approach as setup.py is being phased out
+- Python 3.13 officially declared as supported
+
+All foundational work is complete. The **highest-value next increment** would be:
+- **CI/CD Automation**: Add GitHub Actions workflow for automated testing, linting, and package building on PR/push
+- This provides continuous validation and prepares for PyPI publication
 
 Good luck! 🚀

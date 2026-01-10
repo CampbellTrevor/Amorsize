@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amorsize"
+version = "0.1.0"
+description = "Dynamic Parallelism Optimizer & Overhead Calculator - Automatically determines optimal n_jobs and chunksize for Python multiprocessing"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "Amorsize Contributors"}
+]
+keywords = ["multiprocessing", "parallelization", "optimization", "performance", "amdahl", "overhead"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+full = ["psutil>=5.8.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/CampbellTrevor/Amorsize"
+"Bug Reports" = "https://github.com/CampbellTrevor/Amorsize/issues"
+Source = "https://github.com/CampbellTrevor/Amorsize"
+
+[tool.setuptools]
+packages = ["amorsize"]
+
+[tool.setuptools.package-data]
+amorsize = ["py.typed"]
