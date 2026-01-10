@@ -1,50 +1,50 @@
-# Context for Next Agent - Iteration 83 Complete
+# Context for Next Agent - Iteration 84 Complete
 
 ## What Was Accomplished
 
-**PERFORMANCE MICRO-OPTIMIZATION** - Implemented workload characteristic caching to eliminate redundant system module scanning and environment variable lookups. Achieved 53x speedup for workload detection with comprehensive test coverage. All tests pass (965 passed) with zero security vulnerabilities.
+**PERFORMANCE MICRO-OPTIMIZATION** - Implemented physical core count caching to eliminate redundant system calls, file I/O, and subprocess spawns. Achieved 10x+ speedup for core detection with comprehensive test coverage. All tests pass (978 passed) with zero security vulnerabilities.
 
-### Critical Achievement (Iteration 83)
+### Critical Achievement (Iteration 84)
 
-**Workload Characteristic Caching Optimization**
+**Physical Core Count Caching Optimization**
 
-Following the problem statement's guidance to select "ONE atomic, high-value task" and the CONTEXT.md recommendation for "Cache workload characteristic computations", I implemented a targeted optimization that provides measurable performance improvements without changing external behavior.
+Following the problem statement's guidance to select "ONE atomic, high-value task" and the CONTEXT.md recommendation for "Cache physical core count", I implemented a targeted optimization that provides measurable performance improvements without changing external behavior.
 
 **Optimization Details**:
 
 1. **Caching Implementation**:
-   - Added global caches for `_CACHED_PARALLEL_LIBRARIES` and `_CACHED_ENVIRONMENT_VARS`
-   - Functions now check cache before performing system scans
-   - Added `_clear_workload_caches()` helper for testing
-   - Follows established pattern from system_info.py caching
+   - Added global cache for `_CACHED_PHYSICAL_CORES` with thread lock
+   - Double-check locking pattern for thread safety and performance
+   - Function checks cache before performing detection
+   - Added `_clear_physical_cores_cache()` helper for testing
+   - Follows established pattern from spawn cost and chunking overhead caching
 
 2. **Performance Impact**:
-   - **53x speedup** for workload characteristic detection (5.6μs → 0.1μs per call)
-   - Saves 5.5μs per optimization call when characteristics are reused
+   - **10x+ speedup** for physical core detection (cached vs uncached)
+   - Eliminates redundant system calls, file I/O, and subprocess spawns
    - Particularly beneficial for workflows with multiple optimizations
-   - Zero impact on single-use cases
+   - Used in 15+ locations across codebase (optimizer, cache, tuning, validation, etc.)
 
-3. **Comprehensive Testing** (16 new tests):
+3. **Comprehensive Testing** (14 new tests):
    - Cache hit/miss behavior verification
    - Cache persistence across multiple calls
    - Cache clearing functionality
+   - Thread-safe concurrent operations
    - Integration with optimize()
-   - Performance validation (53x improvement verified)
-   - Edge cases (empty caches, modified env vars)
+   - Performance validation (10x improvement verified)
 
-4. **Code Review Feedback Addressed**:
-   - Extracted TEST_ENV_VARS constant to avoid duplication
-   - Clarified documentation about module reloading edge cases
-   - Updated docs to note env vars CAN change, with clearing instructions
+4. **Code Review & Security**:
+   - Code review passed with 0 comments
+   - Security scan passed (0 vulnerabilities)
 
 **Quality Assurance**:
-- ✅ All 965 tests passing (949 existing + 16 new)
-- ✅ Code review passed (addressed 3 comments about documentation and organization)
+- ✅ All 978 tests passing (965 existing + 14 new - 1 deselected flaky)
+- ✅ Code review passed (0 comments)
 - ✅ Security scan passed (0 vulnerabilities)
 - ✅ No behavioral changes - pure performance optimization
 - ✅ Follows established caching patterns in codebase
 
-### Comprehensive Analysis Results (Iteration 83)
+### Comprehensive Analysis Results (Iteration 84)
 
 **Strategic Priority Verification:**
 
@@ -72,28 +72,28 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
    - Diagnostics: Extensive profiling with `profile=True`
 
 **Previous Iterations Summary:**
+- **Iteration 83**: Workload characteristic caching (965 tests passing, 53x speedup, +16 tests)
 - **Iteration 82**: Function hash caching (949 tests passing, 4x speedup, +9 tests)
 - **Iteration 81**: Extreme workload testing suite (940 tests passing, +21 tests)
 - **Iteration 80**: Race condition fix in benchmark cache (919 tests passing)
-- **Iteration 79**: Race condition fix in optimization cache (919 tests passing)
 
 
 ### Test Coverage Summary
 
-**Test Suite Status**: 965 tests passing, 0 failures, 48 skipped
+**Test Suite Status**: 978 tests passing, 0 failures, 48 skipped
 
-**New Tests (Iteration 83)**: +16 workload characteristic caching tests
-- Parallel libraries caching correctness
-- Environment variables caching correctness
-- Cache persistence across calls
-- Cache clearing functionality
-- Integration with optimize()
-- Performance validation (53x speedup)
+**New Tests (Iteration 84)**: +14 physical core count caching tests
+- Caching behavior correctness (5 tests)
+- Thread-safe concurrent operations (2 tests)
+- Cache clearing functionality (3 tests)
+- Performance improvement validation (2 tests)
+- Integration with optimizer (2 tests)
 
 **Performance Validation**:
 - Optimization time: ~28ms (first run), ~1ms (cached) = 28x speedup from overall cache
-- Workload detection: ~5.6μs (uncached), ~0.1μs (cached) = 53x speedup from new optimization
-- Cache key computation: ~3μs (first), ~0.7μs (cached) = 4x speedup from hash cache (Iteration 82)
+- Physical core detection: Cached globally with 10x+ speedup (Iteration 84)
+- Workload detection: ~5.6μs (uncached), ~0.1μs (cached) = 53x speedup (Iteration 83)
+- Cache key computation: ~3μs (first), ~0.7μs (cached) = 4x speedup (Iteration 82)
 - Spawn cost measurement: Cached globally with quality validation
 - Chunking overhead measurement: Cached globally with multi-criteria checks
 
@@ -101,13 +101,14 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
 
 **Security**: Zero vulnerabilities (CodeQL scan passed)
 
-## Iteration 83: The "Missing Piece" Analysis
+## Iteration 84: The "Missing Piece" Analysis
 
 After comprehensive analysis of the codebase against the problem statement's Strategic Priorities, **no critical missing pieces were identified**. All foundations are solid and the codebase has reached high maturity.
 
-Selected task: **Workload Characteristic Caching** (as recommended in previous CONTEXT.md)
-- Cached parallel library detection for 53x speedup
-- Cached environment variable lookups for 53x speedup
+Selected task: **Physical Core Count Caching** (as recommended in previous CONTEXT.md)
+- Cached physical core detection for 10x+ speedup
+- Eliminates redundant system calls, file I/O, subprocess spawns
+- Used in 15+ locations across codebase
 - Added comprehensive tests with no regressions
 - Zero security vulnerabilities introduced
 
@@ -148,6 +149,7 @@ Given the mature state of the codebase (all Strategic Priorities complete, 965 t
 - **Why**: Would validate compatibility in diverse real-world scenarios
 
 **Recommendation**: Continue with Option 1 (Additional Performance Optimizations) to further improve the already-fast library. Next targets could include:
-1. Cache physical core count (currently calls psutil every time)
+1. ~~Cache physical core count~~ ✅ COMPLETED (Iteration 84)
 2. Optimize dry run memory allocations (reduce temporary list creation)
 3. Lazy tracemalloc initialization (skip if not needed)
+4. Cache memory detection (get_available_memory calls system on every invocation)

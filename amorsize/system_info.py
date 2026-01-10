@@ -17,6 +17,10 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
+# Global cache for physical core count detection
+_CACHED_PHYSICAL_CORES: Optional[int] = None
+_physical_cores_lock = threading.Lock()
+
 # Global cache for spawn cost measurement
 _CACHED_SPAWN_COST: Optional[float] = None
 _spawn_cost_lock = threading.Lock()
@@ -37,6 +41,20 @@ SPAWN_COST_FORKSERVER = 0.075  # server process + fork (~75ms)
 # Default chunking overhead estimate (in seconds per chunk)
 # This is used as a fallback when measurement fails
 DEFAULT_CHUNKING_OVERHEAD = 0.0005  # 0.5ms per chunk
+
+
+def _clear_physical_cores_cache():
+    """
+    Clear the cached physical core count.
+    
+    This is primarily for testing purposes to ensure tests don't
+    interfere with each other's cached values.
+    
+    Thread-safe: Uses lock to prevent race conditions.
+    """
+    global _CACHED_PHYSICAL_CORES
+    with _physical_cores_lock:
+        _CACHED_PHYSICAL_CORES = None
 
 
 def _clear_spawn_cost_cache():
@@ -163,6 +181,10 @@ def get_physical_cores() -> int:
     """
     Get the number of physical CPU cores.
     
+    The physical core count is cached globally after first detection since
+    it's a system constant that never changes during program execution.
+    Thread-safe: Uses lock to prevent concurrent detection.
+    
     Returns:
         Number of physical cores, using the best available detection method
         
@@ -177,35 +199,61 @@ def get_physical_cores() -> int:
         For CPU-bound tasks, using logical cores (with hyperthreading) can lead
         to over-subscription and worse performance. Physical cores provide better
         parallelization characteristics.
-    """
-    # Strategy 1: Use psutil if available (best method)
-    if HAS_PSUTIL:
-        # psutil can distinguish between physical and logical cores
-        physical = psutil.cpu_count(logical=False)
-        if physical is not None:
-            return physical
-    
-    # Strategy 2: Try /proc/cpuinfo on Linux (no dependencies)
-    if platform.system() == "Linux":
-        physical = _parse_proc_cpuinfo()
-        if physical is not None:
-            return physical
         
-        # Strategy 3: Try lscpu command on Linux (secondary fallback)
-        physical = _parse_lscpu()
-        if physical is not None:
-            return physical
+    Performance:
+        Cached globally after first call to eliminate redundant system calls,
+        file I/O, and subprocess spawns on subsequent calls. This is especially
+        beneficial when multiple optimizations occur in the same program.
+    """
+    global _CACHED_PHYSICAL_CORES
     
-    # Strategy 4: Conservative estimate - assume hyperthreading (logical / 2)
-    # This is better than using all logical cores for CPU-bound tasks
-    logical = os.cpu_count()
-    if logical is not None and logical > 1:
-        # Assume hyperthreading is enabled (common on modern CPUs)
-        # Divide by 2 to get approximate physical core count
-        return max(1, logical // 2)
+    # Quick check without lock (optimization for common case)
+    if _CACHED_PHYSICAL_CORES is not None:
+        return _CACHED_PHYSICAL_CORES
     
-    # Strategy 5: Absolute fallback
-    return 1
+    # Acquire lock for detection
+    with _physical_cores_lock:
+        # Double-check after acquiring lock (another thread may have detected)
+        if _CACHED_PHYSICAL_CORES is not None:
+            return _CACHED_PHYSICAL_CORES
+        
+        # Perform detection (only one thread reaches here)
+        physical_cores = None
+        
+        # Strategy 1: Use psutil if available (best method)
+        if HAS_PSUTIL:
+            # psutil can distinguish between physical and logical cores
+            physical = psutil.cpu_count(logical=False)
+            if physical is not None:
+                physical_cores = physical
+        
+        # Strategy 2: Try /proc/cpuinfo on Linux (no dependencies)
+        if physical_cores is None and platform.system() == "Linux":
+            physical = _parse_proc_cpuinfo()
+            if physical is not None:
+                physical_cores = physical
+            else:
+                # Strategy 3: Try lscpu command on Linux (secondary fallback)
+                physical = _parse_lscpu()
+                if physical is not None:
+                    physical_cores = physical
+        
+        # Strategy 4: Conservative estimate - assume hyperthreading (logical / 2)
+        # This is better than using all logical cores for CPU-bound tasks
+        if physical_cores is None:
+            logical = os.cpu_count()
+            if logical is not None and logical > 1:
+                # Assume hyperthreading is enabled (common on modern CPUs)
+                # Divide by 2 to get approximate physical core count
+                physical_cores = max(1, logical // 2)
+        
+        # Strategy 5: Absolute fallback
+        if physical_cores is None:
+            physical_cores = 1
+        
+        # Cache the result
+        _CACHED_PHYSICAL_CORES = physical_cores
+        return physical_cores
 
 
 def _noop_worker(_):
