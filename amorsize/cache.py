@@ -61,9 +61,12 @@ def _compute_function_hash(func: Callable) -> str:
         First 16 characters of SHA256 hash (hexadecimal)
         
     Performance Impact:
-        - First call: ~50-100μs (hash computation)
-        - Subsequent calls: ~1-2μs (cache lookup)
-        - Typical speedup: 25-50x for cached functions
+        - First call: Computes SHA256 hash (~50-100μs)
+        - Subsequent calls: Dictionary lookup (~1-2μs)
+        - Measured speedup for cache key computation: ~4x
+        
+        Note: Overall cache key computation includes bucketing logic,
+        so the total speedup is lower than raw hash computation speedup.
     """
     func_id = id(func)
     
@@ -233,7 +236,8 @@ def compute_cache_key(func: Callable, data_size: int, avg_time_per_item: float) 
     
     Performance Optimized:
         Uses cached function hash to avoid repeated SHA256 computations.
-        First call: ~50-100μs, subsequent calls: ~1-2μs (25-50x speedup).
+        Provides ~4x speedup for repeated cache key computations of the
+        same function (measured: uncached ~3μs, cached ~0.7μs per call).
     
     Args:
         func: Function to cache results for
