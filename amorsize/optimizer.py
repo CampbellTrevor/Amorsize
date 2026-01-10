@@ -3,6 +3,7 @@ Main optimizer module that coordinates the analysis and returns optimal paramete
 """
 
 from typing import Any, Callable, Iterator, List, Union, Tuple, Optional, Dict
+import time
 import warnings
 
 from .system_info import (
@@ -381,7 +382,8 @@ def _validate_optimize_parameters(
     auto_adjust_for_nested_parallelism: bool,
     progress_callback: Any,
     prefer_threads_for_io: bool,
-    enable_function_profiling: bool
+    enable_function_profiling: bool,
+    use_cache: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -557,7 +559,8 @@ def optimize(
     auto_adjust_for_nested_parallelism: bool = True,
     progress_callback: Optional[Callable[[str, float], None]] = None,
     prefer_threads_for_io: bool = True,
-    enable_function_profiling: bool = False
+    enable_function_profiling: bool = False,
+    use_cache: bool = True
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -641,6 +644,11 @@ def optimize(
                 inside your function. Access results via result.show_function_profile() or
                 result.save_function_profile(). (default: False). Must be a boolean.
                 Note: Adds minimal overhead (~5-10% during sampling only).
+        use_cache: If True, use cached optimization results when available. Caching speeds
+                up repeated optimizations of the same function/workload by avoiding redundant
+                dry-run sampling and benchmarking. Cache entries are automatically validated
+                for system compatibility and expire after 7 days. (default: True).
+                Set to False to force fresh optimization. Must be a boolean.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -682,7 +690,7 @@ def optimize(
         func, data, sample_size, target_chunk_duration,
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
         auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io,
-        enable_function_profiling
+        enable_function_profiling, use_cache
     )
     
     if validation_error:
@@ -703,8 +711,97 @@ def optimize(
                 # Silently ignore callback errors to avoid disrupting optimization
                 pass
     
+    # Helper function to save to cache and return result
+    def _make_result_and_cache(
+        n_jobs: int,
+        chunksize: int,
+        reason: str,
+        estimated_speedup: float,
+        warnings: List[str],
+        data: Any,
+        profile: Optional[DiagnosticProfile],
+        executor: str,
+        profiler_stats: Any
+    ) -> OptimizationResult:
+        """Create OptimizationResult and save to cache if enabled."""
+        # Save to cache if enabled and we have a cache key
+        if use_cache and cache_key is not None and cache_entry is None:
+            from .cache import save_cache_entry
+            try:
+                save_cache_entry(
+                    cache_key=cache_key,
+                    n_jobs=n_jobs,
+                    chunksize=chunksize,
+                    executor_type=executor,
+                    estimated_speedup=estimated_speedup,
+                    reason=reason,
+                    warnings=warnings
+                )
+            except Exception:
+                # Silently fail if cache save fails
+                pass
+        
+        return OptimizationResult(
+            n_jobs=n_jobs,
+            chunksize=chunksize,
+            reason=reason,
+            estimated_speedup=estimated_speedup,
+            warnings=warnings,
+            data=data,
+            profile=profile,
+            executor_type=executor,
+            function_profiler_stats=profiler_stats
+        )
+    
     # Report start
     _report_progress("Starting optimization", 0.0)
+    
+    # Step 0.5: Check cache if enabled (but only if profile not requested)
+    # We skip caching when profiling is requested because the cache doesn't
+    # store full diagnostic profiles
+    cache_entry = None
+    cache_key = None
+    if use_cache and not profile:
+        # We need a preliminary data size estimate for cache key
+        # Try to get it quickly without consuming the iterator
+        try:
+            data_size_estimate = len(data)  # Works for lists, ranges, etc.
+        except TypeError:
+            # For iterators/generators, we can't get size without consuming
+            # Skip cache for now - will cache after first run
+            data_size_estimate = None
+        
+        if data_size_estimate is not None:
+            # Import cache module lazily (only when needed)
+            from .cache import compute_cache_key, load_cache_entry, save_cache_entry
+            
+            # Use a very rough time estimate for cache key (will refine after dry run)
+            # This is just for cache lookup - actual optimization will be more precise
+            cache_key = compute_cache_key(func, data_size_estimate, 0.001)  # Assume 1ms per item
+            cache_entry = load_cache_entry(cache_key)
+            
+            if cache_entry is not None:
+                if verbose:
+                    print(f"Using cached optimization result (saved {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cache_entry.timestamp))})")
+                
+                # Return cached result immediately
+                # Note: We still need to handle generator reconstruction
+                if hasattr(data, '__iter__') and not hasattr(data, '__len__'):
+                    # It's a generator, we need to pass it through
+                    reconstructed_data = data
+                else:
+                    reconstructed_data = data
+                
+                return OptimizationResult(
+                    n_jobs=cache_entry.n_jobs,
+                    chunksize=cache_entry.chunksize,
+                    reason=f"{cache_entry.reason} (cached)",
+                    estimated_speedup=cache_entry.estimated_speedup,
+                    warnings=cache_entry.warnings,
+                    data=reconstructed_data,
+                    profile=None,  # Cache doesn't store full profile
+                    executor_type=cache_entry.executor_type
+                )
     
     # Step 1: Perform dry run sampling
     if verbose:
@@ -914,7 +1011,7 @@ def optimize(
             diag.recommendations.append("Consider using dill or cloudpickle for more flexible serialization")
         
         _report_progress("Optimization complete", 1.0)
-        return OptimizationResult(
+        return _make_result_and_cache(
             n_jobs=1,
             chunksize=1,
             reason=f"Data items are not picklable - {error_msg}",
@@ -922,8 +1019,8 @@ def optimize(
             warnings=[error_msg + ". Use serial execution."],
             data=reconstructed_data,
             profile=diag,
-            executor_type=executor_type,  # Preserve I/O-bound threading decision
-            function_profiler_stats=sampling_result.function_profiler_stats
+            executor=executor_type,  # Preserve I/O-bound threading decision
+            profiler_stats=sampling_result.function_profiler_stats
         )
     
     avg_time = sampling_result.avg_time
@@ -1065,7 +1162,7 @@ def optimize(
             _report_progress("Optimization complete", 1.0)
             # For serial execution (n_jobs=1), cap chunksize at total_items to avoid nonsensical values
             serial_chunksize = min(test_chunksize, total_items) if total_items > 0 else test_chunksize
-            return OptimizationResult(
+            return _make_result_and_cache(
                 n_jobs=1,
                 chunksize=serial_chunksize,
                 reason=f"Workload too small: best speedup with 2 workers is {test_speedup:.2f}x (threshold: 1.2x)",
@@ -1073,8 +1170,8 @@ def optimize(
                 warnings=result_warnings,
                 data=reconstructed_data,
                 profile=diag,
-                executor_type=executor_type,  # Preserve I/O-bound threading decision
-                function_profiler_stats=sampling_result.function_profiler_stats
+                executor=executor_type,  # Preserve I/O-bound threading decision
+                profiler_stats=sampling_result.function_profiler_stats
             )
     
     # Step 6: Calculate optimal chunksize
@@ -1244,7 +1341,7 @@ def optimize(
         _report_progress("Optimization complete", 1.0)
         # For serial execution (n_jobs=1), cap chunksize at total_items to avoid nonsensical values
         serial_chunksize = min(optimal_chunksize, total_items) if total_items > 0 else optimal_chunksize
-        return OptimizationResult(
+        return _make_result_and_cache(
             n_jobs=1,
             chunksize=serial_chunksize,
             reason="Serial execution recommended based on constraints",
@@ -1252,8 +1349,8 @@ def optimize(
             warnings=result_warnings,
             data=reconstructed_data,
             profile=diag,
-            executor_type=executor_type,  # Preserve I/O-bound threading decision
-            function_profiler_stats=sampling_result.function_profiler_stats
+            executor=executor_type,  # Preserve I/O-bound threading decision
+            profiler_stats=sampling_result.function_profiler_stats
         )
     
     # Success case: parallelization is beneficial
@@ -1264,7 +1361,7 @@ def optimize(
     
     _report_progress("Optimization complete", 1.0)
     
-    return OptimizationResult(
+    return _make_result_and_cache(
         n_jobs=optimal_n_jobs,
         chunksize=optimal_chunksize,
         reason=f"Parallelization beneficial: {optimal_n_jobs} workers with chunks of {optimal_chunksize}",
@@ -1272,6 +1369,6 @@ def optimize(
         warnings=result_warnings,
         data=reconstructed_data,
         profile=diag,
-        executor_type=executor_type,  # Use the determined executor type
-        function_profiler_stats=sampling_result.function_profiler_stats
+        executor=executor_type,  # Use the determined executor type
+        profiler_stats=sampling_result.function_profiler_stats
     )

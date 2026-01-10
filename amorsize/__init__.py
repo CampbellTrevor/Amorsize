@@ -50,6 +50,11 @@ from .performance import (
     WorkloadSpec,
     PerformanceResult
 )
+from .cache import (
+    clear_cache,
+    prune_expired_cache,
+    get_cache_dir
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -86,6 +91,9 @@ __all__ = [
     "run_performance_suite",
     "compare_performance_results",
     "get_standard_workloads",
+    "clear_cache",
+    "prune_expired_cache",
+    "get_cache_dir",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
