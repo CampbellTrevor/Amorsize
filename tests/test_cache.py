@@ -392,3 +392,72 @@ class TestCacheDirectory:
         assert cache_dir.is_dir()
         assert "amorsize" in str(cache_dir)
         assert "optimization_cache" in str(cache_dir)
+
+
+class TestCacheTransparency:
+    """Tests for cache hit/miss transparency in OptimizationResult."""
+    
+    def test_cache_hit_attribute_false_on_first_run(self, clear_global_caches):
+        """Test that cache_hit is False on first optimization."""
+        result = optimize(simple_func, range(100), use_cache=True)
+        assert hasattr(result, 'cache_hit')
+        assert result.cache_hit is False
+    
+    def test_cache_hit_attribute_true_on_second_run(self, clear_global_caches):
+        """Test that cache_hit is True on subsequent optimizations."""
+        # First call - cache miss
+        result1 = optimize(simple_func, range(100), use_cache=True)
+        assert result1.cache_hit is False
+        
+        # Second call - cache hit
+        result2 = optimize(simple_func, range(100), use_cache=True)
+        assert result2.cache_hit is True
+    
+    def test_cache_hit_false_when_cache_disabled(self, clear_global_caches):
+        """Test that cache_hit is False when caching is disabled."""
+        # Even with prior cached result
+        result1 = optimize(simple_func, range(100), use_cache=True)
+        
+        # Disable cache
+        result2 = optimize(simple_func, range(100), use_cache=False)
+        assert result2.cache_hit is False
+    
+    def test_cache_hit_in_str_representation(self, clear_global_caches):
+        """Test that cache hit status appears in string representation."""
+        # First run
+        result1 = optimize(simple_func, range(100), use_cache=True)
+        str1 = str(result1)
+        assert "(cached)" not in str1
+        
+        # Second run (cached)
+        result2 = optimize(simple_func, range(100), use_cache=True)
+        str2 = str(result2)
+        assert "(cached)" in str2
+    
+    def test_cache_hit_verbose_output(self, clear_global_caches, capsys):
+        """Test that verbose mode shows cache hit/miss information."""
+        # First run - should show cache miss
+        result1 = optimize(simple_func, range(100), use_cache=True, verbose=True)
+        output1 = capsys.readouterr().out
+        
+        # Should show cache miss message
+        assert "✗ Cache miss" in output1 or "Performing dry run sampling" in output1
+        
+        # Second run - should show cache hit
+        result2 = optimize(simple_func, range(100), use_cache=True, verbose=True)
+        output2 = capsys.readouterr().out
+        
+        # Should show cache hit message
+        assert "✓ Cache hit" in output2
+        assert result2.cache_hit is True
+    
+    def test_cache_hit_false_with_profile_enabled(self, clear_global_caches):
+        """Test that profile=True bypasses cache and sets cache_hit=False."""
+        # Prime the cache
+        result1 = optimize(simple_func, range(100), use_cache=True)
+        assert result1.cache_hit is False
+        
+        # Request with profile - should bypass cache
+        result2 = optimize(simple_func, range(100), use_cache=True, profile=True)
+        assert result2.cache_hit is False
+        assert result2.profile is not None
