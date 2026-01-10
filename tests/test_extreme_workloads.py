@@ -5,7 +5,7 @@ This module tests the optimizer's behavior with extreme edge cases that might
 occur in production environments:
 - Very large datasets (100K+ items)
 - Very fast functions (microsecond-level execution)
-- Very slow functions (multi-second execution)  
+- Very slow functions (multi-second execution)
 - Extreme memory scenarios
 - Pathological chunking scenarios
 
