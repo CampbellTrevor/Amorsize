@@ -649,6 +649,101 @@ def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
     return False, None
 
 
+def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
+    """
+    Read memory limit from cgroup v2 unified hierarchy.
+    
+    Args:
+        base_path: Base path to check (e.g., "/sys/fs/cgroup")
+    
+    Returns:
+        Memory limit in bytes, or None if not found or invalid
+        
+    Algorithm:
+        1. Check memory.max (hard limit)
+        2. Check memory.high (soft limit - use if lower than max)
+        3. Return the most restrictive limit
+        
+    Note:
+        In cgroup v2, memory.high is a "soft" limit where the kernel
+        will throttle but not kill. memory.max is the "hard" limit where
+        OOM kills happen. We respect both to be conservative.
+    """
+    max_limit = None
+    high_limit = None
+    
+    # Check memory.max (hard limit)
+    max_path = os.path.join(base_path, "memory.max")
+    if os.path.exists(max_path):
+        try:
+            with open(max_path, 'r') as f:
+                value = f.read().strip()
+                # "max" means no limit
+                if value != "max":
+                    max_limit = int(value)
+        except (IOError, ValueError):
+            pass
+    
+    # Check memory.high (soft limit)
+    high_path = os.path.join(base_path, "memory.high")
+    if os.path.exists(high_path):
+        try:
+            with open(high_path, 'r') as f:
+                value = f.read().strip()
+                # "max" means no limit
+                if value != "max":
+                    high_limit = int(value)
+        except (IOError, ValueError):
+            pass
+    
+    # Return the most restrictive limit
+    if max_limit is not None and high_limit is not None:
+        return min(max_limit, high_limit)
+    elif max_limit is not None:
+        return max_limit
+    elif high_limit is not None:
+        return high_limit
+    
+    return None
+
+
+def _get_cgroup_path() -> Optional[str]:
+    """
+    Get the cgroup path for the current process from /proc/self/cgroup.
+    
+    Returns:
+        Cgroup path for the current process, or None if not found
+        
+    Rationale:
+        In modern container environments, cgroup paths can be hierarchical.
+        We need to read /proc/self/cgroup to find where our process is
+        actually located in the cgroup hierarchy.
+        
+    Example /proc/self/cgroup formats:
+        cgroup v2: 0::/docker/abc123...
+        cgroup v1: 3:memory:/docker/abc123...
+    """
+    try:
+        with open('/proc/self/cgroup', 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    # cgroup v2 format: 0::/path
+                    if parts[0] == '0' and parts[1] == '':
+                        return parts[2]
+                    # cgroup v1 format: N:controller:/path
+                    elif 'memory' in parts[1]:
+                        return parts[2]
+    except (IOError, ValueError):
+        pass
+    
+    return None
+
+
 def _read_cgroup_memory_limit() -> Optional[int]:
     """
     Read memory limit from cgroup (Docker/container environments).
@@ -660,20 +755,39 @@ def _read_cgroup_memory_limit() -> Optional[int]:
         Docker and other containers use cgroups to limit resources.
         Without this check, we'd see the host's total memory and
         potentially spawn too many workers, causing OOM kills.
+        
+    Enhanced Detection (Iteration 69):
+        - Supports cgroup v2 unified hierarchy with hierarchical paths
+        - Respects both memory.max (hard) and memory.high (soft) limits
+        - Properly handles /proc/self/cgroup path resolution
+        - Falls back gracefully through multiple strategies
+        
+    Detection Strategy:
+        1. Try cgroup v2 with process-specific path (most accurate)
+        2. Try cgroup v2 at root (simple containers)
+        3. Try cgroup v1 (legacy systems)
     """
-    # Try cgroup v2 first (newer systems)
-    cgroup_v2_path = "/sys/fs/cgroup/memory.max"
-    if os.path.exists(cgroup_v2_path):
-        try:
-            with open(cgroup_v2_path, 'r') as f:
-                value = f.read().strip()
-                # "max" means no limit
-                if value != "max":
-                    return int(value)
-        except (IOError, ValueError):
-            pass
+    # Strategy 1: cgroup v2 with process-specific path
+    # This handles hierarchical cgroup paths in modern containers
+    cgroup_path = _get_cgroup_path()
+    if cgroup_path:
+        # Try to read from the process-specific cgroup path
+        # Handle both absolute paths and relative paths
+        if cgroup_path.startswith('/'):
+            cgroup_path = cgroup_path[1:]  # Remove leading slash
+        
+        full_path = os.path.join("/sys/fs/cgroup", cgroup_path)
+        if os.path.exists(full_path):
+            limit = _read_cgroup_v2_limit(full_path)
+            if limit is not None:
+                return limit
     
-    # Try cgroup v1
+    # Strategy 2: cgroup v2 at root (simple containers like Docker with unified hierarchy)
+    limit = _read_cgroup_v2_limit("/sys/fs/cgroup")
+    if limit is not None:
+        return limit
+    
+    # Strategy 3: cgroup v1 (legacy systems)
     cgroup_v1_path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
     if os.path.exists(cgroup_v1_path):
         try:
@@ -684,6 +798,21 @@ def _read_cgroup_memory_limit() -> Optional[int]:
                     return value
         except (IOError, ValueError):
             pass
+    
+    # Strategy 4: cgroup v1 with process-specific path
+    if cgroup_path:
+        if cgroup_path.startswith('/'):
+            cgroup_path = cgroup_path[1:]
+        
+        full_path = os.path.join("/sys/fs/cgroup/memory", cgroup_path, "memory.limit_in_bytes")
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, 'r') as f:
+                    value = int(f.read().strip())
+                    if value < (1 << 62):
+                        return value
+            except (IOError, ValueError):
+                pass
     
     return None
 
