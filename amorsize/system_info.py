@@ -281,6 +281,9 @@ def get_physical_cores() -> int:
         
         # Strategy 4: Conservative estimate - assume hyperthreading (logical / 2)
         # This is better than using all logical cores for CPU-bound tasks
+        # Note: This calls get_logical_cores() which uses a different lock
+        # (_logical_cores_lock), so there's no deadlock risk. get_logical_cores()
+        # never calls get_physical_cores(), preventing circular dependencies.
         if physical_cores is None:
             logical = get_logical_cores()
             if logical > 1:

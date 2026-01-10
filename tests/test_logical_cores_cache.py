@@ -206,10 +206,16 @@ class TestPerformanceImprovement:
         # We expect at least 5x speedup from caching
         # os.cpu_count() is faster than physical core detection but still
         # involves system calls, while cached call is just a lookup
-        assert time2 < time1 / 5, (
-            f"Cached call ({time2:.6f}s) should be at least 5x faster than "
-            f"first call ({time1:.6f}s), but was only {time1/time2:.1f}x faster"
-        )
+        # Avoid division by zero if cached call is extremely fast
+        if time2 > 0:
+            speedup = time1 / time2
+            assert speedup > 5, (
+                f"Cached call ({time2:.6f}s) should be at least 5x faster than "
+                f"first call ({time1:.6f}s), but was only {speedup:.1f}x faster"
+            )
+        else:
+            # Cached call is so fast it's effectively zero - that's excellent!
+            assert time1 > 0  # First call should take measurable time
     
     def test_cache_eliminates_repeated_detection(self):
         """Test that cache eliminates repeated detection overhead."""
