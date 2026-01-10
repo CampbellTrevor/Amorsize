@@ -54,7 +54,10 @@ from .cache import (
     clear_cache,
     prune_expired_cache,
     get_cache_dir,
-    clear_benchmark_cache
+    clear_benchmark_cache,
+    get_cache_stats,
+    get_benchmark_cache_stats,
+    CacheStats
 )
 
 __version__ = "0.1.0"
@@ -96,6 +99,9 @@ __all__ = [
     "prune_expired_cache",
     "get_cache_dir",
     "clear_benchmark_cache",
+    "get_cache_stats",
+    "get_benchmark_cache_stats",
+    "CacheStats",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
