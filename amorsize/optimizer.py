@@ -29,7 +29,9 @@ class DiagnosticProfile:
         # Sampling results
         self.avg_execution_time: float = 0.0
         self.avg_pickle_time: float = 0.0
+        self.avg_data_pickle_time: float = 0.0
         self.return_size_bytes: int = 0
+        self.data_size_bytes: int = 0
         self.peak_memory_bytes: int = 0
         self.sample_count: int = 0
         self.is_picklable: bool = False
@@ -121,7 +123,9 @@ class DiagnosticProfile:
         lines.append("\n[1] WORKLOAD ANALYSIS")
         lines.append("-" * 70)
         lines.append(f"  Function execution time:  {self.format_time(self.avg_execution_time)} per item")
-        lines.append(f"  Pickle/IPC overhead:      {self.format_time(self.avg_pickle_time)} per item")
+        lines.append(f"  Input pickle overhead:    {self.format_time(self.avg_data_pickle_time)} per item")
+        lines.append(f"  Output pickle overhead:   {self.format_time(self.avg_pickle_time)} per item")
+        lines.append(f"  Input data size:          {self.format_bytes(self.data_size_bytes)}")
         lines.append(f"  Return object size:       {self.format_bytes(self.return_size_bytes)}")
         lines.append(f"  Peak memory per call:     {self.format_bytes(self.peak_memory_bytes)}")
         if self.coefficient_of_variation > 0:
@@ -457,20 +461,22 @@ def calculate_amdahl_speedup(
     chunking_overhead_per_chunk: float,
     n_jobs: int,
     chunksize: int,
-    total_items: int
+    total_items: int,
+    data_pickle_overhead_per_item: float = 0.0
 ) -> float:
     """
     Calculate realistic speedup using Amdahl's Law with overhead accounting.
     
     This implements a refined version of Amdahl's Law that accounts for:
     1. Process spawn overhead (one-time cost per worker)
-    2. Pickle/IPC overhead (per-item serialization cost)
-    3. Chunking overhead (per-chunk communication cost)
+    2. Input data pickle overhead (per-item serialization cost for data → workers)
+    3. Output result pickle overhead (per-item serialization cost for results → main)
+    4. Chunking overhead (per-chunk communication cost)
     
     The formula breaks execution into:
     - Serial portion: spawn costs + data distribution overhead
     - Parallel portion: actual computation time divided across workers
-    - IPC overhead: pickle time for results (happens per item)
+    - IPC overhead: pickle time for both input data and output results (happens per item)
     
     Args:
         total_compute_time: Total serial computation time (seconds)
@@ -480,6 +486,7 @@ def calculate_amdahl_speedup(
         n_jobs: Number of parallel workers
         chunksize: Items per chunk
         total_items: Total number of items to process
+        data_pickle_overhead_per_item: Time to pickle one input data item (seconds)
     
     Returns:
         Estimated speedup factor (>1.0 means parallelization helps)
@@ -487,16 +494,17 @@ def calculate_amdahl_speedup(
     Mathematical Model:
         Serial Time = T_compute
         
-        Parallel Time = T_spawn + T_parallel_compute + T_ipc + T_chunking
+        Parallel Time = T_spawn + T_parallel_compute + T_data_ipc + T_result_ipc + T_chunking
         where:
             T_spawn = spawn_cost * n_jobs (one-time startup)
             T_parallel_compute = T_compute / n_jobs (ideal parallelization)
-            T_ipc = pickle_overhead * total_items (serialization overhead)
+            T_data_ipc = data_pickle_overhead * total_items (input serialization)
+            T_result_ipc = pickle_overhead * total_items (output serialization)
             T_chunking = chunking_overhead * num_chunks (task distribution)
         
-        The IPC overhead is unavoidable and happens regardless of parallelization,
-        but it represents the "serial fraction" in Amdahl's Law because results
-        must be collected sequentially.
+        Both IPC overheads are unavoidable and happen regardless of parallelization,
+        representing the "serial fraction" in Amdahl's Law because data must be
+        distributed to workers and results collected sequentially.
     """
     if n_jobs <= 0 or total_compute_time <= 0:
         return 1.0
@@ -511,18 +519,22 @@ def calculate_amdahl_speedup(
     # 2. Parallel computation (ideal speedup)
     parallel_compute_time = total_compute_time / n_jobs
     
-    # 3. IPC overhead (pickle/unpickle for inter-process communication)
-    # This is per-item and largely serial (results collected sequentially)
-    ipc_overhead = pickle_overhead_per_item * total_items
+    # 3. Input data IPC overhead (pickle data items to send to workers)
+    # This is per-item and largely serial (data distributed sequentially)
+    data_ipc_overhead = data_pickle_overhead_per_item * total_items
     
-    # 4. Chunking overhead (additional cost per chunk for task distribution)
+    # 4. Output result IPC overhead (pickle/unpickle for inter-process communication)
+    # This is per-item and largely serial (results collected sequentially)
+    result_ipc_overhead = pickle_overhead_per_item * total_items
+    
+    # 5. Chunking overhead (additional cost per chunk for task distribution)
     # Each chunk requires queue operations, context switches, etc.
     # This is now dynamically measured per-system
     num_chunks = max(1, (total_items + chunksize - 1) // chunksize)
     chunking_overhead = chunking_overhead_per_chunk * num_chunks
     
     # Total parallel execution time
-    parallel_time = spawn_overhead + parallel_compute_time + ipc_overhead + chunking_overhead
+    parallel_time = spawn_overhead + parallel_compute_time + data_ipc_overhead + result_ipc_overhead + chunking_overhead
     
     # Calculate speedup
     if parallel_time > 0:
@@ -715,7 +727,9 @@ def optimize(
     if diag:
         diag.avg_execution_time = sampling_result.avg_time
         diag.avg_pickle_time = sampling_result.avg_pickle_time
+        diag.avg_data_pickle_time = sampling_result.avg_data_pickle_time
         diag.return_size_bytes = sampling_result.return_size
+        diag.data_size_bytes = sampling_result.data_size
         diag.peak_memory_bytes = sampling_result.peak_memory
         diag.sample_count = sampling_result.sample_count
         diag.is_picklable = sampling_result.is_picklable
@@ -919,9 +933,11 @@ def optimize(
     
     if verbose:
         print(f"Average execution time: {avg_time:.4f}s")
+        print(f"Average input data size: {sampling_result.data_size} bytes")
+        print(f"Average input pickle time: {sampling_result.avg_data_pickle_time:.6f}s")
         print(f"Average return size: {return_size} bytes")
+        print(f"Average output pickle time: {avg_pickle_time:.6f}s")
         print(f"Peak memory: {peak_memory} bytes")
-        print(f"Average pickle overhead: {avg_pickle_time:.6f}s")
         if sampling_result.coefficient_of_variation > 0:
             cv_label = "heterogeneous" if sampling_result.coefficient_of_variation > 0.5 else "homogeneous"
             print(f"Workload variability: CV={sampling_result.coefficient_of_variation:.2f} ({cv_label})")
@@ -1024,7 +1040,8 @@ def optimize(
             chunking_overhead_per_chunk=chunking_overhead,
             n_jobs=2,
             chunksize=test_chunksize,
-            total_items=total_items
+            total_items=total_items,
+            data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
         )
         
         if test_speedup < 1.2:
@@ -1168,7 +1185,8 @@ def optimize(
             chunking_overhead_per_chunk=chunking_overhead,
             n_jobs=optimal_n_jobs,
             chunksize=optimal_chunksize,
-            total_items=total_items
+            total_items=total_items,
+            data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
         )
         
         # Populate diagnostic profile with speedup analysis

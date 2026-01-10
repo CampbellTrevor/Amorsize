@@ -469,7 +469,8 @@ def optimize_streaming(
                 chunking_overhead_per_chunk=chunking_overhead,
                 n_jobs=n,
                 chunksize=optimal_chunksize,
-                total_items=total_items
+                total_items=total_items,
+                data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
             )
             
             if speedup > best_speedup:
