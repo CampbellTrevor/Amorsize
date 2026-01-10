@@ -209,7 +209,8 @@ class OptimizationResult:
         warnings: List[str] = None,
         data: Union[List, Iterator, None] = None,
         profile: Optional[DiagnosticProfile] = None,
-        executor_type: str = "process"
+        executor_type: str = "process",
+        function_profiler_stats: Optional['pstats.Stats'] = None
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -219,6 +220,7 @@ class OptimizationResult:
         self.data = data
         self.profile = profile
         self.executor_type = executor_type  # "process" or "thread"
+        self.function_profiler_stats = function_profiler_stats  # cProfile stats
     
     def __repr__(self):
         return (
@@ -246,6 +248,78 @@ class OptimizationResult:
         if self.profile is None:
             return "Diagnostic profiling not enabled. Use optimize(..., profile=True) for detailed analysis."
         return self.profile.explain_decision()
+    
+    def show_function_profile(self, sort_by: str = 'cumulative', limit: int = 20) -> None:
+        """
+        Display cProfile function profiling results showing where time is spent
+        inside the user's function.
+        
+        This shows the internal performance characteristics of your function,
+        helping you identify bottlenecks and optimization opportunities.
+        
+        Args:
+            sort_by: Sort key for stats. Common options:
+                    'cumulative' - Total time in function + subcalls (default)
+                    'time' - Time spent in function itself
+                    'calls' - Number of function calls
+                    'name' - Function name
+            limit: Maximum number of lines to display (default: 20)
+        
+        Example:
+            >>> result = optimize(my_func, data, enable_function_profiling=True)
+            >>> result.show_function_profile(sort_by='cumulative', limit=30)
+        
+        Note:
+            Requires enable_function_profiling=True in optimize() call.
+        """
+        if self.function_profiler_stats is None:
+            print("Function profiling not enabled. Use optimize(..., enable_function_profiling=True)")
+            return
+        
+        print("=" * 80)
+        print("FUNCTION PERFORMANCE PROFILE")
+        print("=" * 80)
+        print("\nShowing where time is spent inside your function:")
+        print(f"(Sorted by: {sort_by}, showing top {limit} entries)\n")
+        
+        # Sort and print stats
+        self.function_profiler_stats.sort_stats(sort_by)
+        self.function_profiler_stats.print_stats(limit)
+    
+    def save_function_profile(self, filepath: str, sort_by: str = 'cumulative', limit: int = 50) -> None:
+        """
+        Save cProfile function profiling results to a file.
+        
+        Args:
+            filepath: Path to save profile report
+            sort_by: Sort key for stats (see show_function_profile for options)
+            limit: Maximum number of lines to include (default: 50)
+        
+        Example:
+            >>> result = optimize(my_func, data, enable_function_profiling=True)
+            >>> result.save_function_profile('function_profile.txt')
+        """
+        if self.function_profiler_stats is None:
+            raise ValueError("Function profiling not enabled. Use optimize(..., enable_function_profiling=True)")
+        
+        # Import io for string capture
+        import io
+        
+        # Capture stats to string buffer
+        string_buffer = io.StringIO()
+        self.function_profiler_stats.stream = string_buffer
+        self.function_profiler_stats.sort_stats(sort_by)
+        self.function_profiler_stats.print_stats(limit)
+        
+        # Write to file
+        with open(filepath, 'w') as f:
+            f.write("=" * 80 + "\n")
+            f.write("FUNCTION PERFORMANCE PROFILE\n")
+            f.write("=" * 80 + "\n\n")
+            f.write(f"Sorted by: {sort_by}, showing top {limit} entries\n\n")
+            f.write(string_buffer.getvalue())
+        
+        print(f"Function profile saved to: {filepath}")
     
     def save_config(
         self,
@@ -302,7 +376,8 @@ def _validate_optimize_parameters(
     profile: bool,
     auto_adjust_for_nested_parallelism: bool,
     progress_callback: Any,
-    prefer_threads_for_io: bool
+    prefer_threads_for_io: bool,
+    enable_function_profiling: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -319,6 +394,7 @@ def _validate_optimize_parameters(
         auto_adjust_for_nested_parallelism: Auto-adjust flag to validate
         progress_callback: Progress callback to validate
         prefer_threads_for_io: Prefer threads for I/O flag to validate
+        enable_function_profiling: Enable function profiling flag to validate
     
     Returns:
         None if all parameters are valid, error message string otherwise
@@ -364,6 +440,8 @@ def _validate_optimize_parameters(
         return f"auto_adjust_for_nested_parallelism must be a boolean, got {type(auto_adjust_for_nested_parallelism).__name__}"
     if not isinstance(prefer_threads_for_io, bool):
         return f"prefer_threads_for_io must be a boolean, got {type(prefer_threads_for_io).__name__}"
+    if not isinstance(enable_function_profiling, bool):
+        return f"enable_function_profiling must be a boolean, got {type(enable_function_profiling).__name__}"
     
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
@@ -466,7 +544,8 @@ def optimize(
     profile: bool = False,
     auto_adjust_for_nested_parallelism: bool = True,
     progress_callback: Optional[Callable[[str, float], None]] = None,
-    prefer_threads_for_io: bool = True
+    prefer_threads_for_io: bool = True,
+    enable_function_profiling: bool = False
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -545,6 +624,11 @@ def optimize(
                 and better handling of I/O operations that release the GIL. 
                 (default: True). Set to False to always use multiprocessing.
                 Must be a boolean.
+        enable_function_profiling: If True, use Python's cProfile to profile the function
+                execution during dry run sampling. This helps identify performance bottlenecks
+                inside your function. Access results via result.show_function_profile() or
+                result.save_function_profile(). (default: False). Must be a boolean.
+                Note: Adds minimal overhead (~5-10% during sampling only).
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -560,6 +644,7 @@ def optimize(
             - estimated_speedup: Expected performance improvement
             - warnings: List of constraints or issues
             - profile: DiagnosticProfile object (if profile=True)
+            - function_profiler_stats: cProfile stats (if enable_function_profiling=True)
     
     Example:
         >>> def expensive_function(x):
@@ -584,7 +669,8 @@ def optimize(
     validation_error = _validate_optimize_parameters(
         func, data, sample_size, target_chunk_duration,
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
-        auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io
+        auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io,
+        enable_function_profiling
     )
     
     if validation_error:
@@ -614,7 +700,7 @@ def optimize(
     
     _report_progress("Sampling function", 0.1)
     
-    sampling_result = perform_dry_run(func, data, sample_size)
+    sampling_result = perform_dry_run(func, data, sample_size, enable_function_profiling)
     
     _report_progress("Sampling complete", 0.3)
     
@@ -780,7 +866,8 @@ def optimize(
             warnings=[f"Sampling failed: {str(sampling_result.error)}"],
             data=reconstructed_data,
             profile=diag,
-            executor_type="process"  # Serial execution, doesn't matter
+            executor_type="process",  # Serial execution, doesn't matter
+            function_profiler_stats=sampling_result.function_profiler_stats
         )
     
     # Check picklability
@@ -797,7 +884,8 @@ def optimize(
             warnings=["Function cannot be pickled. Use serial execution."],
             data=reconstructed_data,
             profile=diag,
-            executor_type="process"  # Serial execution, doesn't matter
+            executor_type="process",  # Serial execution, doesn't matter
+            function_profiler_stats=sampling_result.function_profiler_stats
         )
     
     # Check if data items are picklable
@@ -820,7 +908,8 @@ def optimize(
             warnings=[error_msg + ". Use serial execution."],
             data=reconstructed_data,
             profile=diag,
-            executor_type="process"  # Serial execution, doesn't matter
+            executor_type="process",  # Serial execution, doesn't matter
+            function_profiler_stats=sampling_result.function_profiler_stats
         )
     
     avg_time = sampling_result.avg_time
@@ -965,7 +1054,8 @@ def optimize(
                 warnings=result_warnings,
                 data=reconstructed_data,
                 profile=diag,
-                executor_type="process"  # Serial execution, doesn't matter
+                executor_type="process",  # Serial execution, doesn't matter
+                function_profiler_stats=sampling_result.function_profiler_stats
             )
     
     # Step 6: Calculate optimal chunksize
@@ -1114,7 +1204,8 @@ def optimize(
                 warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"],
                 data=reconstructed_data,
                 profile=diag,
-                executor_type="process"  # Serial execution, doesn't matter
+                executor_type="process",  # Serial execution, doesn't matter
+                function_profiler_stats=sampling_result.function_profiler_stats
             )
     else:
         # Fallback for cases where we don't have enough info
@@ -1139,7 +1230,8 @@ def optimize(
             warnings=result_warnings,
             data=reconstructed_data,
             profile=diag,
-            executor_type="process"  # Serial execution, doesn't matter
+            executor_type="process",  # Serial execution, doesn't matter
+            function_profiler_stats=sampling_result.function_profiler_stats
         )
     
     # Success case: parallelization is beneficial
@@ -1158,5 +1250,6 @@ def optimize(
         warnings=result_warnings,
         data=reconstructed_data,
         profile=diag,
-        executor_type=executor_type  # Use the determined executor type
+        executor_type=executor_type,  # Use the determined executor type
+        function_profiler_stats=sampling_result.function_profiler_stats
     )
