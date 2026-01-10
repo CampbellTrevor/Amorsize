@@ -53,7 +53,8 @@ from .performance import (
 from .cache import (
     clear_cache,
     prune_expired_cache,
-    get_cache_dir
+    get_cache_dir,
+    clear_benchmark_cache
 )
 
 __version__ = "0.1.0"
@@ -94,6 +95,7 @@ __all__ = [
     "clear_cache",
     "prune_expired_cache",
     "get_cache_dir",
+    "clear_benchmark_cache",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",

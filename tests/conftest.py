@@ -29,6 +29,10 @@ def clear_global_caches():
        The optimization cache stores results from optimize() calls. Tests
        can inadvertently pick up cached results from previous tests.
     
+    4. Benchmark Cache Pollution (Iteration 71):
+       The benchmark cache stores results from validate_optimization() calls. Tests
+       can inadvertently pick up cached benchmark results from previous tests.
+    
     Solutions:
     - Clears caches before each test for isolation
     - Sets AMORSIZE_TESTING=1 environment variable to disable nested
@@ -37,7 +41,7 @@ def clear_global_caches():
     The fixture runs automatically for every test (autouse=True).
     """
     from amorsize.system_info import _clear_spawn_cost_cache, _clear_chunking_overhead_cache
-    from amorsize import clear_cache
+    from amorsize import clear_cache, clear_benchmark_cache
     
     # Set testing environment variable to disable nested parallelism detection
     # This prevents false positives from test runner's multiprocessing usage
@@ -47,6 +51,7 @@ def clear_global_caches():
     _clear_spawn_cost_cache()
     _clear_chunking_overhead_cache()
     clear_cache()  # Clear optimization cache
+    clear_benchmark_cache()  # Clear benchmark cache
     
     # Yield to run the test
     yield
@@ -55,6 +60,7 @@ def clear_global_caches():
     _clear_spawn_cost_cache()
     _clear_chunking_overhead_cache()
     clear_cache()  # Clear optimization cache
+    clear_benchmark_cache()  # Clear benchmark cache
     
     # Remove testing environment variable
     if 'AMORSIZE_TESTING' in os.environ:
