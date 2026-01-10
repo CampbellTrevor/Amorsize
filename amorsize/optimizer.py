@@ -1063,9 +1063,11 @@ def optimize(
                 print(f"  Threshold: 1.2x")
             
             _report_progress("Optimization complete", 1.0)
+            # For serial execution (n_jobs=1), cap chunksize at total_items to avoid nonsensical values
+            serial_chunksize = min(test_chunksize, total_items) if total_items > 0 else test_chunksize
             return OptimizationResult(
                 n_jobs=1,
-                chunksize=test_chunksize,
+                chunksize=serial_chunksize,
                 reason=f"Workload too small: best speedup with 2 workers is {test_speedup:.2f}x (threshold: 1.2x)",
                 estimated_speedup=1.0,
                 warnings=result_warnings,
@@ -1240,9 +1242,11 @@ def optimize(
             diag.estimated_speedup = 1.0
             diag.rejection_reasons.append("Only 1 worker recommended due to constraints")
         _report_progress("Optimization complete", 1.0)
+        # For serial execution (n_jobs=1), cap chunksize at total_items to avoid nonsensical values
+        serial_chunksize = min(optimal_chunksize, total_items) if total_items > 0 else optimal_chunksize
         return OptimizationResult(
             n_jobs=1,
-            chunksize=optimal_chunksize,
+            chunksize=serial_chunksize,
             reason="Serial execution recommended based on constraints",
             estimated_speedup=1.0,
             warnings=result_warnings,
