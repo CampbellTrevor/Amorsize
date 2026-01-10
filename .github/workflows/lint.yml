@@ -10,6 +10,8 @@ jobs:
   lint:
     name: Code quality checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
@@ -40,5 +42,4 @@ jobs:
     
     - name: Verify pyproject.toml
       run: |
-        pip install tomli
-        python -c "import tomli; f = open('pyproject.toml', 'rb'); tomli.load(f); print('✓ pyproject.toml is valid')"
+        python -c "import tomllib; f = open('pyproject.toml', 'rb'); tomllib.load(f); print('✓ pyproject.toml is valid')"

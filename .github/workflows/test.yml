@@ -10,15 +10,17 @@ jobs:
   test:
     name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
         exclude:
-          # Python 3.7 is no longer supported on macos-latest (arm64)
-          - os: macos-latest
-            python-version: '3.7'
+        # Python 3.7 is no longer supported on macos-latest (arm64)
+        - os: macos-latest
+          python-version: '3.7'
     
     steps:
     - name: Checkout code
@@ -55,3 +57,4 @@ jobs:
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
