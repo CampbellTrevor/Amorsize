@@ -448,6 +448,8 @@ def _validate_optimize_parameters(
         return f"prefer_threads_for_io must be a boolean, got {type(prefer_threads_for_io).__name__}"
     if not isinstance(enable_function_profiling, bool):
         return f"enable_function_profiling must be a boolean, got {type(enable_function_profiling).__name__}"
+    if not isinstance(use_cache, bool):
+        return f"use_cache must be a boolean, got {type(use_cache).__name__}"
     
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
