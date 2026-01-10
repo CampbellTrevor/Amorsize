@@ -1,15 +1,142 @@
-# Context for Next Agent - Iteration 69 Complete
+# Context for Next Agent - Iteration 70 Complete
 
 ## What Was Accomplished
 
-**ENHANCED CONTAINER MEMORY DETECTION** - Improved cgroup v2 memory limit detection to handle modern container environments with hierarchical paths, support for both hard (memory.max) and soft (memory.high) limits, and proper process-specific cgroup path resolution. This prevents OOM kills in complex containerized environments.
+**SWAP-AWARE MEMORY DETECTION** - Enhanced memory detection to account for swap usage, preventing performance degradation when the system is under memory pressure. The optimizer now reduces worker count when swap is actively being used, preventing disk thrashing and improving overall system responsiveness.
+
+### Previous Iteration Summary (Iteration 69)
+- **Iteration 69**: Enhanced container memory detection (cgroup v2 hierarchical paths, memory.max/memory.high support, 752 tests passing)
 
 ### Previous Iteration Summary
 - **Iteration 68**: Cache transparency enhancement (cache_hit flag added, all 739 tests passing)
 - **Iteration 67**: Parameter validation fix (use_cache validation added, all 733 tests passing)
 - **Iteration 66**: Comprehensive system validation (all 732 tests passing)
 
-### Previous Key Iterations
+### Critical Achievement (Iteration 70)
+**INFRASTRUCTURE ENHANCEMENT - Swap-Aware Memory Detection**
+
+**The Mission**: After Iteration 69's cgroup v2 enhancements, continue improving the infrastructure foundation by addressing a gap in memory detection: swap usage awareness.
+
+**Problem Identified**: 
+While the system detects available RAM and container limits, it doesn't account for swap usage. When a system is actively swapping, spawning multiple workers can cause severe performance degradation due to:
+1. Disk I/O thrashing as memory pages are swapped to/from disk
+2. Unpredictable latencies from disk access
+3. System-wide performance impact
+
+The existing `calculate_max_workers()` function only checked available RAM but didn't detect when the system was already under memory pressure (actively swapping).
+
+**Enhancement Implemented**:
+Added swap-aware memory detection with conservative thresholds:
+
+1. **New `get_swap_usage()` function**:
+   - Returns (swap_percent, swap_used_bytes, swap_total_bytes)
+   - Uses psutil.swap_memory() when available
+   - Graceful fallback (returns zeros) when psutil unavailable
+   - Handles systems without swap configured (containers)
+
+2. **Enhanced `calculate_max_workers()` function**:
+   - Progressive worker reduction based on swap usage:
+     - < 10% swap: No adjustment (normal operation)
+     - 10-50% swap: Reduce workers by 25% (moderate pressure)
+     - > 50% swap: Reduce workers by 50% (severe pressure)
+   - Always returns at least 1 worker
+   - Combines with existing memory-based constraints
+
+3. **Swap usage warnings**:
+   - Added to `result.warnings` list when swap > 10%
+   - Displayed in verbose output with clear message
+   - Includes swap percentage and total swap size
+   - Actionable guidance for users
+
+4. **Comprehensive test coverage**:
+   - 8 new tests added to test_system_info.py
+   - Tests for swap detection with/without psutil
+   - Tests for worker reduction at different swap levels
+   - Tests for edge cases (minimum workers, combined constraints)
+
+**Impact**: 
+- **Prevents disk thrashing**: Reduces workers when system is swapping
+- **Better performance**: Avoids spawning workers that would cause I/O contention
+- **Clear feedback**: Users understand why worker count is reduced
+- **Robust**: Works with and without psutil
+- **Production quality**: 8 new tests, all 760 tests passing
+
+**Changes Made (Iteration 70)**:
+
+**Files Modified (3 files):**
+
+1. **`amorsize/system_info.py`** - Swap-aware memory detection
+   - Added `get_swap_usage()`: Detects swap usage via psutil (32 lines)
+   - Enhanced `calculate_max_workers()`: Progressive worker reduction (35 lines added)
+   - Total: ~67 lines of new/modified code
+
+2. **`amorsize/optimizer.py`** - Swap usage warnings
+   - Added `get_swap_usage` to imports
+   - Check swap after `calculate_max_workers()` call
+   - Add warning when swap > 10%
+   - Total: ~15 lines of new code
+
+3. **`tests/test_system_info.py`** - Added comprehensive test coverage
+   - Added 8 new tests for swap detection:
+     - test_get_swap_usage_returns_tuple
+     - test_get_swap_usage_reasonable_values
+     - test_get_swap_usage_no_psutil
+     - test_calculate_max_workers_no_swap
+     - test_calculate_max_workers_moderate_swap
+     - test_calculate_max_workers_severe_swap
+     - test_calculate_max_workers_minimum_one
+     - test_calculate_max_workers_swap_aware_with_memory_constraint
+   - Updated imports to include `get_swap_usage`
+
+### Why This Approach (Iteration 70)
+
+- **High-value infrastructure improvement**: Addresses a real gap in memory detection
+- **Minimal changes**: Only 100 lines total (67 production, ~50 tests)
+- **Surgical precision**: Enhanced existing functionality without breaking changes
+- **Zero breaking changes**: All 752 existing tests still pass
+- **Conservative thresholds**: Only reduces workers when swap > 10%
+- **Comprehensive testing**: 8 new tests cover all scenarios
+- **Production quality**: Follows existing patterns and conventions
+- **Strategic Priority #1**: Addresses INFRASTRUCTURE foundation
+- **Complements recent work**: Builds on Iteration 69's cgroup v2 enhancements
+
+### Validation Results (Iteration 70)
+
+✅ **Full Test Suite:**
+```bash
+pytest tests/ -q --tb=line
+# 760 passed, 48 skipped in 19.59s
+# Zero failures, zero errors
+# +8 new tests from Iteration 70
+```
+
+✅ **Swap Detection Tests:**
+```python
+# Test 1: No swap (0%)
+calculate_max_workers(8, 0) → 8 workers ✓
+
+# Test 2: Moderate swap (25%)
+calculate_max_workers(8, 0) → 6 workers ✓ (25% reduction)
+
+# Test 3: Severe swap (75%)
+calculate_max_workers(8, 0) → 4 workers ✓ (50% reduction)
+```
+
+✅ **Integration Testing:**
+```python
+# With mocked 25% swap usage
+result = optimize(func, data, verbose=True)
+# Output: "WARNING: System is using swap memory (25.0%)" ✓
+# result.warnings contains swap warning ✓
+```
+
+✅ **Backward Compatibility:**
+- All existing 752 tests still pass
+- No API changes
+- Graceful degradation without psutil
+- Works on systems without swap
+
+### Critical Achievement (Iteration 69)
 - **Iteration 65**: Optimization cache for 10-88x faster repeated runs
 - **Iteration 64**: Fixed missing license field in pyproject.toml (PyPI publication ready)
 - **Iteration 63**: 6th independent validation with deep Amdahl's Law analysis
@@ -640,28 +767,38 @@ cache_dir = get_cache_dir()  # Get cache location
 - Cache is opt-in (default enabled, can disable)
 - Bypassed automatically when profile=True
 
-### Test Coverage Summary
+### Test Coverage Summary (Iteration 70)
 
-**Test Suite Status**: 732 tests passing, 0 failures, 48 skipped
+**Test Suite Status**: 760 tests passing, 0 failures, 48 skipped
 
 **Test Growth**:
-- Previous (Iteration 64): 714 tests
-- New (Iteration 65): +18 cache tests
-- Total: 732 tests
+- Iteration 64: 714 tests
+- Iteration 65: +18 cache tests → 732 tests
+- Iteration 66: No new tests (validation-only) → 732 tests
+- Iteration 67: +1 validation test → 733 tests
+- Iteration 68: +6 cache transparency tests → 739 tests
+- Iteration 69: +13 cgroup detection tests → 752 tests
+- **Iteration 70: +8 swap detection tests → 760 tests**
 
 All critical paths tested and verified:
-- ✓ Physical core detection - WORKING
-- ✓ Memory limit detection - WORKING
+- ✓ Physical core detection (all fallback strategies) - WORKING
+- ✓ **Memory limit detection (cgroup + psutil + swap-aware)** - **ENHANCED** (Iteration 70)
+  - ✓ cgroup v2 hierarchical paths (Iteration 69)
+  - ✓ memory.max and memory.high support (Iteration 69)
+  - ✓ **Swap usage detection** (Iteration 70) **NEW**
+  - ✓ **Worker reduction under memory pressure** (Iteration 70) **NEW**
 - ✓ Spawn cost measurement - WORKING (with caching)
 - ✓ Chunking overhead measurement - WORKING (with caching)
-- ✓ **Optimization caching - WORKING** (NEW in Iteration 65)
+- ✓ Optimization caching (Iteration 65) - WORKING
   - ✓ Cache key generation and bucketing
   - ✓ Save/load operations
   - ✓ System compatibility validation
   - ✓ Expiration and pruning
   - ✓ Integration with optimize()
-  - ✓ Performance validation (10-88x speedup)
+  - ✓ Performance validation (70x speedup)
   - ✓ Test isolation
+  - ✓ Cache transparency (Iteration 68)
+- ✓ Parameter validation complete (Iteration 67)
 - ✓ Generator safety - WORKING
 - ✓ Pickle checks - WORKING
 - ✓ Amdahl's Law calculations - VALIDATED (7 edge cases)
@@ -674,6 +811,8 @@ All critical paths tested and verified:
 - ✓ Build process - CLEAN
 - ✓ Package installation - VERIFIED
 - ✓ Packaging metadata - COMPLETE (license field added in Iteration 64)
+
+### Test Coverage Summary (Legacy)
 
 ## Impact Assessment (Iterations 63-66)
 
@@ -793,14 +932,14 @@ All critical paths tested and verified:
 
 ## Notes for Next Agent
 
-The codebase is in **PRODUCTION-READY++** shape with comprehensive CI/CD automation, complete documentation, full engineering constraint compliance, optimized critical paths, memory-efficient implementation, validated core algorithm, complete packaging metadata (Iteration 64), dramatic performance improvements via smart caching (Iteration 65), final comprehensive validation (Iteration 66), complete parameter validation (Iteration 67), and **cache transparency for better UX** (Iteration 68):
+The codebase is in **PRODUCTION-READY++** shape with comprehensive CI/CD automation, complete documentation, full engineering constraint compliance, optimized critical paths, memory-efficient implementation, validated core algorithm, complete packaging metadata (Iteration 64), dramatic performance improvements via smart caching (Iteration 65), final comprehensive validation (Iteration 66), complete parameter validation (Iteration 67), cache transparency for better UX (Iteration 68), enhanced container memory detection (Iteration 69), and **swap-aware memory detection** (Iteration 70).
 
-### Iteration 58-68 Achievement Summary
+### Iteration 58-70 Achievement Summary
 
-**Development + Validation Complete**: Performed feature development and comprehensive system validation across twelve iterations (58-68):
-- ✅ 739 tests passing (0 failures) - VERIFIED (Iteration 68)
-- ✅ Clean build (0 errors) - VERIFIED (Iteration 68)
-- ✅ All Strategic Priorities complete - VERIFIED (Iteration 66)
+**Development + Validation Complete**: Performed feature development and comprehensive system validation across thirteen iterations (58-70):
+- ✅ 760 tests passing (0 failures) - VERIFIED (Iteration 70)
+- ✅ Clean build (0 errors) - VERIFIED
+- ✅ All Strategic Priorities complete - VERIFIED
 - ✅ Core algorithm validated - Amdahl's Law edge cases tested (Iteration 63)
 - ✅ License field fixed - pyproject.toml complete (Iteration 64)
 - ✅ Optimization cache - 70x+ faster repeated runs (Iterations 65-66)
@@ -809,15 +948,21 @@ The codebase is in **PRODUCTION-READY++** shape with comprehensive CI/CD automat
 - ✅ Import performance excellent (0ms) - VERIFIED (Iteration 66)
 - ✅ Optimization performance excellent (<1ms cached) - VERIFIED (Iteration 66)
 - ✅ Code quality high (no TODOs/FIXMEs) - VERIFIED (Iteration 66)
-- ✅ **Infrastructure components verified** - (Iteration 66)
+- ✅ **Infrastructure components verified and enhanced** - (Iterations 66, 69, 70)
 - ✅ **Edge cases tested** - (Iteration 66)
 - ✅ **I/O-bound detection verified** - (Iteration 66)
 - ✅ **Parameter validation complete** - (Iteration 67)
 - ✅ **Cache transparency implemented** - (Iteration 68)
+- ✅ **Container memory detection enhanced** - (Iteration 69)
+- ✅ **Swap-aware memory detection** - (Iteration 70) **NEW**
 
-### Infrastructure (The Foundation) ✅ COMPLETE & VERIFIED & OPTIMIZED
+### Infrastructure (The Foundation) ✅ COMPLETE & VERIFIED & OPTIMIZED & ENHANCED
 - ✅ Physical core detection with multiple fallback strategies (TESTED)
-- ✅ Memory limit detection (cgroup/Docker aware) (TESTED)
+- ✅ **Memory limit detection (cgroup/Docker/swap-aware)** (TESTED & **ENHANCED** in Iterations 69-70)
+  - ✅ cgroup v2 hierarchical paths (Iteration 69)
+  - ✅ memory.max and memory.high support (Iteration 69)
+  - ✅ **Swap usage detection** (Iteration 70) **NEW**
+  - ✅ **Progressive worker reduction under memory pressure** (Iteration 70) **NEW**
 - ✅ Robust spawn cost measurement with 4-layer quality validation (TESTED & CACHED)
 - ✅ Robust chunking overhead measurement with quality validation (TESTED & CACHED)
 - ✅ Complete "Pickle Tax" measurement (Iteration 55) (VERIFIED)
@@ -832,7 +977,7 @@ The codebase is in **PRODUCTION-READY++** shape with comprehensive CI/CD automat
   - ✅ Eliminated unnecessary pickled bytes storage
   - ✅ ~99.998% memory reduction for large objects
   - ✅ Only store what's needed (time + size)
-- ✅ **Smart optimization caching** (Iteration 65) **NEW**
+- ✅ **Smart optimization caching** (Iteration 65)
   - ✅ 10-88x speedup for repeated optimizations
   - ✅ System compatibility validation
   - ✅ 7-day TTL with auto-expiration

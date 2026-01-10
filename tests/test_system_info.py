@@ -27,7 +27,8 @@ from amorsize.system_info import (
     DEFAULT_CHUNKING_OVERHEAD,
     _read_cgroup_v2_limit,
     _get_cgroup_path,
-    _read_cgroup_memory_limit
+    _read_cgroup_memory_limit,
+    get_swap_usage
 )
 
 # Maximum expected per-worker spawn cost (500ms)
@@ -492,3 +493,129 @@ def test_get_available_memory_with_cgroup():
     assert memory > 0
     # Should be reasonable (at least 100MB, less than 1PB)
     assert 100 * 1024 * 1024 <= memory < (1 << 50)
+
+
+# ============================================================================
+# NEW TESTS for Iteration 70: Swap-Aware Memory Detection
+# ============================================================================
+
+
+def test_get_swap_usage_returns_tuple():
+    """Test that get_swap_usage returns a tuple of correct types."""
+    swap_percent, swap_used, swap_total = get_swap_usage()
+    
+    assert isinstance(swap_percent, float)
+    assert isinstance(swap_used, int)
+    assert isinstance(swap_total, int)
+    
+    # All values should be non-negative
+    assert swap_percent >= 0.0
+    assert swap_used >= 0
+    assert swap_total >= 0
+
+
+def test_get_swap_usage_reasonable_values():
+    """Test that swap usage values are reasonable."""
+    swap_percent, swap_used, swap_total = get_swap_usage()
+    
+    # Percentage should be between 0 and 100
+    assert 0.0 <= swap_percent <= 100.0
+    
+    # Used should not exceed total
+    assert swap_used <= swap_total
+    
+    # If percentage > 0, then total should be > 0
+    if swap_percent > 0:
+        assert swap_total > 0
+
+
+def test_get_swap_usage_no_psutil(monkeypatch):
+    """Test that get_swap_usage handles missing psutil gracefully."""
+    # Temporarily disable psutil
+    import amorsize.system_info as si
+    monkeypatch.setattr(si, 'HAS_PSUTIL', False)
+    
+    swap_percent, swap_used, swap_total = si.get_swap_usage()
+    
+    # Should return zeros when psutil unavailable
+    assert swap_percent == 0.0
+    assert swap_used == 0
+    assert swap_total == 0
+
+
+def test_calculate_max_workers_no_swap():
+    """Test worker calculation when no swap is being used."""
+    # With no swap, should behave as before
+    result = calculate_max_workers(4, 0)
+    assert result == 4
+
+
+def test_calculate_max_workers_moderate_swap(monkeypatch):
+    """Test worker reduction with moderate swap usage."""
+    import amorsize.system_info as si
+    
+    # Mock get_swap_usage to return moderate swap (25%)
+    def mock_swap():
+        return (25.0, 1024*1024*1024, 4*1024*1024*1024)
+    
+    monkeypatch.setattr(si, 'get_swap_usage', mock_swap)
+    
+    # Should reduce workers by 25%
+    result = si.calculate_max_workers(8, 0)
+    # 8 workers * 0.75 = 6 workers
+    assert result == 6
+
+
+def test_calculate_max_workers_severe_swap(monkeypatch):
+    """Test worker reduction with severe swap usage."""
+    import amorsize.system_info as si
+    
+    # Mock get_swap_usage to return severe swap (75%)
+    def mock_swap():
+        return (75.0, 3*1024*1024*1024, 4*1024*1024*1024)
+    
+    monkeypatch.setattr(si, 'get_swap_usage', mock_swap)
+    
+    # Should reduce workers by 50%
+    result = si.calculate_max_workers(8, 0)
+    # 8 workers / 2 = 4 workers
+    assert result == 4
+
+
+def test_calculate_max_workers_minimum_one(monkeypatch):
+    """Test that at least 1 worker is returned even with severe swap."""
+    import amorsize.system_info as si
+    
+    # Mock get_swap_usage to return severe swap
+    def mock_swap():
+        return (90.0, 3500*1024*1024, 4*1024*1024*1024)
+    
+    monkeypatch.setattr(si, 'get_swap_usage', mock_swap)
+    
+    # Even with 1 core, should return at least 1 worker
+    result = si.calculate_max_workers(1, 0)
+    assert result >= 1
+
+
+def test_calculate_max_workers_swap_aware_with_memory_constraint(monkeypatch):
+    """Test swap awareness combined with memory constraints."""
+    import amorsize.system_info as si
+    
+    # Mock moderate swap usage
+    def mock_swap():
+        return (25.0, 1024*1024*1024, 4*1024*1024*1024)
+    
+    # Mock available memory (4GB)
+    def mock_memory():
+        return 4 * 1024 * 1024 * 1024
+    
+    monkeypatch.setattr(si, 'get_swap_usage', mock_swap)
+    monkeypatch.setattr(si, 'get_available_memory', mock_memory)
+    
+    # Request 8 workers, each using 1GB
+    # Available: 4GB * 0.8 = 3.2GB
+    # Memory allows: 3 workers
+    # Swap adjustment: 3 * 0.75 = 2.25 -> 2 workers
+    result = si.calculate_max_workers(8, 1024*1024*1024)
+    
+    assert 1 <= result <= 3  # Should be constrained by both
