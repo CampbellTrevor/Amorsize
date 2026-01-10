@@ -1,0 +1,44 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, Iterate ]
+  pull_request:
+    branches: [ main, Iterate ]
+
+jobs:
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint
+    
+    - name: Install package
+      run: |
+        pip install -e ".[full]"
+    
+    - name: Lint with flake8 (warnings only)
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 amorsize/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 amorsize/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
+    
+    - name: Check for common issues
+      run: |
+        # Check for trailing whitespace
+        echo "Checking for trailing whitespace..."
+        ! find amorsize/ -name "*.py" -exec grep -l '[[:space:]]$' {} \; | grep -q .
+      continue-on-error: true
