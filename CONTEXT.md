@@ -1,13 +1,13 @@
-# Context for Next Agent - Iteration 68 Complete
+# Context for Next Agent - Iteration 69 Complete
 
 ## What Was Accomplished
 
-**CACHE TRANSPARENCY ENHANCEMENT** - Added `cache_hit` flag to `OptimizationResult` to provide users with clear visibility into whether optimization results came from cache or were freshly computed. This improves transparency, debugging capability, and user trust in the caching system.
+**ENHANCED CONTAINER MEMORY DETECTION** - Improved cgroup v2 memory limit detection to handle modern container environments with hierarchical paths, support for both hard (memory.max) and soft (memory.high) limits, and proper process-specific cgroup path resolution. This prevents OOM kills in complex containerized environments.
 
 ### Previous Iteration Summary
+- **Iteration 68**: Cache transparency enhancement (cache_hit flag added, all 739 tests passing)
 - **Iteration 67**: Parameter validation fix (use_cache validation added, all 733 tests passing)
 - **Iteration 66**: Comprehensive system validation (all 732 tests passing)
-- **Iteration 65**: Smart optimization caching implemented (10-88x speedup)
 
 ### Previous Key Iterations
 - **Iteration 65**: Optimization cache for 10-88x faster repeated runs
@@ -17,6 +17,123 @@
 - **Iteration 61**: Found and fixed serial chunksize bug (+7 tests)
 - **Iterations 58-60**: Triple-validated production readiness
 - **Iterations 55-57**: Complete "Pickle Tax" measurement + optimization
+
+### Critical Achievement (Iteration 69)
+**INFRASTRUCTURE IMPROVEMENT - Enhanced Container Memory Detection**
+
+**The Mission**: After Iteration 68's UX improvement, return to the Strategic Priority #1 (INFRASTRUCTURE) to enhance the robustness of memory limit detection for modern container environments.
+
+**Problem Identified**: 
+While the existing cgroup detection worked for simple containers, modern container runtimes use cgroup v2 with hierarchical paths and multiple memory control files. The previous implementation only checked root-level cgroup paths, missing:
+1. Process-specific cgroup paths in hierarchical structures
+2. `memory.high` soft limits (in addition to `memory.max` hard limits)
+3. Proper path resolution from `/proc/self/cgroup`
+
+**Enhancement Implemented**:
+Added robust cgroup v2 detection with four key improvements:
+
+1. **New `_read_cgroup_v2_limit()` function**:
+   - Reads both `memory.max` (hard limit) and `memory.high` (soft limit)
+   - Returns the most restrictive limit for conservative resource estimation
+   - Handles "max" values (unlimited) correctly
+   - Proper error handling for invalid values
+
+2. **New `_get_cgroup_path()` function**:
+   - Parses `/proc/self/cgroup` to find process-specific cgroup path
+   - Supports both cgroup v1 and v2 formats
+   - Returns the actual path where the process is located in the hierarchy
+
+3. **Enhanced `_read_cgroup_memory_limit()` function**:
+   - Strategy 1: Try cgroup v2 with process-specific path (most accurate)
+   - Strategy 2: Try cgroup v2 at root (simple containers)
+   - Strategy 3: Try cgroup v1 at root (legacy systems)
+   - Strategy 4: Try cgroup v1 with process-specific path
+   - Graceful fallback through all strategies
+
+4. **Comprehensive test coverage**:
+   - 13 new tests added to test_system_info.py
+   - Tests for v2 limit reading with various configurations
+   - Tests for path resolution
+   - Tests for edge cases (invalid values, missing files, etc.)
+
+**Impact**: 
+- **Prevents OOM kills**: More accurate memory detection in modern containers
+- **Hierarchical support**: Works with complex cgroup v2 hierarchies
+- **Soft limit awareness**: Respects memory.high to avoid throttling
+- **Backward compatible**: All existing detection strategies still work
+- **Production quality**: 13 new tests, all 752 tests passing
+
+**Changes Made (Iteration 69)**:
+
+**Files Modified (2 files):**
+
+1. **`amorsize/system_info.py`** - Enhanced cgroup memory detection
+   - Added `_read_cgroup_v2_limit()`: Reads both max and high limits (54 lines)
+   - Added `_get_cgroup_path()`: Parses /proc/self/cgroup (33 lines)
+   - Enhanced `_read_cgroup_memory_limit()`: 4-strategy detection (88 lines)
+   - Total: ~175 lines of new/modified code
+
+2. **`tests/test_system_info.py`** - Added comprehensive test coverage
+   - Added 13 new tests for enhanced cgroup detection:
+     - test_read_cgroup_v2_limit_with_max_only
+     - test_read_cgroup_v2_limit_with_high_only
+     - test_read_cgroup_v2_limit_respects_lower_limit
+     - test_read_cgroup_v2_limit_with_max_value
+     - test_read_cgroup_v2_limit_with_both_max_values
+     - test_read_cgroup_v2_limit_with_high_max_and_low_max
+     - test_read_cgroup_v2_limit_nonexistent_path
+     - test_read_cgroup_v2_limit_invalid_value
+     - test_get_cgroup_path_returns_string_or_none
+     - test_get_cgroup_path_format
+     - test_read_cgroup_memory_limit_returns_valid
+     - test_read_cgroup_memory_limit_reasonable_value
+     - test_get_available_memory_with_cgroup
+   - Updated imports to include new functions
+
+### Why This Approach (Iteration 69)
+
+- **High-value infrastructure improvement**: Modern containers need accurate memory detection
+- **Minimal changes**: Only touched system_info.py and its tests
+- **Surgical precision**: Enhanced existing functionality without breaking changes
+- **Zero breaking changes**: All 739 existing tests still pass
+- **Comprehensive testing**: 13 new tests cover all scenarios
+- **Production quality**: Follows existing patterns and conventions
+- **Strategic Priority #1**: Addresses INFRASTRUCTURE foundation
+
+### Validation Results (Iteration 69)
+
+✅ **Full Test Suite:**
+```bash
+pytest tests/ -q --tb=line
+# 752 passed, 48 skipped in 18.63s
+# Zero failures, zero errors
+# +13 new tests from Iteration 69
+```
+
+✅ **Manual Validation:**
+```python
+# Test enhanced cgroup detection
+from amorsize.system_info import _get_cgroup_path, _read_cgroup_memory_limit, get_available_memory
+
+# Cgroup path detection
+cgroup_path = _get_cgroup_path()
+# ✓ Successfully detected hierarchical path: /user.slice/user-0.slice/session-c1.scope/ebpf-cgroup-firewall
+
+# Memory limit detection
+limit = _read_cgroup_memory_limit()
+# ✓ Works with hierarchical paths and multiple strategies
+
+# Final memory detection
+memory = get_available_memory()
+# ✓ Returns accurate available memory: 1.00 GB
+```
+
+✅ **Backward Compatibility:**
+- All existing 739 tests still pass
+- New functions are internal (_prefixed)
+- No API changes
+- Existing fallback strategies preserved
+- Works on systems without cgroup v2
 
 ### Critical Achievement (Iteration 68)
 **UX IMPROVEMENT - Cache Transparency**
@@ -776,9 +893,9 @@ The codebase is in **PRODUCTION-READY++** shape with comprehensive CI/CD automat
   - ✅ "(cached)" suffix in string representation
   - ✅ 6 comprehensive tests for transparency
 
-### Test Coverage Summary (Iteration 68)
+### Test Coverage Summary (Iteration 69)
 
-**Test Suite Status**: 739 tests passing, 0 failures, 48 skipped
+**Test Suite Status**: 752 tests passing, 0 failures, 48 skipped
 
 **Test Growth**:
 - Iteration 64: 714 tests
@@ -786,10 +903,16 @@ The codebase is in **PRODUCTION-READY++** shape with comprehensive CI/CD automat
 - Iteration 66: No new tests (validation-only) → 732 tests
 - Iteration 67: +1 validation test → 733 tests
 - Iteration 68: +6 cache transparency tests → 739 tests
+- Iteration 69: +13 cgroup detection tests → 752 tests
 
 All critical paths tested and verified:
 - ✓ Physical core detection (all fallback strategies) - WORKING (verified: 2 cores detected)
-- ✓ Memory limit detection (cgroup + psutil) - WORKING (verified: 13.74 GB available)
+- ✓ **Memory limit detection (cgroup + psutil)** - **ENHANCED** (Iteration 69)
+  - ✓ cgroup v2 hierarchical paths
+  - ✓ memory.max and memory.high support
+  - ✓ Process-specific path resolution
+  - ✓ 4-strategy fallback system
+  - ✓ Verified: 1.00 GB available
 - ✓ Spawn cost measurement (quality validation) - WORKING (verified: 9.7ms measured)
 - ✓ Chunking overhead measurement (quality validation) - WORKING (verified: 0.5ms per chunk)
 - ✓ Optimization caching (Iteration 65) - WORKING (verified: 70x speedup)

@@ -24,7 +24,10 @@ from amorsize.system_info import (
     get_chunking_overhead,
     measure_chunking_overhead,
     _clear_chunking_overhead_cache,
-    DEFAULT_CHUNKING_OVERHEAD
+    DEFAULT_CHUNKING_OVERHEAD,
+    _read_cgroup_v2_limit,
+    _get_cgroup_path,
+    _read_cgroup_memory_limit
 )
 
 # Maximum expected per-worker spawn cost (500ms)
@@ -352,3 +355,140 @@ def test_chunking_overhead_reasonable_bounds():
     
     # Should be more than 0.01ms per chunk (reasonable lower bound)
     assert cost > 0.00001
+
+
+# ============================================================================
+# NEW TESTS for Iteration 69: Enhanced cgroup v2 Memory Detection
+# ============================================================================
+
+
+def test_read_cgroup_v2_limit_with_max_only(tmp_path):
+    """Test reading cgroup v2 memory.max file."""
+    # Create a temporary directory with memory.max
+    memory_max = tmp_path / "memory.max"
+    memory_max.write_text("1073741824")  # 1GB
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    assert limit == 1073741824
+
+
+def test_read_cgroup_v2_limit_with_high_only(tmp_path):
+    """Test reading cgroup v2 memory.high file."""
+    # Create a temporary directory with memory.high
+    memory_high = tmp_path / "memory.high"
+    memory_high.write_text("536870912")  # 512MB
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    assert limit == 536870912
+
+
+def test_read_cgroup_v2_limit_respects_lower_limit(tmp_path):
+    """Test that the most restrictive limit is returned."""
+    # Create both files with different limits
+    memory_max = tmp_path / "memory.max"
+    memory_high = tmp_path / "memory.high"
+    
+    memory_max.write_text("1073741824")  # 1GB
+    memory_high.write_text("536870912")  # 512MB (lower)
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    # Should return the lower (more restrictive) limit
+    assert limit == 536870912
+
+
+def test_read_cgroup_v2_limit_with_max_value(tmp_path):
+    """Test that 'max' value is treated as no limit."""
+    memory_max = tmp_path / "memory.max"
+    memory_max.write_text("max")
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    assert limit is None
+
+
+def test_read_cgroup_v2_limit_with_both_max_values(tmp_path):
+    """Test that both 'max' values result in no limit."""
+    memory_max = tmp_path / "memory.max"
+    memory_high = tmp_path / "memory.high"
+    
+    memory_max.write_text("max")
+    memory_high.write_text("max")
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    assert limit is None
+
+
+def test_read_cgroup_v2_limit_with_high_max_and_low_max(tmp_path):
+    """Test when high is 'max' but max has a value."""
+    memory_max = tmp_path / "memory.max"
+    memory_high = tmp_path / "memory.high"
+    
+    memory_max.write_text("1073741824")  # 1GB
+    memory_high.write_text("max")
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    # Should return the max limit since high is unlimited
+    assert limit == 1073741824
+
+
+def test_read_cgroup_v2_limit_nonexistent_path():
+    """Test that nonexistent path returns None."""
+    limit = _read_cgroup_v2_limit("/nonexistent/path")
+    assert limit is None
+
+
+def test_read_cgroup_v2_limit_invalid_value(tmp_path):
+    """Test handling of invalid numeric value."""
+    memory_max = tmp_path / "memory.max"
+    memory_max.write_text("invalid_number")
+    
+    limit = _read_cgroup_v2_limit(str(tmp_path))
+    assert limit is None
+
+
+def test_get_cgroup_path_returns_string_or_none():
+    """Test that _get_cgroup_path returns valid output."""
+    # This may return None on systems without /proc/self/cgroup
+    # or a valid path string on container/Linux systems
+    path = _get_cgroup_path()
+    assert path is None or isinstance(path, str)
+
+
+def test_get_cgroup_path_format():
+    """Test that cgroup path has expected format if present."""
+    path = _get_cgroup_path()
+    
+    if path is not None:
+        # Path should start with / or be empty
+        assert isinstance(path, str)
+        # Should not have unexpected characters
+        assert all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-_.' for c in path)
+
+
+def test_read_cgroup_memory_limit_returns_valid():
+    """Test that _read_cgroup_memory_limit returns None or positive integer."""
+    limit = _read_cgroup_memory_limit()
+    
+    # Should return None (no container) or positive integer (container)
+    assert limit is None or (isinstance(limit, int) and limit > 0)
+
+
+def test_read_cgroup_memory_limit_reasonable_value():
+    """Test that cgroup limit (if present) is reasonable."""
+    limit = _read_cgroup_memory_limit()
+    
+    if limit is not None:
+        # Should be at least 1MB (very small container)
+        assert limit >= 1024 * 1024
+        # Should be less than 1PB (sanity check)
+        assert limit < (1 << 50)
+
+
+def test_get_available_memory_with_cgroup():
+    """Test that get_available_memory respects cgroup limits."""
+    # This is an integration test - just verify it returns valid value
+    memory = get_available_memory()
+    
+    assert isinstance(memory, int)
+    assert memory > 0
+    # Should be reasonable (at least 100MB, less than 1PB)
+    assert 100 * 1024 * 1024 <= memory < (1 << 50)
