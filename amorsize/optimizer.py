@@ -866,7 +866,7 @@ def optimize(
             warnings=[f"Sampling failed: {str(sampling_result.error)}"],
             data=reconstructed_data,
             profile=diag,
-            executor_type="process",  # Serial execution, doesn't matter
+            executor_type=executor_type,  # Preserve I/O-bound threading decision
             function_profiler_stats=sampling_result.function_profiler_stats
         )
     
@@ -884,7 +884,7 @@ def optimize(
             warnings=["Function cannot be pickled. Use serial execution."],
             data=reconstructed_data,
             profile=diag,
-            executor_type="process",  # Serial execution, doesn't matter
+            executor_type=executor_type,  # Preserve I/O-bound threading decision
             function_profiler_stats=sampling_result.function_profiler_stats
         )
     
@@ -908,7 +908,7 @@ def optimize(
             warnings=[error_msg + ". Use serial execution."],
             data=reconstructed_data,
             profile=diag,
-            executor_type="process",  # Serial execution, doesn't matter
+            executor_type=executor_type,  # Preserve I/O-bound threading decision
             function_profiler_stats=sampling_result.function_profiler_stats
         )
     
@@ -1054,7 +1054,7 @@ def optimize(
                 warnings=result_warnings,
                 data=reconstructed_data,
                 profile=diag,
-                executor_type="process",  # Serial execution, doesn't matter
+                executor_type=executor_type,  # Preserve I/O-bound threading decision
                 function_profiler_stats=sampling_result.function_profiler_stats
             )
     
@@ -1204,7 +1204,7 @@ def optimize(
                 warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"],
                 data=reconstructed_data,
                 profile=diag,
-                executor_type="process",  # Serial execution, doesn't matter
+                executor_type=executor_type,  # Preserve I/O-bound threading decision
                 function_profiler_stats=sampling_result.function_profiler_stats
             )
     else:
@@ -1230,7 +1230,7 @@ def optimize(
             warnings=result_warnings,
             data=reconstructed_data,
             profile=diag,
-            executor_type="process",  # Serial execution, doesn't matter
+            executor_type=executor_type,  # Preserve I/O-bound threading decision
             function_profiler_stats=sampling_result.function_profiler_stats
         )
     
