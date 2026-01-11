@@ -444,6 +444,15 @@ results = execute(func, data, chunksize=500)  # Larger chunks = less overhead
 5. **Streaming Optimization** - For continuous data streams (imap/imap_unordered)
    - See `examples/README_streaming_optimization.md`
 
+### Explore Real-World Use Cases
+
+- **Web Services Integration** - Django, Flask, FastAPI patterns with production examples
+  - See `docs/USE_CASE_WEB_SERVICES.md`
+
+- **Data Processing** - Pandas, CSV, database batch operations (Coming soon)
+
+- **ML Pipelines** - PyTorch, TensorFlow, feature engineering (Coming soon)
+
 ### Read Best Practices
 
 - **Performance Tuning Guide** - How to get the most out of Amorsize
