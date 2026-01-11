@@ -299,10 +299,10 @@ def optimize_streaming(
     if enable_ml_prediction:
         try:
             from .ml_prediction import predict_streaming_parameters
+            from .sampling import estimate_total_items as est_total
             
             # Estimate data size for ML prediction
-            from .sampling import estimate_total_items
-            data_size = estimate_total_items(data, hasattr(data, '__iter__') and not hasattr(data, '__len__'))
+            data_size = est_total(data, hasattr(data, '__iter__') and not hasattr(data, '__len__'))
             
             # Use provided estimate or default
             item_time = estimated_item_time if estimated_item_time is not None else 0.01
