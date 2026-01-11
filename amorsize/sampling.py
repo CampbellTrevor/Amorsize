@@ -672,7 +672,8 @@ def perform_dry_run(
         data_pickle_times = [pm[0] for pm in data_measurements]
         data_sizes = [pm[1] for pm in data_measurements]
         
-        # Memory optimization: Use index-based loop to write directly to pre-allocated lists
+        # Memory optimization: Use indexed assignment to pre-allocated lists
+        # This eliminates append() method call overhead
         for idx, item in enumerate(sample):
             
             # Measure execution time
