@@ -460,10 +460,13 @@ def optimize_streaming(
             print(f"✗ Sampling failed: {sampling_result.error}")
             print("→ Falling back to serial execution (n_jobs=1)")
 
+        # Respect user preference even for serial execution
+        use_ordered_for_rejection = prefer_ordered if prefer_ordered is not None else True
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=1,
-            use_ordered=True,
+            use_ordered=use_ordered_for_rejection,
             reason=f"Sampling error: {sampling_result.error}",
             estimated_speedup=1.0,
             warnings=[f"Sampling failed: {sampling_result.error}"],
@@ -503,10 +506,13 @@ def optimize_streaming(
             print("✗ Function is not picklable")
             print("→ Cannot use multiprocessing (serial execution only)")
 
+        # Respect user preference even for serial execution
+        use_ordered_for_rejection = prefer_ordered if prefer_ordered is not None else True
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=1,
-            use_ordered=True,
+            use_ordered=use_ordered_for_rejection,
             reason="Function is not picklable - multiprocessing requires picklable functions",
             estimated_speedup=1.0,
             warnings=["Function is not picklable. Consider using dill or cloudpickle."],
@@ -530,10 +536,13 @@ def optimize_streaming(
                 print(f"  Error: {sampling_result.data_pickle_error}")
             print("→ Cannot use multiprocessing (serial execution only)")
 
+        # Respect user preference even for serial execution
+        use_ordered_for_rejection = prefer_ordered if prefer_ordered is not None else True
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=1,
-            use_ordered=True,
+            use_ordered=use_ordered_for_rejection,
             reason=f"Data items are not picklable - Data item at index {sampling_result.unpicklable_data_index} is not picklable",
             estimated_speedup=1.0,
             warnings=[
@@ -624,10 +633,13 @@ def optimize_streaming(
                 f"spawn overhead ({spawn_cost*1000:.2f}ms) would dominate"
             )
 
+        # Respect user preference even for serial execution
+        use_ordered_for_rejection = prefer_ordered if prefer_ordered is not None else True
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=optimal_chunksize,
-            use_ordered=True,
+            use_ordered=use_ordered_for_rejection,
             reason=f"Function too fast ({sampling_result.avg_time*1000:.3f}ms per item) - spawn overhead would dominate",
             estimated_speedup=1.0,
             warnings=warnings,
