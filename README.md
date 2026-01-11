@@ -334,6 +334,20 @@ Result: `n_jobs = min(physical_cores, available_RAM / estimated_job_RAM)`
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
+## Best Practices
+
+New to parallelization or want to optimize your usage? Check the [Best Practices Guide](docs/BEST_PRACTICES.md):
+
+- ✅ When to use Amorsize (and when not to)
+- ✅ Function design patterns for optimal parallelization
+- ✅ Data preparation strategies
+- ✅ Memory management techniques
+- ✅ Real-world case studies with before/after results
+- ✅ Performance optimization patterns
+- ✅ Common pitfalls to avoid
+
+Learn proven patterns for getting the most out of multiprocessing in Python.
+
 ## Troubleshooting
 
 Having issues? Check the comprehensive [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for solutions to common problems:
