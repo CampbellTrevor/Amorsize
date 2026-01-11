@@ -93,6 +93,31 @@ from .visualization import (
 )
 from .watch import WatchMonitor, WatchSnapshot, watch
 
+# Monitoring integrations (optional, no extra dependencies)
+try:
+    from .monitoring import (
+        PrometheusMetrics,
+        StatsDClient,
+        create_multi_monitoring_hook,
+        create_prometheus_hook,
+        create_statsd_hook,
+        create_webhook_hook,
+    )
+    _has_monitoring = True
+except ImportError:
+    _has_monitoring = False
+    # Stubs for when monitoring module is not available
+    def create_prometheus_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    def create_statsd_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    def create_webhook_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    def create_multi_monitoring_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    PrometheusMetrics = None
+    StatsDClient = None
+
 # ML prediction functions (optional feature)
 try:
     from .ml_prediction import (
@@ -334,4 +359,10 @@ __all__ = [
     "create_timing_hook",
     "create_throughput_hook",
     "create_error_hook",
+    "create_prometheus_hook",
+    "create_statsd_hook",
+    "create_webhook_hook",
+    "create_multi_monitoring_hook",
+    "PrometheusMetrics",
+    "StatsDClient",
 ]
