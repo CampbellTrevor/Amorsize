@@ -1,8 +1,134 @@
-# Context for Next Agent - Iteration 140
+# Context for Next Agent - Iteration 141
 
-## What Was Accomplished in Iteration 139
+## What Was Accomplished in Iteration 140
 
-**TEST ISOLATION FIX** - Successfully identified and fixed an intermittent test failure caused by function hash cache pollution across tests.
+**TEST FAILURE FIX + CODE QUALITY IMPROVEMENTS** - Successfully fixed failing test by adding actionable recommendations to diagnostic profile for picklability errors, then improved code quality based on review feedback.
+
+### Implementation Completed
+
+1. **Root Cause Analysis**:
+   - Identified failing test: `test_unpicklable_data_with_profiling` ✅
+   - Test expected "dill" or "cloudpickle" in profile recommendations
+   - Found that recommendations only said "See detailed guidance in warnings"
+   - Detailed error messages were in warnings but not in profile recommendations
+   - Issue occurred in 3 error paths: sampling failures, function picklability, data picklability
+
+2. **Initial Fix** (`amorsize/optimizer.py`):
+   - Enhanced sampling failure path to detect unpicklable data ✅
+   - Added specific recommendations for function picklability errors ✅
+   - Added specific recommendations for data picklability errors ✅
+   - All 3 paths now provide actionable recommendations mentioning cloudpickle/dill
+   - Test now passes: **21/21 data picklability tests PASS** ✅
+
+3. **Code Quality Improvements** (based on review feedback):
+   - Extracted `_get_unpicklable_data_info()` helper function ✅
+   - Reduced code duplication (same logic was in 2 places)
+   - Extracted common recommendation strings to constants ✅
+   - Created `_RECOMMENDATION_USE_CLOUDPICKLE` and `_RECOMMENDATION_EXTRACT_SERIALIZABLE`
+   - Ensures consistent messaging across all error paths
+
+4. **Verification**:
+   - ✅ All 21 data picklability tests pass
+   - ✅ All 32 enhanced error message tests pass
+   - ✅ 1469/1470 total tests pass (1 flaky spawn cost test unrelated to changes)
+   - ✅ No security vulnerabilities (CodeQL passed)
+   - ✅ Code review feedback addressed
+   - ✅ Helper function tested and working
+   - ✅ Constants tested and working
+
+### Technical Details
+
+**The Problem:** When picklability errors occur (either during sampling or in the picklability check), the diagnostic profile's recommendations list was set to "See detailed guidance in warnings" instead of providing actionable recommendations directly. Tests expected specific keywords like "dill" or "cloudpickle" in the recommendations.
+
+**The Solution:** 
+1. Replace generic "See detailed guidance in warnings" with specific actionable recommendations
+2. Add data-specific recommendations when sampling fails due to unpicklable data
+3. Extract helper function to get unpicklable data info (reduces duplication)
+4. Extract common recommendation strings to constants (ensures consistency)
+
+**Code Changes:**
+- Lines 36-37: Added constants for common recommendations
+- Lines 621-643: Added `_get_unpicklable_data_info()` helper function
+- Lines 1217-1233: Enhanced sampling failure path with unpicklable data detection
+- Lines 1265-1270: Updated function picklability recommendations
+- Lines 1290-1304: Updated data picklability recommendations
+
+### Strategic Priorities for Next Iteration
+
+Following the decision matrix from the problem statement:
+
+1. **INFRASTRUCTURE** - ✅ Complete
+   - Physical core detection: ✅ Robust (psutil + /proc/cpuinfo + lscpu)
+   - Memory limit detection: ✅ cgroup/Docker aware
+
+2. **SAFETY & ACCURACY** - ✅ Complete
+   - Generator safety: ✅ Complete (using itertools.chain)
+   - OS spawning overhead: ✅ Measured and verified (Iteration 132)
+   - ML pruning safety: ✅ Fixed in Iteration 129
+   - Test isolation: ✅ Fixed in Iteration 139
+   - **Picklability error recommendations**: ✅ Fixed in Iteration 140
+
+3. **CORE LOGIC** - ✅ Complete
+   - Amdahl's Law: ✅ Includes IPC overlap factor (Iteration 130)
+   - Chunksize calculation: ✅ Verified correct implementation (Iteration 131)
+   - Spawn cost measurement: ✅ Verified accurate and reliable (Iteration 132)
+
+4. **UX & ROBUSTNESS** - ✅ COMPLETE (Iterations 133-140)
+   - Error messages: ✅ Enhanced with actionable guidance (Iteration 133)
+   - Troubleshooting guide: ✅ Comprehensive guide with 12 issue categories (Iteration 134)
+   - Best practices guide: ✅ Comprehensive guide with patterns and case studies (Iteration 135)
+   - Performance tuning guide: ✅ Comprehensive guide with cost model deep-dive (Iteration 136)
+   - CLI experience: ✅ Enhanced with 5 new flags and colored output (Iteration 137)
+   - CLI testing: ✅ Comprehensive test coverage for CLI enhancements (Iteration 138)
+   - Test reliability: ✅ Fixed test isolation issue (Iteration 139)
+   - **Profile recommendations**: ✅ Fixed in Iteration 140
+   - API cleanliness: ✓ `from amorsize import optimize`
+   - Edge case handling: ✓ Good (pickling errors, zero-length data)
+   - Documentation: ✅ EXCELLENT - Comprehensive guides and examples
+
+### Recommendation for Iteration 141
+
+**ALL STRATEGIC PRIORITIES COMPLETE!** 🎉
+
+With the test failure fixed and code quality improved, consider:
+
+1. **Advanced Features** (Optional enhancements):
+   - Add `--format` option for output format (yaml, table, markdown)
+   - Add `--interactive` mode with step-by-step guidance
+   - Add `--export` flag to save diagnostics to file
+   - Add `--watch` mode for continuous optimization monitoring
+   - Add progress bars for long-running optimizations
+
+2. **Performance Monitoring**:
+   - Add real-time performance monitoring during execution
+   - Add live CPU/memory usage tracking
+   - Add performance regression detection
+   - Add hooks for custom optimization strategies
+
+3. **Integration Features**:
+   - Add Jupyter notebook widgets for interactive optimization
+   - Add integration with common profilers (cProfile, line_profiler)
+   - Add integration with monitoring tools (Prometheus, Grafana)
+
+4. **Code Quality**:
+   - Run static analysis tools (mypy, pylint, ruff)
+   - Add type hints to remaining functions
+   - Improve test coverage metrics
+   - Add property-based testing with Hypothesis
+
+5. **Bug Fixes**:
+   - Investigate and fix the flaky spawn cost verification test
+   - Check for any other intermittent test failures
+
+Choose the highest-value enhancement that extends Amorsize's capabilities or improves code quality.
+
+## Files Modified in Iteration 140
+
+- `amorsize/optimizer.py` - Fixed picklability error recommendations (3 commits, 54 lines added/removed)
+  - Added actionable recommendations for sampling failures with unpicklable data
+  - Updated function and data picklability error recommendations
+  - Extracted helper function `_get_unpicklable_data_info()` to reduce duplication
+  - Extracted common recommendation strings to constants
 
 ### Implementation Completed
 
