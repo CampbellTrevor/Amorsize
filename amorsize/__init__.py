@@ -120,6 +120,13 @@ from .checkpoint import (
     get_pending_items,
     merge_results,
 )
+from .dead_letter_queue import (
+    DLQEntry,
+    DLQFormat,
+    DLQPolicy,
+    DeadLetterQueue,
+    replay_failed_items,
+)
 
 # Monitoring integrations (optional, no extra dependencies)
 try:
@@ -450,6 +457,11 @@ __all__ = [
     "CircuitState",
     "with_circuit_breaker",
     "circuit_breaker_call",
+    "DLQPolicy",
+    "DLQEntry",
+    "DLQFormat",
+    "DeadLetterQueue",
+    "replay_failed_items",
     "CheckpointManager",
     "CheckpointPolicy",
     "CheckpointState",
