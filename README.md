@@ -27,6 +27,7 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 ### Execution & Reliability
 - 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
 - 🔁 **Retry Logic**: Exponential backoff for handling transient failures (network, rate limits)
+- 🔴 **Circuit Breaker**: Prevent cascade failures with automatic failure detection and recovery
 - 📦 **Batch Processing**: Memory-safe processing for workloads with large return objects
 - 🌊 **Streaming Optimization**: imap/imap_unordered helper for continuous data streams
 
@@ -320,6 +321,73 @@ results = execute(production_function, data)
 - ✅ Zero external dependencies
 
 See [Retry Logic Guide](examples/retry_logic_demo.py) for complete examples.
+
+### Option 9: Circuit Breaker for Preventing Cascade Failures
+
+Protect your system from cascade failures when services are unavailable with automatic circuit breaker pattern:
+
+```python
+from amorsize import execute, with_circuit_breaker, CircuitBreakerPolicy
+
+# Apply circuit breaker to protect against failing services
+@with_circuit_breaker()
+def call_external_service(item):
+    """Service that may fail persistently."""
+    response = requests.post("https://external-api.com", json=item)
+    return response.json()
+
+# Process with automatic parallelization + circuit breaker
+results = execute(call_external_service, items, verbose=True)
+
+# Custom circuit breaker policy for production
+policy = CircuitBreakerPolicy(
+    failure_threshold=5,      # Open circuit after 5 failures
+    success_threshold=2,      # Close after 2 successes
+    timeout=60.0,             # Try recovery after 60s
+    expected_exceptions=(ConnectionError, TimeoutError),
+    on_open=lambda count, exc: logger.error(
+        f"Circuit opened after {count} failures: {exc}"
+    ),
+    on_close=lambda: logger.info("Circuit closed - service recovered")
+)
+
+@with_circuit_breaker(policy)
+def protected_service(x):
+    return external_api_call(x)
+
+results = execute(protected_service, data)
+```
+
+**Key features:**
+- ✅ Automatic failure detection and circuit opening
+- ✅ Periodic recovery testing (HALF_OPEN state)
+- ✅ Prevents overwhelming failing services
+- ✅ Selective exception handling
+- ✅ Shared circuits across multiple functions
+- ✅ Integration with retry logic for layered protection
+- ✅ Zero external dependencies
+
+**Circuit Breaker States:**
+- **CLOSED**: Normal operation, requests pass through
+- **OPEN**: Service failing, requests blocked immediately
+- **HALF_OPEN**: Testing recovery, limited requests allowed
+
+**Combine with Retry for Robust Error Handling:**
+```python
+from amorsize import with_retry, with_circuit_breaker, RetryPolicy, CircuitBreakerPolicy
+
+breaker = CircuitBreaker(CircuitBreakerPolicy(failure_threshold=5))
+
+# Retry handles transient failures, circuit breaker handles persistent failures
+@with_circuit_breaker(breaker)
+@with_retry(policy=RetryPolicy(max_retries=2))
+def robust_api_call(item):
+    return api_call(item)
+
+results = execute(robust_api_call, data)
+```
+
+See [Circuit Breaker Guide](examples/circuit_breaker_demo.py) for complete examples.
 
 ## How It Works
 
