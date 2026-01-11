@@ -916,8 +916,6 @@ class TestCLIEnhancements:
     
     def test_explain_flag(self):
         """Test --explain flag shows detailed explanation."""
-        from amorsize.__main__ import load_function
-        
         result = subprocess.run(
             [
                 sys.executable, "-m", "amorsize",
