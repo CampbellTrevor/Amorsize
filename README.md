@@ -16,18 +16,24 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 
 ## Features
 
+### Core Optimization
 - 🚀 **Automatic Optimization**: Analyzes function+data and recommends optimal parameters
 - 🔍 **Intelligent Sampling**: Quick dry-run analysis without executing full workload
 - 💾 **Memory-Aware**: Prevents OOM by considering RAM constraints
 - 🖥️ **OS-Aware**: Adjusts for Linux (`fork`) vs Windows/macOS (`spawn`) overhead
 - ⚡ **CPU Detection**: Uses physical cores (not hyperthreaded) for best performance
 - 🛡️ **Safety Checks**: Validates function picklability and handles edge cases gracefully
+
+### Execution & Reliability
+- 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
+- 🔁 **Retry Logic**: Exponential backoff for handling transient failures (network, rate limits)
 - 📦 **Batch Processing**: Memory-safe processing for workloads with large return objects
 - 🌊 **Streaming Optimization**: imap/imap_unordered helper for continuous data streams
-- 🎯 **CLI Interface**: Analyze functions from command line without writing code
-- 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
+
+### Monitoring & Analysis
 - 📊 **Diagnostic Profiling**: Deep insights into optimization decisions and trade-offs
 - ✅ **Benchmark Validation**: Empirically verify optimizer predictions with actual performance
+- 🎯 **CLI Interface**: Analyze functions from command line without writing code
 - 💾 **Configuration Export/Import**: Save and reuse optimal parameters across runs
 
 ## Installation
@@ -267,6 +273,53 @@ python -m amorsize execute mymodule.func --data-range 10000 \
 - ✅ Skipping optimization overhead for faster execution
 
 See [Configuration Guide](examples/README_config.md) for complete documentation.
+
+### Option 8: Retry Logic for Production Reliability
+
+Handle transient failures (network issues, rate limiting, temporary unavailability) with automatic retry and exponential backoff:
+
+```python
+from amorsize import execute, with_retry, RetryPolicy
+
+# Apply retry to individual functions
+@with_retry(max_retries=3, initial_delay=0.1)
+def fetch_from_api(item_id):
+    """Function that may fail transiently."""
+    response = requests.get(f"https://api.example.com/{item_id}")
+    return response.json()
+
+# Process with automatic parallelization + retry
+results = execute(fetch_from_api, item_ids, verbose=True)
+
+# Custom retry policy for production
+policy = RetryPolicy(
+    max_retries=5,
+    initial_delay=0.5,
+    max_delay=60.0,
+    exponential_base=2.0,
+    jitter=True,  # Prevent thundering herd
+    retry_on_exceptions=(ConnectionError, TimeoutError),
+    on_retry=lambda exc, attempt, delay: logger.warning(
+        f"Retry {attempt} after {delay:.2f}s: {exc}"
+    )
+)
+
+@with_retry(policy=policy)
+def production_function(x):
+    return expensive_api_call(x)
+
+results = execute(production_function, data)
+```
+
+**Key features:**
+- ✅ Exponential backoff (delays: 0.1s → 0.2s → 0.4s → 0.8s...)
+- ✅ Jitter to prevent thundering herd effect
+- ✅ Selective retry on specific exception types
+- ✅ Callback support for logging and monitoring
+- ✅ Works seamlessly with parallel execution
+- ✅ Zero external dependencies
+
+See [Retry Logic Guide](examples/retry_logic_demo.py) for complete examples.
 
 ## How It Works
 
