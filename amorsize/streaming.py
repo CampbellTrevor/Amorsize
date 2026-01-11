@@ -53,7 +53,11 @@ class StreamingOptimizationResult:
         use_adaptive_chunking: bool = False,
         adaptive_chunking_params: Optional[dict] = None,
         buffer_size: Optional[int] = None,
-        memory_backpressure_enabled: bool = False
+        memory_backpressure_enabled: bool = False,
+        # New in Iteration 115: for online learning integration
+        estimated_item_time: Optional[float] = None,
+        pickle_size: Optional[int] = None,
+        coefficient_of_variation: Optional[float] = None
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -67,6 +71,10 @@ class StreamingOptimizationResult:
         self.adaptive_chunking_params = adaptive_chunking_params or {}
         self.buffer_size = buffer_size
         self.memory_backpressure_enabled = memory_backpressure_enabled
+        # New in Iteration 115: store for online learning
+        self.estimated_item_time = estimated_item_time
+        self.pickle_size = pickle_size
+        self.coefficient_of_variation = coefficient_of_variation
     
     def __repr__(self):
         method = "imap" if self.use_ordered else "imap_unordered"
@@ -363,7 +371,11 @@ def optimize_streaming(
                         use_adaptive_chunking=enable_adaptive_chunking,
                         adaptive_chunking_params=adaptive_params,
                         buffer_size=final_buffer_size,
-                        memory_backpressure_enabled=enable_memory_backpressure
+                        memory_backpressure_enabled=enable_memory_backpressure,
+                        # New in Iteration 115: for online learning
+                        estimated_item_time=item_time,
+                        pickle_size=None,  # Not available from ML prediction
+                        coefficient_of_variation=None  # Not available from ML prediction
                     )
                 elif verbose:
                     print(f"\n{'='*60}")
@@ -444,7 +456,10 @@ def optimize_streaming(
             profile=diag,
             use_adaptive_chunking=False,
             buffer_size=1,
-            memory_backpressure_enabled=False
+            memory_backpressure_enabled=False,
+            estimated_item_time=None,
+            pickle_size=None,
+            coefficient_of_variation=None
         )
     
     # Populate sampling results in diagnostic profile
@@ -484,7 +499,10 @@ def optimize_streaming(
             profile=diag,
             use_adaptive_chunking=False,
             buffer_size=1,
-            memory_backpressure_enabled=False
+            memory_backpressure_enabled=False,
+            estimated_item_time=sampling_result.avg_time,
+            pickle_size=None,
+            coefficient_of_variation=sampling_result.coefficient_of_variation
         )
     
     # Check if data items are picklable
@@ -511,7 +529,10 @@ def optimize_streaming(
             profile=diag,
             use_adaptive_chunking=False,
             buffer_size=1,
-            memory_backpressure_enabled=False
+            memory_backpressure_enabled=False,
+            estimated_item_time=sampling_result.avg_time,
+            pickle_size=sampling_result.return_size,
+            coefficient_of_variation=sampling_result.coefficient_of_variation
         )
     
     # Fast-fail checks for streaming optimization
@@ -599,7 +620,10 @@ def optimize_streaming(
             profile=diag,
             use_adaptive_chunking=False,
             buffer_size=buffer_size if buffer_size is not None else 1,
-            memory_backpressure_enabled=enable_memory_backpressure
+            memory_backpressure_enabled=enable_memory_backpressure,
+            estimated_item_time=sampling_result.avg_time,
+            pickle_size=sampling_result.return_size,
+            coefficient_of_variation=sampling_result.coefficient_of_variation
         )
     
     # Calculate max workers based on CPU
@@ -700,7 +724,10 @@ def optimize_streaming(
                 profile=diag,
                 use_adaptive_chunking=False,
                 buffer_size=buffer_size if buffer_size is not None else 1,
-                memory_backpressure_enabled=enable_memory_backpressure
+                memory_backpressure_enabled=enable_memory_backpressure,
+                estimated_item_time=sampling_result.avg_time,
+                pickle_size=sampling_result.return_size,
+                coefficient_of_variation=sampling_result.coefficient_of_variation
             )
     else:
         # Unknown dataset size or duration - use heuristic
@@ -832,5 +859,9 @@ def optimize_streaming(
         use_adaptive_chunking=enable_adaptive_chunking,
         adaptive_chunking_params=adaptive_chunking_params,
         buffer_size=calculated_buffer_size,
-        memory_backpressure_enabled=enable_memory_backpressure
+        memory_backpressure_enabled=enable_memory_backpressure,
+        # New in Iteration 115: for online learning
+        estimated_item_time=sampling_result.avg_time,
+        pickle_size=sampling_result.return_size,
+        coefficient_of_variation=sampling_result.coefficient_of_variation
     )

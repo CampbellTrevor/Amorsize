@@ -298,6 +298,9 @@ class WorkloadFeatures:
 class TrainingData:
     """
     Training data point from historical optimization.
+    
+    Supports both batch and streaming workloads. For streaming workloads,
+    additional parameters like buffer_size and use_ordered are included.
     """
     
     def __init__(
@@ -306,13 +309,20 @@ class TrainingData:
         n_jobs: int,
         chunksize: int,
         speedup: float,
-        timestamp: float
+        timestamp: float,
+        buffer_size: Optional[int] = None,
+        use_ordered: Optional[bool] = None,
+        is_streaming: bool = False
     ):
         self.features = features
         self.n_jobs = n_jobs
         self.chunksize = chunksize
         self.speedup = speedup
         self.timestamp = timestamp
+        # Streaming-specific parameters (Iteration 115)
+        self.buffer_size = buffer_size
+        self.use_ordered = use_ordered
+        self.is_streaming = is_streaming
 
 
 class SimpleLinearPredictor:
@@ -1119,6 +1129,160 @@ def update_model_from_execution(
         return False
 
 
+def update_model_from_streaming_execution(
+    func: Callable,
+    data_size: int,
+    estimated_item_time: float,
+    actual_n_jobs: int,
+    actual_chunksize: int,
+    actual_speedup: float,
+    buffer_size: int,
+    use_ordered: bool,
+    pickle_size: Optional[int] = None,
+    coefficient_of_variation: Optional[float] = None,
+    verbose: bool = False
+) -> bool:
+    """
+    Update ML model with actual streaming execution results (online learning for streaming).
+    
+    This function implements online learning specifically for streaming workloads,
+    capturing streaming-specific parameters like buffer_size and use_ordered (imap vs imap_unordered).
+    
+    Args:
+        func: The function that was executed in streaming mode
+        data_size: Number of items processed
+        estimated_item_time: Estimated per-item execution time (seconds)
+        actual_n_jobs: Actual number of workers that were optimal
+        actual_chunksize: Actual chunk size that was optimal
+        actual_speedup: Actual speedup achieved
+        buffer_size: Buffer size used for imap/imap_unordered
+        use_ordered: Whether ordered (imap) was used vs unordered (imap_unordered)
+        pickle_size: Average pickle size of return objects (bytes)
+        coefficient_of_variation: CV of execution times (0-2)
+        verbose: If True, print diagnostic information
+    
+    Returns:
+        True if successfully updated, False otherwise
+    
+    Example:
+        >>> # After streaming execution with optimized parameters
+        >>> result = optimize_streaming(my_func, data, enable_ml_prediction=True)
+        >>> # Execute and measure actual performance
+        >>> actual_speedup = measure_actual_speedup(...)
+        >>> # Update model with streaming results
+        >>> update_model_from_streaming_execution(
+        ...     my_func, len(data), 0.001,
+        ...     result.n_jobs, result.chunksize, actual_speedup,
+        ...     result.buffer_size, result.use_ordered
+        ... )
+    
+    New in Iteration 115:
+        This function enables streaming workloads to benefit from online learning,
+        just like batch workloads. The model learns optimal buffer sizes and ordering
+        preferences over time for better predictions.
+    """
+    try:
+        # Compute function complexity
+        function_complexity = _compute_function_complexity(func)
+        
+        # Detect system topology for hardware-aware features (Iteration 114)
+        system_topology = None
+        if _HAS_COST_MODEL:
+            try:
+                physical_cores = get_physical_cores()
+                system_topology = detect_system_topology(physical_cores)
+            except Exception:
+                # Graceful fallback if topology detection fails
+                system_topology = None
+        
+        # Create features for this execution
+        features = WorkloadFeatures(
+            data_size=data_size,
+            estimated_item_time=estimated_item_time,
+            physical_cores=get_physical_cores(),
+            available_memory=get_available_memory(),
+            start_method=get_multiprocessing_start_method(),
+            pickle_size=pickle_size,
+            coefficient_of_variation=coefficient_of_variation,
+            function_complexity=function_complexity,
+            system_topology=system_topology
+        )
+        
+        # Create training sample from streaming execution results
+        training_sample = TrainingData(
+            features=features,
+            n_jobs=actual_n_jobs,
+            chunksize=actual_chunksize,
+            speedup=actual_speedup,
+            timestamp=time.time(),
+            buffer_size=buffer_size,
+            use_ordered=use_ordered,
+            is_streaming=True
+        )
+        
+        # Save to cache in ML-specific format for training
+        cache_dir = _get_ml_cache_dir()
+        
+        # Generate unique filename using the format constant
+        func_hash = _compute_function_signature(func)
+        timestamp_ms = int(time.time() * 1000)  # Milliseconds for uniqueness
+        # Use "streaming" prefix to distinguish from batch training data
+        cache_file = cache_dir / f"ml_training_streaming_{func_hash}_{timestamp_ms}.json"
+        
+        # Prepare data for JSON serialization (includes streaming parameters)
+        training_data = {
+            'features': {
+                'data_size': features.data_size,
+                'estimated_item_time': features.estimated_item_time,
+                'physical_cores': features.physical_cores,
+                'available_memory': features.available_memory,
+                'start_method': features.start_method,
+                'pickle_size': pickle_size,
+                'coefficient_of_variation': coefficient_of_variation,
+                'function_complexity': function_complexity
+            },
+            'n_jobs': actual_n_jobs,
+            'chunksize': actual_chunksize,
+            'speedup': actual_speedup,
+            'timestamp': training_sample.timestamp,
+            'function_signature': func_hash,
+            # Streaming-specific parameters (Iteration 115)
+            'buffer_size': buffer_size,
+            'use_ordered': use_ordered,
+            'is_streaming': True
+        }
+        
+        # Write to file atomically
+        temp_file = cache_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(training_data, f, indent=2)
+        temp_file.replace(cache_file)
+        
+        if verbose:
+            print(f"✓ Streaming Online Learning: Added training sample to model")
+            print(f"  n_jobs={actual_n_jobs}, chunksize={actual_chunksize}, speedup={actual_speedup:.2f}x")
+            print(f"  buffer_size={buffer_size}, use_ordered={use_ordered}")
+            print(f"  Training data saved to: {cache_file.name}")
+        
+        return True
+        
+    except (OSError, IOError, PermissionError) as e:
+        # File system errors
+        if verbose:
+            print(f"⚠ Streaming Online Learning: Failed to write training data: {e}")
+        return False
+    except (TypeError, ValueError) as e:
+        # JSON serialization errors
+        if verbose:
+            print(f"⚠ Streaming Online Learning: Failed to serialize training data: {e}")
+        return False
+    except Exception as e:
+        # Catch-all for unexpected errors
+        if verbose:
+            print(f"⚠ Streaming Online Learning: Unexpected error: {e}")
+        return False
+
+
 def load_ml_training_data() -> List[TrainingData]:
     """
     Load training data specifically saved by online learning.
@@ -1156,13 +1320,16 @@ def load_ml_training_data() -> List[TrainingData]:
                     system_topology=None  # Not stored in cache, use defaults
                 )
                 
-                # Create training sample
+                # Create training sample (with streaming support from Iteration 115)
                 sample = TrainingData(
                     features=features,
                     n_jobs=data['n_jobs'],
                     chunksize=data['chunksize'],
                     speedup=data.get('speedup', 1.0),
-                    timestamp=data.get('timestamp', time.time())
+                    timestamp=data.get('timestamp', time.time()),
+                    buffer_size=data.get('buffer_size'),  # Streaming parameter
+                    use_ordered=data.get('use_ordered'),  # Streaming parameter
+                    is_streaming=data.get('is_streaming', False)  # Streaming flag
                 )
                 
                 training_data.append(sample)
@@ -1186,9 +1353,12 @@ def load_ml_training_data() -> List[TrainingData]:
 # Export public API
 __all__ = [
     'predict_parameters',
+    'predict_streaming_parameters',
     'update_model_from_execution',
+    'update_model_from_streaming_execution',
     'load_ml_training_data',
     'PredictionResult',
+    'StreamingPredictionResult',
     'WorkloadFeatures',
     'TrainingData',
     'SimpleLinearPredictor',
