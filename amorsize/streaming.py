@@ -18,6 +18,19 @@ from .system_info import (
     get_memory_pressure
 )
 
+# Streaming optimization constants
+# Buffer size calculation: buffer = n_jobs * BUFFER_SIZE_MULTIPLIER
+# This allows prefetching for good throughput without excessive memory use
+BUFFER_SIZE_MULTIPLIER = 3
+
+# Maximum chunksize growth for adaptive chunking
+# Limits how large chunks can grow to prevent load imbalance
+MAX_CHUNKSIZE_GROWTH_FACTOR = 4
+
+# Memory budget for result buffering (fraction of available memory)
+# Conservative 10% allocation prevents memory exhaustion
+RESULT_BUFFER_MEMORY_FRACTION = 0.1
+
 
 class StreamingOptimizationResult:
     """
@@ -664,7 +677,7 @@ def optimize_streaming(
             'target_chunk_duration': target_chunk_duration,
             'adaptation_rate': adaptation_rate,
             'min_chunksize': 1,
-            'max_chunksize': optimal_chunksize * 4,  # Allow up to 4x growth
+            'max_chunksize': optimal_chunksize * MAX_CHUNKSIZE_GROWTH_FACTOR,
             'enable_adaptation': True
         }
         if verbose:
@@ -681,15 +694,15 @@ def optimize_streaming(
     if calculated_buffer_size is None:
         # Auto-calculate buffer size based on memory and parallelism
         # Buffer should be large enough for good parallelism but not waste memory
-        # Rule: buffer = n_jobs * 2 to 4 (allows prefetching for good throughput)
-        calculated_buffer_size = optimal_n_jobs * 3
+        calculated_buffer_size = optimal_n_jobs * BUFFER_SIZE_MULTIPLIER
         
         # Adjust for memory constraints if backpressure is enabled
         if enable_memory_backpressure:
             # Estimate memory per result item
             memory_per_result = sampling_result.return_size
             if memory_per_result > 0:
-                # Calculate how many results fit in 10% of available memory
+                # Calculate how many results fit in memory budget
+                max_results_in_memory = int(available_memory * RESULT_BUFFER_MEMORY_FRACTION / memory_per_result)
                 max_results_in_memory = int(available_memory * 0.1 / memory_per_result)
                 # Limit buffer size to prevent memory issues
                 calculated_buffer_size = min(calculated_buffer_size, max(optimal_n_jobs, max_results_in_memory))

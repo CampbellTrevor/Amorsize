@@ -126,7 +126,7 @@ class TestAdaptiveChunkingIntegration:
         )
         
         assert result.use_adaptive_chunking is False
-        assert result.adaptive_chunking_params == {} or not result.adaptive_chunking_params
+        assert not result.adaptive_chunking_params
 
 
 # ============================================================================
