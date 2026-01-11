@@ -4,11 +4,11 @@ Benchmark for Welford's algorithm delta2 inline optimization (Iteration 97).
 This benchmark measures the performance improvement from eliminating the delta2
 temporary variable in Welford's online variance algorithm. The optimization
 inlines the calculation (exec_time - welford_mean) directly into the M2 update,
-saving approximately 8ns per iteration.
+saving approximately 6ns per iteration.
 
 Performance Impact:
-- Micro-benchmark: ~8ns per iteration
-- Typical 5-item dry_run: ~40ns total savings
+- Micro-benchmark: ~6ns per iteration
+- Typical 5-item dry_run: ~30ns total savings
 - Zero complexity cost: functionally identical
 """
 

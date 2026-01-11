@@ -726,7 +726,7 @@ def perform_dry_run(
                 
                 # Welford's online algorithm: update mean and variance incrementally
                 # Performance optimization (Iteration 97): Inline delta2 calculation
-                # Eliminates temporary variable, saving ~8ns per iteration (~40ns for 5-item sample)
+                # Eliminates temporary variable, saving ~6ns per iteration (~30ns for 5-item sample)
                 welford_count += 1
                 delta = exec_time - welford_mean
                 welford_mean += delta / welford_count
@@ -760,7 +760,7 @@ def perform_dry_run(
                 
                 # Welford's online algorithm: update mean and variance incrementally
                 # Performance optimization (Iteration 97): Inline delta2 calculation
-                # Eliminates temporary variable, saving ~8ns per iteration (~40ns for 5-item sample)
+                # Eliminates temporary variable, saving ~6ns per iteration (~30ns for 5-item sample)
                 welford_count += 1
                 delta = exec_time - welford_mean
                 welford_mean += delta / welford_count
