@@ -33,6 +33,12 @@ def clear_global_caches():
        The benchmark cache stores results from validate_optimization() calls. Tests
        can inadvertently pick up cached benchmark results from previous tests.
     
+    5. Function Hash Cache Pollution (Iteration 139):
+       The function hash cache in amorsize.cache uses id(func) as cache key.
+       When Python reuses object IDs for new function objects, the cached hash
+       from a previous function with different bytecode can be incorrectly returned,
+       causing cache key collisions between functionally different functions.
+    
     Solutions:
     - Clears caches before each test for isolation
     - Sets AMORSIZE_TESTING=1 environment variable to disable nested
@@ -42,6 +48,7 @@ def clear_global_caches():
     """
     from amorsize.system_info import _clear_spawn_cost_cache, _clear_chunking_overhead_cache
     from amorsize import clear_cache, clear_benchmark_cache
+    from amorsize.cache import _function_hash_cache
     
     # Set testing environment variable to disable nested parallelism detection
     # This prevents false positives from test runner's multiprocessing usage
@@ -52,6 +59,7 @@ def clear_global_caches():
     _clear_chunking_overhead_cache()
     clear_cache()  # Clear optimization cache
     clear_benchmark_cache()  # Clear benchmark cache
+    _function_hash_cache.clear()  # Clear function hash cache (Iteration 139)
     
     # Yield to run the test
     yield
@@ -61,6 +69,7 @@ def clear_global_caches():
     _clear_chunking_overhead_cache()
     clear_cache()  # Clear optimization cache
     clear_benchmark_cache()  # Clear benchmark cache
+    _function_hash_cache.clear()  # Clear function hash cache (Iteration 139)
     
     # Remove testing environment variable
     if 'AMORSIZE_TESTING' in os.environ:
