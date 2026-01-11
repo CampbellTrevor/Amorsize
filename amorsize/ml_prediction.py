@@ -93,6 +93,15 @@ MIN_BANDWIDTH_GB_S = 10.0  # Minimum memory bandwidth (10 GB/s)
 MAX_BANDWIDTH_GB_S = 1000.0  # Maximum memory bandwidth (1000 GB/s for high-end systems)
 MAX_NUMA_NODES = 8  # Maximum NUMA nodes (typical for high-end servers)
 
+# Adaptive chunking ML constants (Iteration 119)
+# Coefficient of variation threshold for recommending adaptive chunking
+# Below this threshold, workload is considered homogeneous (no benefit from adaptation)
+ADAPTIVE_CHUNKING_CV_THRESHOLD = 0.3
+
+# Epsilon for inverse distance weighting in k-NN predictions
+# Prevents division by zero for exact matches
+KNN_DISTANCE_EPSILON = 0.01
+
 
 class PredictionResult:
     """
@@ -105,6 +114,10 @@ class PredictionResult:
         reason: Explanation of prediction
         training_samples: Number of historical samples used for training
         feature_match_score: How well the current workload matches training data
+        adaptive_chunking_enabled: Whether adaptive chunking is recommended (Iteration 119)
+        adaptation_rate: Recommended adaptation rate (0-1) if adaptive chunking enabled (Iteration 119)
+        min_chunksize: Recommended minimum chunk size if adaptive chunking enabled (Iteration 119)
+        max_chunksize: Recommended maximum chunk size if adaptive chunking enabled (Iteration 119)
     """
     
     def __init__(
@@ -114,7 +127,11 @@ class PredictionResult:
         confidence: float,
         reason: str,
         training_samples: int,
-        feature_match_score: float
+        feature_match_score: float,
+        adaptive_chunking_enabled: Optional[bool] = None,
+        adaptation_rate: Optional[float] = None,
+        min_chunksize: Optional[int] = None,
+        max_chunksize: Optional[int] = None
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -122,6 +139,10 @@ class PredictionResult:
         self.reason = reason
         self.training_samples = training_samples
         self.feature_match_score = feature_match_score
+        self.adaptive_chunking_enabled = adaptive_chunking_enabled
+        self.adaptation_rate = adaptation_rate
+        self.min_chunksize = min_chunksize
+        self.max_chunksize = max_chunksize
     
     def __repr__(self):
         return (
@@ -610,6 +631,7 @@ class TrainingData:
     additional parameters like buffer_size and use_ordered are included.
     
     Enhanced in Iteration 117 with system_fingerprint for cross-system learning.
+    Enhanced in Iteration 119 with adaptive_chunking parameters for ML learning.
     """
     
     def __init__(
@@ -623,7 +645,11 @@ class TrainingData:
         use_ordered: Optional[bool] = None,
         is_streaming: bool = False,
         system_fingerprint: Optional[SystemFingerprint] = None,
-        weight: float = 1.0
+        weight: float = 1.0,
+        adaptive_chunking_enabled: Optional[bool] = None,
+        adaptation_rate: Optional[float] = None,
+        min_chunksize: Optional[int] = None,
+        max_chunksize: Optional[int] = None
     ):
         self.features = features
         self.n_jobs = n_jobs
@@ -638,6 +664,12 @@ class TrainingData:
         # Cross-system learning (Iteration 117)
         self.system_fingerprint = system_fingerprint
         self.weight = weight  # Allows weighting samples from similar systems
+        
+        # Adaptive chunking parameters (Iteration 119)
+        self.adaptive_chunking_enabled = adaptive_chunking_enabled
+        self.adaptation_rate = adaptation_rate
+        self.min_chunksize = min_chunksize
+        self.max_chunksize = max_chunksize
 
 
 class SimpleLinearPredictor:
@@ -713,13 +745,22 @@ class SimpleLinearPredictor:
             f"(confidence: {confidence:.1%}, match score: {feature_match_score:.1%})"
         )
         
+        # Predict adaptive chunking parameters (Iteration 119)
+        # Only recommend adaptive chunking if CV is high (heterogeneous workload)
+        # and we have training samples that used adaptive chunking successfully
+        adaptive_params = self._predict_adaptive_chunking(neighbors, features)
+        
         return PredictionResult(
             n_jobs=n_jobs_pred,
             chunksize=chunksize_pred,
             confidence=confidence,
             reason=reason,
             training_samples=len(self.training_data),
-            feature_match_score=feature_match_score
+            feature_match_score=feature_match_score,
+            adaptive_chunking_enabled=adaptive_params['enabled'],
+            adaptation_rate=adaptive_params['adaptation_rate'],
+            min_chunksize=adaptive_params['min_chunksize'],
+            max_chunksize=adaptive_params['max_chunksize']
         )
     
     def _find_nearest_neighbors(
@@ -809,9 +850,8 @@ class SimpleLinearPredictor:
         Returns:
             Tuple of (n_jobs, chunksize)
         """
-        # Calculate weights (inverse distance with small epsilon to avoid division by zero)
-        epsilon = 0.01
-        distance_weights = [1.0 / (dist + epsilon) for dist, _ in neighbors]
+        # Calculate weights (inverse distance with KNN_DISTANCE_EPSILON to avoid division by zero)
+        distance_weights = [1.0 / (dist + KNN_DISTANCE_EPSILON) for dist, _ in neighbors]
         
         # Apply cross-system weights (Iteration 117)
         # Combine distance-based weight with sample weight (for cross-system data)
@@ -835,6 +875,125 @@ class SimpleLinearPredictor:
         chunksize = max(1, round(chunksize_weighted))
         
         return n_jobs, chunksize
+    
+    def _predict_adaptive_chunking(
+        self,
+        neighbors: List[Tuple[float, TrainingData]],
+        features: WorkloadFeatures
+    ) -> Dict[str, Any]:
+        """
+        Predict adaptive chunking parameters based on neighbors.
+        
+        Adaptive chunking is recommended when:
+        1. Workload has high coefficient of variation (CV > ADAPTIVE_CHUNKING_CV_THRESHOLD)
+        2. Similar historical workloads benefited from adaptive chunking
+        
+        Args:
+            neighbors: k-nearest neighbors with their distances
+            features: Current workload features
+        
+        Returns:
+            Dictionary with adaptive chunking recommendations:
+                - enabled: Whether to enable adaptive chunking
+                - adaptation_rate: Recommended adaptation rate (0-1)
+                - min_chunksize: Recommended minimum chunk size
+                - max_chunksize: Recommended maximum chunk size (None = no limit)
+        """
+        # Check if workload is heterogeneous (high CV)
+        cv = features.coefficient_of_variation
+        is_heterogeneous = cv > ADAPTIVE_CHUNKING_CV_THRESHOLD
+        
+        # Check if neighbors used adaptive chunking successfully
+        neighbors_with_adaptive = [
+            (dist, sample) for dist, sample in neighbors
+            if sample.adaptive_chunking_enabled is True
+        ]
+        
+        # Recommend adaptive chunking if workload is heterogeneous
+        # AND either we have no data or neighbors used it successfully
+        if not is_heterogeneous:
+            # Homogeneous workload - no benefit from adaptive chunking
+            return {
+                'enabled': False,
+                'adaptation_rate': None,
+                'min_chunksize': None,
+                'max_chunksize': None
+            }
+        
+        # For heterogeneous workloads, recommend adaptive chunking
+        # If we have neighbors that used it, learn from them
+        # Otherwise use sensible defaults
+        
+        if neighbors_with_adaptive:
+            # Learn from similar workloads that used adaptive chunking
+            # Calculate weighted average of their parameters
+            distance_weights = [1.0 / (dist + KNN_DISTANCE_EPSILON) for dist, _ in neighbors_with_adaptive]
+            combined_weights = [
+                dw * sample.weight for dw, (_, sample) in zip(distance_weights, neighbors_with_adaptive)
+            ]
+            total_weight = sum(combined_weights)
+            
+            # Weighted average of adaptation rate
+            adaptation_rates = [
+                sample.adaptation_rate for _, sample in neighbors_with_adaptive
+                if sample.adaptation_rate is not None
+            ]
+            if adaptation_rates and total_weight > 0:
+                adaptation_rate = sum(
+                    w * sample.adaptation_rate 
+                    for w, (_, sample) in zip(combined_weights, neighbors_with_adaptive)
+                    if sample.adaptation_rate is not None
+                ) / total_weight
+            else:
+                # Default: moderate adaptation for CV 0.3-0.7, aggressive for CV > 0.7
+                adaptation_rate = 0.3 if cv < 0.7 else 0.5
+            
+            # Weighted average of min_chunksize
+            min_chunksizes = [
+                sample.min_chunksize for _, sample in neighbors_with_adaptive
+                if sample.min_chunksize is not None
+            ]
+            if min_chunksizes and total_weight > 0:
+                min_chunksize = max(1, round(sum(
+                    w * sample.min_chunksize 
+                    for w, (_, sample) in zip(combined_weights, neighbors_with_adaptive)
+                    if sample.min_chunksize is not None
+                ) / total_weight))
+            else:
+                min_chunksize = 1  # Default minimum
+            
+            # Weighted average of max_chunksize (if specified)
+            max_chunksizes = [
+                sample.max_chunksize for _, sample in neighbors_with_adaptive
+                if sample.max_chunksize is not None
+            ]
+            if max_chunksizes and total_weight > 0:
+                max_chunksize = max(min_chunksize + 1, round(sum(
+                    w * sample.max_chunksize 
+                    for w, (_, sample) in zip(combined_weights, neighbors_with_adaptive)
+                    if sample.max_chunksize is not None
+                ) / total_weight))
+            else:
+                max_chunksize = None  # No limit by default
+        else:
+            # No training data with adaptive chunking - use sensible defaults
+            # Adaptation rate based on CV: higher CV = more aggressive adaptation
+            if cv > 0.7:
+                adaptation_rate = 0.5  # Aggressive adaptation for highly heterogeneous
+            elif cv > 0.5:
+                adaptation_rate = 0.4  # Moderate-aggressive
+            else:
+                adaptation_rate = 0.3  # Moderate adaptation
+            
+            min_chunksize = 1
+            max_chunksize = None  # No limit
+        
+        return {
+            'enabled': True,
+            'adaptation_rate': adaptation_rate,
+            'min_chunksize': min_chunksize,
+            'max_chunksize': max_chunksize
+        }
     
     def analyze_feature_importance(self) -> Dict[str, float]:
         """
@@ -1633,6 +1792,10 @@ def update_model_from_execution(
     actual_speedup: float,
     pickle_size: Optional[int] = None,
     coefficient_of_variation: Optional[float] = None,
+    adaptive_chunking_enabled: Optional[bool] = None,
+    adaptation_rate: Optional[float] = None,
+    min_chunksize: Optional[int] = None,
+    max_chunksize: Optional[int] = None,
     verbose: bool = False
 ) -> bool:
     """
@@ -1651,6 +1814,10 @@ def update_model_from_execution(
         actual_speedup: Actual speedup achieved
         pickle_size: Average pickle size of return objects (bytes)
         coefficient_of_variation: CV of execution times (0-2)
+        adaptive_chunking_enabled: Whether adaptive chunking was used (Iteration 119)
+        adaptation_rate: Adaptation rate if adaptive chunking was used (Iteration 119)
+        min_chunksize: Minimum chunk size if adaptive chunking was used (Iteration 119)
+        max_chunksize: Maximum chunk size if adaptive chunking was used (Iteration 119)
         verbose: If True, print diagnostic information
     
     Returns:
@@ -1708,7 +1875,11 @@ def update_model_from_execution(
             chunksize=actual_chunksize,
             speedup=actual_speedup,
             timestamp=time.time(),
-            system_fingerprint=system_fingerprint
+            system_fingerprint=system_fingerprint,
+            adaptive_chunking_enabled=adaptive_chunking_enabled,
+            adaptation_rate=adaptation_rate,
+            min_chunksize=min_chunksize,
+            max_chunksize=max_chunksize
         )
         
         # Save to cache in ML-specific format for training
@@ -1741,7 +1912,12 @@ def update_model_from_execution(
             'timestamp': training_sample.timestamp,
             'function_signature': func_hash,
             # Cross-system learning (Iteration 117)
-            'system_fingerprint': system_fingerprint.to_dict() if system_fingerprint else None
+            'system_fingerprint': system_fingerprint.to_dict() if system_fingerprint else None,
+            # Adaptive chunking parameters (Iteration 119)
+            'adaptive_chunking_enabled': adaptive_chunking_enabled,
+            'adaptation_rate': adaptation_rate,
+            'min_chunksize': min_chunksize,
+            'max_chunksize': max_chunksize
         }
         
         # Write to file atomically
@@ -2181,7 +2357,12 @@ def load_ml_training_data(
                     use_ordered=data.get('use_ordered'),  # Streaming parameter
                     is_streaming=data.get('is_streaming', False),  # Streaming flag
                     system_fingerprint=sample_system,  # Cross-system learning (Iteration 117)
-                    weight=weight  # Cross-system weight (Iteration 117)
+                    weight=weight,  # Cross-system weight (Iteration 117)
+                    # Adaptive chunking parameters (Iteration 119)
+                    adaptive_chunking_enabled=data.get('adaptive_chunking_enabled'),
+                    adaptation_rate=data.get('adaptation_rate'),
+                    min_chunksize=data.get('min_chunksize'),
+                    max_chunksize=data.get('max_chunksize')
                 )
                 
                 training_data.append(sample)
