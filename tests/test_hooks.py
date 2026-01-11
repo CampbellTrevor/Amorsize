@@ -2,6 +2,7 @@
 Tests for execution hooks module.
 """
 
+import threading
 import time
 import pytest
 from amorsize.hooks import (
@@ -441,7 +442,6 @@ class TestThreadSafety:
     
     def test_concurrent_registration(self):
         """Test that concurrent registration is thread-safe."""
-        import threading
         
         manager = HookManager()
         
@@ -470,7 +470,6 @@ class TestThreadSafety:
     
     def test_concurrent_triggering(self):
         """Test that concurrent triggering is thread-safe."""
-        import threading
         
         manager = HookManager()
         call_count = [0]
@@ -499,3 +498,185 @@ class TestThreadSafety:
         
         # Hook should be called for each trigger (5 threads * 10 calls each)
         assert call_count[0] == 50
+
+
+class TestTriggerAPIConventions:
+    """Tests for trigger() method supporting multiple calling conventions."""
+    
+    def test_trigger_with_context_only(self):
+        """Test trigger() with HookContext (preferred style)."""
+        manager = HookManager()
+        called = []
+        
+        def hook(ctx: HookContext):
+            called.append(ctx.event)
+        
+        manager.register(HookEvent.PRE_EXECUTE, hook)
+        
+        # Call with context only (preferred style)
+        ctx = HookContext(event=HookEvent.PRE_EXECUTE, n_jobs=4)
+        manager.trigger(ctx)
+        
+        assert len(called) == 1
+        assert called[0] == HookEvent.PRE_EXECUTE
+    
+    def test_trigger_with_event_and_context(self):
+        """Test trigger() with event and context separately (legacy style)."""
+        manager = HookManager()
+        called = []
+        
+        def hook(ctx: HookContext):
+            called.append((ctx.event, ctx.n_jobs))
+        
+        manager.register(HookEvent.ON_PROGRESS, hook)
+        
+        # Call with event and context separately (legacy style)
+        ctx = HookContext(event=HookEvent.ON_PROGRESS, n_jobs=8)
+        manager.trigger(HookEvent.ON_PROGRESS, ctx)
+        
+        assert len(called) == 1
+        assert called[0] == (HookEvent.ON_PROGRESS, 8)
+    
+    def test_trigger_both_conventions_work(self):
+        """Test that both calling conventions produce the same results."""
+        manager = HookManager()
+        results = []
+        
+        def hook(ctx: HookContext):
+            results.append({
+                'event': ctx.event,
+                'n_jobs': ctx.n_jobs,
+                'timestamp': ctx.timestamp
+            })
+        
+        manager.register(HookEvent.PRE_EXECUTE, hook)
+        manager.register(HookEvent.POST_EXECUTE, hook)
+        
+        # Test preferred style
+        ctx1 = HookContext(event=HookEvent.PRE_EXECUTE, n_jobs=4)
+        manager.trigger(ctx1)
+        
+        # Test legacy style
+        ctx2 = HookContext(event=HookEvent.POST_EXECUTE, n_jobs=8)
+        manager.trigger(HookEvent.POST_EXECUTE, ctx2)
+        
+        assert len(results) == 2
+        assert results[0]['event'] == HookEvent.PRE_EXECUTE
+        assert results[0]['n_jobs'] == 4
+        assert results[1]['event'] == HookEvent.POST_EXECUTE
+        assert results[1]['n_jobs'] == 8
+    
+    def test_trigger_event_mismatch_correction(self):
+        """Test that event parameter overrides context.event when both provided."""
+        manager = HookManager()
+        captured_events = []
+        
+        def hook(ctx: HookContext):
+            captured_events.append(ctx.event)
+        
+        manager.register(HookEvent.ON_PROGRESS, hook)
+        manager.register(HookEvent.POST_EXECUTE, hook)
+        
+        # Create context with one event, but trigger with different event
+        # The event parameter should take precedence
+        ctx = HookContext(event=HookEvent.POST_EXECUTE, n_jobs=4)
+        manager.trigger(HookEvent.ON_PROGRESS, ctx)
+        
+        # Hook for ON_PROGRESS should be called, not POST_EXECUTE
+        assert len(captured_events) == 1
+        assert captured_events[0] == HookEvent.ON_PROGRESS
+    
+    def test_trigger_with_invalid_first_param(self):
+        """Test that trigger() rejects invalid first parameter."""
+        manager = HookManager()
+        
+        # Should reject string
+        with pytest.raises(TypeError, match="First parameter must be HookEvent or HookContext"):
+            manager.trigger("invalid")
+        
+        # Should reject integer
+        with pytest.raises(TypeError, match="First parameter must be HookEvent or HookContext"):
+            manager.trigger(42)
+        
+        # Should reject None
+        with pytest.raises(TypeError, match="First parameter must be HookEvent or HookContext"):
+            manager.trigger(None)
+    
+    def test_trigger_context_with_extra_param(self):
+        """Test that trigger(context, extra) raises ValueError."""
+        manager = HookManager()
+        ctx = HookContext(event=HookEvent.PRE_EXECUTE)
+        extra_ctx = HookContext(event=HookEvent.POST_EXECUTE)
+        
+        with pytest.raises(ValueError, match="context parameter must be None"):
+            manager.trigger(ctx, extra_ctx)
+    
+    def test_trigger_event_without_context(self):
+        """Test that trigger(event) without context raises ValueError."""
+        manager = HookManager()
+        
+        with pytest.raises(ValueError, match="context parameter must be provided"):
+            manager.trigger(HookEvent.PRE_EXECUTE)
+    
+    def test_trigger_legacy_style_in_thread_safety(self):
+        """Test that legacy calling style is thread-safe."""
+        
+        manager = HookManager()
+        call_count = [0]
+        lock = threading.Lock()
+        
+        def hook(ctx: HookContext):
+            with lock:
+                call_count[0] += 1
+        
+        manager.register(HookEvent.ON_PROGRESS, hook)
+        
+        def trigger_hook_legacy():
+            for i in range(10):
+                ctx = HookContext(event=HookEvent.ON_PROGRESS, items_completed=i)
+                # Use legacy calling style
+                manager.trigger(HookEvent.ON_PROGRESS, ctx)
+        
+        threads = [
+            threading.Thread(target=trigger_hook_legacy)
+            for _ in range(5)
+        ]
+        
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        # Hook should be called for each trigger (5 threads * 10 calls each)
+        assert call_count[0] == 50
+    
+    def test_trigger_mixed_styles_interleaved(self):
+        """Test that preferred and legacy styles can be interleaved."""
+        manager = HookManager()
+        events_received = []
+        
+        def hook(ctx: HookContext):
+            events_received.append((ctx.event, ctx.n_jobs))
+        
+        manager.register(HookEvent.PRE_EXECUTE, hook)
+        manager.register(HookEvent.POST_EXECUTE, hook)
+        manager.register(HookEvent.ON_PROGRESS, hook)
+        
+        # Interleave both styles
+        ctx1 = HookContext(event=HookEvent.PRE_EXECUTE, n_jobs=2)
+        manager.trigger(ctx1)  # Preferred
+        
+        ctx2 = HookContext(event=HookEvent.POST_EXECUTE, n_jobs=4)
+        manager.trigger(HookEvent.POST_EXECUTE, ctx2)  # Legacy
+        
+        ctx3 = HookContext(event=HookEvent.ON_PROGRESS, n_jobs=6)
+        manager.trigger(ctx3)  # Preferred
+        
+        ctx4 = HookContext(event=HookEvent.PRE_EXECUTE, n_jobs=8)
+        manager.trigger(HookEvent.PRE_EXECUTE, ctx4)  # Legacy
+        
+        assert len(events_received) == 4
+        assert events_received[0] == (HookEvent.PRE_EXECUTE, 2)
+        assert events_received[1] == (HookEvent.POST_EXECUTE, 4)
+        assert events_received[2] == (HookEvent.ON_PROGRESS, 6)
+        assert events_received[3] == (HookEvent.PRE_EXECUTE, 8)
