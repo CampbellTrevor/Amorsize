@@ -75,8 +75,8 @@ def benchmark_reciprocal_multiplication():
     print()
     
     # Simulate the averaging calculations
-    sample_count = 5
     values = [1.234, 2.345, 3.456, 4.567, 5.678]
+    sample_count = len(values)  # Dynamically computed to match values list
     iterations = 10_000_000
     
     # Benchmark division
