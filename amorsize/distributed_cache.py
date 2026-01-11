@@ -453,9 +453,6 @@ def prewarm_distributed_cache(
         )
         return 0
     
-    # Import here to avoid circular dependency
-    from .optimizer import optimize
-    
     count = 0
     for config in workload_configs:
         data_size = config['data_size']
@@ -472,6 +469,9 @@ def prewarm_distributed_cache(
         data = range(min(data_size, 100))  # Use smaller sample for prewarming
         
         # Run optimization (will cache result)
+        # Import here to avoid circular dependency
+        from .optimizer import optimize
+        
         try:
             optimize(func, data, use_cache=True)
             count += 1

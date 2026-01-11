@@ -181,7 +181,7 @@ class TestIntegrationWithOptimize:
         def expensive_func(x):
             """Slow function to make parallelization worthwhile."""
             total = 0
-            for i in range(10000):  # More iterations
+            for _ in range(10000):  # More iterations, unused loop variable
                 total += x ** 2
             return total
         
@@ -363,8 +363,8 @@ class TestAPIStubsWithoutRedis:
             # The stub should either raise ImportError or return False
             try:
                 result = amorsize.configure_distributed_cache()
-                # If no exception, should be stub that returns False or raises
-                assert result is False or isinstance(result, type(lambda: None))
+                # If no exception, result should be False (stub behavior)
+                assert result is False or callable(result)
             except ImportError as e:
                 # Expected behavior for stub
                 assert "redis" in str(e).lower()
