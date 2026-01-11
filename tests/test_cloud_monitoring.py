@@ -33,6 +33,26 @@ from amorsize.monitoring import (
 class TestCloudWatchMetrics:
     """Tests for AWS CloudWatch integration."""
     
+    @staticmethod
+    def _setup_mock_cloudwatch():
+        """
+        Helper method to set up a mocked CloudWatchMetrics instance.
+        
+        Returns:
+            Tuple of (metrics, mock_client) where:
+            - metrics: CloudWatchMetrics instance with mocked boto3
+            - mock_client: MagicMock for the CloudWatch client
+        """
+        mock_boto3 = MagicMock()
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        
+        metrics = CloudWatchMetrics()
+        metrics._boto3 = mock_boto3
+        metrics._has_boto3 = True
+        
+        return metrics, mock_client
+    
     def test_cloudwatch_init_without_boto3(self):
         """Test CloudWatch initialization when boto3 is not installed."""
         with patch.dict(sys.modules, {'boto3': None}):
@@ -53,155 +73,114 @@ class TestCloudWatchMetrics:
     
     def test_cloudwatch_update_pre_execute(self):
         """Test CloudWatch metrics on PRE_EXECUTE event."""
-        # Mock boto3 at import level
-        mock_boto3 = MagicMock()
-        mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        metrics, mock_client = self._setup_mock_cloudwatch()
         
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs: mock_boto3 if name == 'boto3' else __import__(name, *args, **kwargs)):
-            metrics = CloudWatchMetrics()
-            metrics._boto3 = mock_boto3
-            metrics._has_boto3 = True
-            
-            # Create context
-            ctx = HookContext(
-                event=HookEvent.PRE_EXECUTE,
-                timestamp=time.time(),
-                n_jobs=4,
-            )
-            
-            # Update metrics
-            metrics.update_from_context(ctx)
-            
-            # Verify put_metric_data was called
-            assert mock_client.put_metric_data.call_count >= 2
+        # Create context
+        ctx = HookContext(
+            event=HookEvent.PRE_EXECUTE,
+            timestamp=time.time(),
+            n_jobs=4,
+        )
+        
+        # Update metrics
+        metrics.update_from_context(ctx)
+        
+        # Verify put_metric_data was called
+        assert mock_client.put_metric_data.call_count >= 2
     
     def test_cloudwatch_update_post_execute(self):
         """Test CloudWatch metrics on POST_EXECUTE event."""
-        # Mock boto3 at import level
-        mock_boto3 = MagicMock()
-        mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        metrics, mock_client = self._setup_mock_cloudwatch()
         
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs: mock_boto3 if name == 'boto3' else __import__(name, *args, **kwargs)):
-            metrics = CloudWatchMetrics()
-            metrics._boto3 = mock_boto3
-            metrics._has_boto3 = True
-            
-            # Create context
-            ctx = HookContext(
-                event=HookEvent.POST_EXECUTE,
-                timestamp=time.time(),
-                elapsed_time=5.2,
-                total_items=1000,
-                throughput_items_per_sec=192.3,
-            )
-            
-            # Update metrics
-            metrics.update_from_context(ctx)
-            
-            # Verify put_metric_data was called
-            assert mock_client.put_metric_data.call_count >= 4
+        # Create context
+        ctx = HookContext(
+            event=HookEvent.POST_EXECUTE,
+            timestamp=time.time(),
+            elapsed_time=5.2,
+            total_items=1000,
+            throughput_items_per_sec=192.3,
+        )
+        
+        # Update metrics
+        metrics.update_from_context(ctx)
+        
+        # Verify put_metric_data was called
+        assert mock_client.put_metric_data.call_count >= 4
     
     def test_cloudwatch_update_on_error(self):
         """Test CloudWatch metrics on ON_ERROR event."""
-        # Mock boto3 at import level
-        mock_boto3 = MagicMock()
-        mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        metrics, mock_client = self._setup_mock_cloudwatch()
         
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs: mock_boto3 if name == 'boto3' else __import__(name, *args, **kwargs)):
-            metrics = CloudWatchMetrics()
-            metrics._boto3 = mock_boto3
-            metrics._has_boto3 = True
-            
-            # Create context
-            ctx = HookContext(
-                event=HookEvent.ON_ERROR,
-                timestamp=time.time(),
-                error_message="Test error",
-            )
-            
-            # Update metrics
-            metrics.update_from_context(ctx)
-            
-            # Verify put_metric_data was called
-            assert mock_client.put_metric_data.call_count >= 1
+        # Create context
+        ctx = HookContext(
+            event=HookEvent.ON_ERROR,
+            timestamp=time.time(),
+            error_message="Test error",
+        )
+        
+        # Update metrics
+        metrics.update_from_context(ctx)
+        
+        # Verify put_metric_data was called
+        assert mock_client.put_metric_data.call_count >= 1
     
     def test_cloudwatch_update_on_progress(self):
         """Test CloudWatch metrics on ON_PROGRESS event."""
-        # Mock boto3 at import level
-        mock_boto3 = MagicMock()
-        mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        metrics, mock_client = self._setup_mock_cloudwatch()
         
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs: mock_boto3 if name == 'boto3' else __import__(name, *args, **kwargs)):
-            metrics = CloudWatchMetrics()
-            metrics._boto3 = mock_boto3
-            metrics._has_boto3 = True
-            
-            # Create context
-            ctx = HookContext(
-                event=HookEvent.ON_PROGRESS,
-                timestamp=time.time(),
-                percent_complete=50.0,
-                throughput_items_per_sec=200.0,
-            )
-            
-            # Update metrics
-            metrics.update_from_context(ctx)
-            
-            # Verify put_metric_data was called
-            assert mock_client.put_metric_data.call_count >= 2
+        # Create context
+        ctx = HookContext(
+            event=HookEvent.ON_PROGRESS,
+            timestamp=time.time(),
+            percent_complete=50.0,
+            throughput_items_per_sec=200.0,
+        )
+        
+        # Update metrics
+        metrics.update_from_context(ctx)
+        
+        # Verify put_metric_data was called
+        assert mock_client.put_metric_data.call_count >= 2
     
     def test_cloudwatch_update_on_chunk_complete(self):
         """Test CloudWatch metrics on ON_CHUNK_COMPLETE event."""
-        # Mock boto3 at import level
-        mock_boto3 = MagicMock()
-        mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        metrics, mock_client = self._setup_mock_cloudwatch()
         
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs: mock_boto3 if name == 'boto3' else __import__(name, *args, **kwargs)):
-            metrics = CloudWatchMetrics()
-            metrics._boto3 = mock_boto3
-            metrics._has_boto3 = True
-            
-            # Create context
-            ctx = HookContext(
-                event=HookEvent.ON_CHUNK_COMPLETE,
-                timestamp=time.time(),
-                chunk_id=1,
-                chunk_size=100,
-                chunk_time=0.5,
-            )
-            
-            # Update metrics
-            metrics.update_from_context(ctx)
-            
-            # Verify put_metric_data was called
-            assert mock_client.put_metric_data.call_count >= 1
+        # Create context
+        ctx = HookContext(
+            event=HookEvent.ON_CHUNK_COMPLETE,
+            timestamp=time.time(),
+            chunk_id=1,
+            chunk_size=100,
+            chunk_time=0.5,
+        )
+        
+        # Update metrics
+        metrics.update_from_context(ctx)
+        
+        # Verify put_metric_data was called
+        assert mock_client.put_metric_data.call_count >= 1
     
     def test_cloudwatch_error_isolation(self):
         """Test that CloudWatch errors don't crash execution."""
-        # Mock boto3 to raise an error
+        # Create mocked CloudWatch with error-raising client
         mock_boto3 = MagicMock()
         mock_client = MagicMock()
         mock_client.put_metric_data.side_effect = Exception("Network error")
         mock_boto3.client.return_value = mock_client
         
-        with patch('builtins.__import__', side_effect=lambda name, *args, **kwargs: mock_boto3 if name == 'boto3' else __import__(name, *args, **kwargs)):
-            metrics = CloudWatchMetrics()
-            metrics._boto3 = mock_boto3
-            metrics._has_boto3 = True
-            
-            # Create context
-            ctx = HookContext(
-                event=HookEvent.PRE_EXECUTE,
-                timestamp=time.time(),
-            )
-            
-            # Should not raise exception
-            metrics.update_from_context(ctx)
+        metrics = CloudWatchMetrics()
+        metrics._boto3 = mock_boto3
+        metrics._has_boto3 = True
+        
+        # Create context
+        ctx = HookContext(
+            event=HookEvent.PRE_EXECUTE,
+            timestamp=time.time(),
+        )
+        
+        # Should not raise exception
+        metrics.update_from_context(ctx)
 
 
 class TestCreateCloudWatchHook:
