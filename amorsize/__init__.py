@@ -90,9 +90,12 @@ try:
         predict_streaming_parameters,
         update_model_from_execution,
         update_model_from_streaming_execution,
+        track_prediction_accuracy,
+        get_calibration_stats,
         load_ml_training_data,
         PredictionResult,
         StreamingPredictionResult,
+        CalibrationData,
         MIN_TRAINING_SAMPLES,
         DEFAULT_CONFIDENCE_THRESHOLD
     )
@@ -108,10 +111,15 @@ except ImportError:
         raise ImportError("ML prediction module not available")
     def update_model_from_streaming_execution(*args, **kwargs):
         raise ImportError("ML prediction module not available")
+    def track_prediction_accuracy(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
+    def get_calibration_stats(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
     def load_ml_training_data(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     PredictionResult = None
     StreamingPredictionResult = None
+    CalibrationData = None
     MIN_TRAINING_SAMPLES = 3
     DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
