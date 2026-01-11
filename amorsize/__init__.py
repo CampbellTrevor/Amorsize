@@ -145,7 +145,7 @@ except ImportError:
     ENABLE_K_TUNING = True
     K_RANGE_MIN = 3
     K_RANGE_MAX = 15
-    MIN_SAMPLES_FOR_K_TUNING = 15
+    MIN_SAMPLES_FOR_K_TUNING = 20
     DEFAULT_K_VALUE = 5
 
 # Distributed cache functions (optional, requires redis-py)

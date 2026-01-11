@@ -4,6 +4,7 @@ Tests for k-NN hyperparameter tuning (Iteration 124).
 Tests automatic selection of optimal k value using cross-validation.
 """
 
+import random
 import time
 import pytest
 from amorsize.ml_prediction import (
@@ -92,9 +93,9 @@ class TestKTuningConstants:
         """Test that constants have reasonable values."""
         assert K_RANGE_MIN >= 1
         assert K_RANGE_MAX > K_RANGE_MIN
-        # Need enough samples for cross-validation
-        # At minimum we need k+1 samples for LOOCV with k neighbors
-        assert MIN_SAMPLES_FOR_K_TUNING >= K_RANGE_MAX
+        # For LOOCV with k neighbors: need k+1 samples (k training + 1 test)
+        # So MIN_SAMPLES_FOR_K_TUNING should be > K_RANGE_MAX for safe tuning
+        assert MIN_SAMPLES_FOR_K_TUNING > K_RANGE_MAX
         assert DEFAULT_K_VALUE >= K_RANGE_MIN
         assert DEFAULT_K_VALUE <= K_RANGE_MAX
 
@@ -263,7 +264,7 @@ class TestSimpleLinearPredictorKTuning:
         
         # Verify prediction result includes k information
         if result is not None:
-            assert f"k={predictor._optimal_k}" in result.reason
+            assert f"optimal k={predictor._optimal_k}" in result.reason
     
     def test_predict_without_auto_tune_k(self):
         """Test that predict works when auto_tune_k is disabled."""
@@ -308,7 +309,6 @@ class TestKTuningEdgeCases:
         """Test k tuning with noisy/random data."""
         predictor = SimpleLinearPredictor(k=5, auto_tune_k=True)
         
-        import random
         random.seed(42)  # For reproducibility
         
         # Add noisy data

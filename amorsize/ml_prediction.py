@@ -154,8 +154,9 @@ K_RANGE_MIN = 3
 K_RANGE_MAX = 15
 
 # Minimum training samples needed for k tuning
-# Below this threshold, use default k=5
-MIN_SAMPLES_FOR_K_TUNING = 15
+# Must be > K_RANGE_MAX to ensure sufficient samples for LOOCV
+# (need k+1 samples for k neighbors: k training + 1 test)
+MIN_SAMPLES_FOR_K_TUNING = 20
 
 # Number of cross-validation folds for k tuning
 # Use Leave-One-Out CV (LOOCV) for small datasets (<50 samples)
@@ -1405,8 +1406,19 @@ class SimpleLinearPredictor:
         # Determine CV strategy based on dataset size
         use_loocv = n_samples < 50
         
-        # Test range of k values (ensure k <= n_samples - 1 for LOOCV)
-        max_k = min(K_RANGE_MAX, n_samples - 1 if use_loocv else n_samples // 2)
+        # Test range of k values
+        # For LOOCV: need at least k+2 samples (k neighbors + 1 test + 1 validation)
+        # For k-fold: need at least k+1 samples per fold
+        if use_loocv:
+            max_k = min(K_RANGE_MAX, n_samples - 2)  # Reserve 2: 1 test + 1 for distance
+        else:
+            max_k = min(K_RANGE_MAX, n_samples // 2)  # Half for reasonable folding
+        
+        # Ensure we have a valid range
+        if max_k < K_RANGE_MIN:
+            # Not enough samples to test even minimum k
+            return DEFAULT_K_VALUE
+        
         k_values = range(K_RANGE_MIN, max_k + 1)
         
         best_k = DEFAULT_K_VALUE
@@ -1529,6 +1541,12 @@ class SimpleLinearPredictor:
         Similar to _find_nearest_neighbors but works with a custom candidate list
         (used during cross-validation).
         
+        Note: This method does not use feature selection to maintain consistency
+        during cross-validation. Feature selection is applied to the full training
+        set in the main prediction path, but during CV we want to evaluate the
+        model's performance on the complete feature space to avoid overfitting
+        to the selected features.
+        
         Args:
             features: Workload features to find neighbors for
             candidate_samples: List of samples to search in
@@ -1538,7 +1556,8 @@ class SimpleLinearPredictor:
             List of (distance, training_data) tuples, sorted by distance
         """
         # Calculate distances to all candidates
-        # Note: Can't use feature selection during CV since we're not using self.training_data
+        # Note: Using full feature vectors (no feature selection) during CV
+        # for unbiased k selection
         distances = []
         for sample in candidate_samples:
             dist = features.distance(sample.features)
