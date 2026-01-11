@@ -302,7 +302,10 @@ def optimize_streaming(
             from .sampling import estimate_total_items as est_total
             
             # Estimate data size for ML prediction
-            data_size = est_total(data, hasattr(data, '__iter__') and not hasattr(data, '__len__'))
+            # Note: For generators, we can't know size without consuming
+            # For lists and other sized iterables, we can get the length
+            is_generator = hasattr(data, '__iter__') and not hasattr(data, '__len__')
+            data_size = est_total(data, sample_consumed=False)  # Don't assume consumed yet
             
             # Use provided estimate or default
             item_time = estimated_item_time if estimated_item_time is not None else 0.01

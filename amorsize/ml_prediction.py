@@ -41,6 +41,19 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 # Filename format for ML training data
 ML_TRAINING_FILE_FORMAT = "ml_training_{func_hash}_{timestamp}.json"
 
+# Streaming prediction constants
+# Default buffer size multiplier (buffer = n_jobs * multiplier)
+DEFAULT_BUFFER_SIZE_MULTIPLIER = 3
+
+# Memory fraction to use for result buffering (10% of available memory)
+STREAMING_BUFFER_MEMORY_FRACTION = 0.1
+
+# Coefficient of variation threshold for heterogeneous workload detection
+HETEROGENEOUS_CV_THRESHOLD = 0.5
+
+# Large dataset threshold for auto-selecting imap_unordered
+LARGE_DATASET_THRESHOLD = 10000
+
 
 class PredictionResult:
     """
@@ -838,16 +851,16 @@ def predict_streaming_parameters(
         return None
     
     # Calculate buffer size based on n_jobs
-    # Default: n_jobs * 3 for good throughput without excessive memory
-    buffer_size = base_prediction.n_jobs * 3
+    # Default: n_jobs * DEFAULT_BUFFER_SIZE_MULTIPLIER for good throughput
+    buffer_size = base_prediction.n_jobs * DEFAULT_BUFFER_SIZE_MULTIPLIER
     
     # Adjust buffer size based on estimated memory usage
     physical_cores = get_physical_cores()
     available_memory = get_available_memory()
     
     if pickle_size and pickle_size > 0:
-        # Conservative buffer: use 10% of available memory
-        max_buffer_memory = available_memory * 0.1
+        # Conservative buffer: use STREAMING_BUFFER_MEMORY_FRACTION of available memory
+        max_buffer_memory = available_memory * STREAMING_BUFFER_MEMORY_FRACTION
         max_buffer_items = int(max_buffer_memory / pickle_size)
         
         # Clamp buffer size to memory constraint
@@ -863,12 +876,12 @@ def predict_streaming_parameters(
     if prefer_ordered is None:
         # Auto-decide: use unordered if workload is heterogeneous or data is large
         # Unordered provides better load balancing for heterogeneous workloads
-        if coefficient_of_variation is not None and coefficient_of_variation > 0.5:
+        if coefficient_of_variation is not None and coefficient_of_variation > HETEROGENEOUS_CV_THRESHOLD:
             use_ordered = False
             if verbose:
                 print(f"ML Streaming Prediction: Recommending imap_unordered "
                       f"for heterogeneous workload (CV={coefficient_of_variation:.2f})")
-        elif data_size > 10000:
+        elif data_size > LARGE_DATASET_THRESHOLD:
             # For large datasets, unordered can provide better throughput
             use_ordered = False
             if verbose:

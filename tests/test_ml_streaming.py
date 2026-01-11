@@ -181,7 +181,7 @@ class TestPredictStreamingParameters:
         
         if result is not None:
             # High CV should recommend unordered
-            assert result.use_ordered == False
+            assert not result.use_ordered
     
     def test_ordering_preference_large_dataset(self):
         """Test that unordered is recommended for large datasets."""
@@ -206,7 +206,7 @@ class TestPredictStreamingParameters:
         
         if result is not None:
             # Large dataset should recommend unordered
-            assert result.use_ordered == False
+            assert not result.use_ordered
     
     def test_ordering_preference_user_override(self):
         """Test that user preference overrides auto-decision."""
@@ -232,7 +232,7 @@ class TestPredictStreamingParameters:
         
         if result is not None:
             # User preference should be respected
-            assert result.use_ordered == True
+            assert result.use_ordered
     
     def test_insufficient_training_data(self):
         """Test that None is returned with insufficient training data."""
