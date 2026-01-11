@@ -104,7 +104,12 @@ try:
         MIN_SYSTEM_SIMILARITY,
         CROSS_SYSTEM_WEIGHT,
         MIN_CLUSTERING_SAMPLES,
-        MAX_CLUSTERS
+        MAX_CLUSTERS,
+        ENABLE_K_TUNING,
+        K_RANGE_MIN,
+        K_RANGE_MAX,
+        MIN_SAMPLES_FOR_K_TUNING,
+        DEFAULT_K_VALUE
     )
     _has_ml_prediction = True
 except ImportError:
@@ -137,6 +142,11 @@ except ImportError:
     CROSS_SYSTEM_WEIGHT = 0.7
     MIN_CLUSTERING_SAMPLES = 10
     MAX_CLUSTERS = 5
+    ENABLE_K_TUNING = True
+    K_RANGE_MIN = 3
+    K_RANGE_MAX = 15
+    MIN_SAMPLES_FOR_K_TUNING = 20
+    DEFAULT_K_VALUE = 5
 
 # Distributed cache functions (optional, requires redis-py)
 try:
@@ -252,6 +262,11 @@ __all__ = [
     "CROSS_SYSTEM_WEIGHT",
     "MIN_CLUSTERING_SAMPLES",
     "MAX_CLUSTERS",
+    "ENABLE_K_TUNING",
+    "K_RANGE_MIN",
+    "K_RANGE_MAX",
+    "MIN_SAMPLES_FOR_K_TUNING",
+    "DEFAULT_K_VALUE",
     "AdaptiveChunkingPool",
     "create_adaptive_pool",
     "PoolManager",
