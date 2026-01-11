@@ -82,7 +82,7 @@ class TestSystemFingerprint:
         fp2 = SystemFingerprint(32, 16.0, 1, 42.0, 'fork')  # 4x more cores
         
         similarity = fp1.similarity(fp2)
-        assert similarity < 0.9  # Should be noticeably different (adjusted from 0.8)
+        assert similarity < 0.9  # Should be noticeably different
     
     def test_completely_different_systems(self):
         """Test that very different systems have low similarity."""

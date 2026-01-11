@@ -84,6 +84,15 @@ MIN_SYSTEM_SIMILARITY = 0.8
 # Local system data gets weight 1.0, similar systems get this weight
 CROSS_SYSTEM_WEIGHT = 0.7
 
+# Normalization ranges for SystemFingerprint similarity calculation
+# These ranges reflect typical hardware configurations as of 2024
+MAX_EXPECTED_CORES = 128  # Up to 128 physical cores (high-end servers)
+MIN_CACHE_MB = 1.0  # Minimum L3 cache size (1 MB)
+MAX_CACHE_MB = 256.0  # Maximum L3 cache size (256 MB for high-end CPUs)
+MIN_BANDWIDTH_GB_S = 10.0  # Minimum memory bandwidth (10 GB/s)
+MAX_BANDWIDTH_GB_S = 1000.0  # Maximum memory bandwidth (1000 GB/s for high-end systems)
+MAX_NUMA_NODES = 8  # Maximum NUMA nodes (typical for high-end servers)
+
 
 class PredictionResult:
     """
@@ -359,20 +368,20 @@ class SystemFingerprint:
         """
         # Normalize features to [0, 1] for comparison
         # Use same ranges as WorkloadFeatures
-        norm_cores_self = min(1.0, self.physical_cores / 128.0)
-        norm_cores_other = min(1.0, other.physical_cores / 128.0)
+        norm_cores_self = min(1.0, self.physical_cores / MAX_EXPECTED_CORES)
+        norm_cores_other = min(1.0, other.physical_cores / MAX_EXPECTED_CORES)
         
-        # Log scale for cache (1MB to 256MB range)
-        norm_cache_self = self._normalize_log(self.l3_cache_mb, 1.0, 256.0)
-        norm_cache_other = self._normalize_log(other.l3_cache_mb, 1.0, 256.0)
+        # Log scale for cache (MIN_CACHE_MB to MAX_CACHE_MB range)
+        norm_cache_self = self._normalize_log(self.l3_cache_mb, MIN_CACHE_MB, MAX_CACHE_MB)
+        norm_cache_other = self._normalize_log(other.l3_cache_mb, MIN_CACHE_MB, MAX_CACHE_MB)
         
-        # Linear scale for NUMA nodes (1 to 8 range)
-        norm_numa_self = min(1.0, self.numa_nodes / 8.0)
-        norm_numa_other = min(1.0, other.numa_nodes / 8.0)
+        # Linear scale for NUMA nodes (1 to MAX_NUMA_NODES range)
+        norm_numa_self = min(1.0, self.numa_nodes / MAX_NUMA_NODES)
+        norm_numa_other = min(1.0, other.numa_nodes / MAX_NUMA_NODES)
         
-        # Log scale for bandwidth (10 to 1000 GB/s range)
-        norm_bw_self = self._normalize_log(self.memory_bandwidth_gb_s, 10.0, 1000.0)
-        norm_bw_other = self._normalize_log(other.memory_bandwidth_gb_s, 10.0, 1000.0)
+        # Log scale for bandwidth (MIN_BANDWIDTH_GB_S to MAX_BANDWIDTH_GB_S range)
+        norm_bw_self = self._normalize_log(self.memory_bandwidth_gb_s, MIN_BANDWIDTH_GB_S, MAX_BANDWIDTH_GB_S)
+        norm_bw_other = self._normalize_log(other.memory_bandwidth_gb_s, MIN_BANDWIDTH_GB_S, MAX_BANDWIDTH_GB_S)
         
         # Start method: fork=0.0, spawn=1.0, forkserver=0.5
         norm_sm_self = {'fork': 0.0, 'spawn': 1.0, 'forkserver': 0.5}.get(self.start_method, 0.5)
