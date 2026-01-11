@@ -157,7 +157,7 @@ class StreamingPredictionResult(PredictionResult):
     Container for ML prediction results specific to streaming workloads.
     
     Extends PredictionResult with streaming-specific parameters like
-    buffer size and ordering preference.
+    buffer size and ordering preference, plus adaptive chunking support.
     
     Attributes:
         n_jobs: Predicted number of workers
@@ -168,6 +168,10 @@ class StreamingPredictionResult(PredictionResult):
         feature_match_score: How well the current workload matches training data
         buffer_size: Predicted optimal buffer size for imap/imap_unordered
         use_ordered: Whether to use ordered (imap) vs unordered (imap_unordered)
+        adaptive_chunking_enabled: Whether adaptive chunking is recommended (Iteration 120)
+        adaptation_rate: Recommended adaptation rate (0-1) if adaptive chunking enabled (Iteration 120)
+        min_chunksize: Recommended minimum chunk size if adaptive chunking enabled (Iteration 120)
+        max_chunksize: Recommended maximum chunk size if adaptive chunking enabled (Iteration 120)
     """
     
     def __init__(
@@ -179,7 +183,11 @@ class StreamingPredictionResult(PredictionResult):
         training_samples: int,
         feature_match_score: float,
         buffer_size: Optional[int] = None,
-        use_ordered: bool = True
+        use_ordered: bool = True,
+        adaptive_chunking_enabled: Optional[bool] = None,
+        adaptation_rate: Optional[float] = None,
+        min_chunksize: Optional[int] = None,
+        max_chunksize: Optional[int] = None
     ):
         super().__init__(
             n_jobs=n_jobs,
@@ -187,18 +195,25 @@ class StreamingPredictionResult(PredictionResult):
             confidence=confidence,
             reason=reason,
             training_samples=training_samples,
-            feature_match_score=feature_match_score
+            feature_match_score=feature_match_score,
+            adaptive_chunking_enabled=adaptive_chunking_enabled,
+            adaptation_rate=adaptation_rate,
+            min_chunksize=min_chunksize,
+            max_chunksize=max_chunksize
         )
         self.buffer_size = buffer_size if buffer_size is not None else n_jobs * 3
         self.use_ordered = use_ordered
     
     def __repr__(self):
         method = "imap" if self.use_ordered else "imap_unordered"
+        adaptive_str = ""
+        if self.adaptive_chunking_enabled:
+            adaptive_str = f", adaptive_rate={self.adaptation_rate}"
         return (
             f"StreamingPredictionResult(n_jobs={self.n_jobs}, "
             f"chunksize={self.chunksize}, "
             f"buffer_size={self.buffer_size}, "
-            f"method={method}, "
+            f"method={method}{adaptive_str}, "
             f"confidence={self.confidence:.2f})"
         )
 
@@ -1760,7 +1775,7 @@ def predict_streaming_parameters(
             method = "imap" if use_ordered else "imap_unordered"
             print(f"ML Streaming Prediction: Using user preference: {method}")
     
-    # Create streaming-specific result
+    # Create streaming-specific result with adaptive chunking support
     streaming_result = StreamingPredictionResult(
         n_jobs=base_prediction.n_jobs,
         chunksize=base_prediction.chunksize,
@@ -1769,7 +1784,11 @@ def predict_streaming_parameters(
         training_samples=base_prediction.training_samples,
         feature_match_score=base_prediction.feature_match_score,
         buffer_size=buffer_size,
-        use_ordered=use_ordered
+        use_ordered=use_ordered,
+        adaptive_chunking_enabled=base_prediction.adaptive_chunking_enabled,
+        adaptation_rate=base_prediction.adaptation_rate,
+        min_chunksize=base_prediction.min_chunksize,
+        max_chunksize=base_prediction.max_chunksize
     )
     
     if verbose:
@@ -1779,6 +1798,8 @@ def predict_streaming_parameters(
               f"chunksize={streaming_result.chunksize}, "
               f"buffer_size={streaming_result.buffer_size}")
         print(f"  method={method}, confidence={streaming_result.confidence:.1%}")
+        if streaming_result.adaptive_chunking_enabled:
+            print(f"  adaptive_chunking: enabled (rate={streaming_result.adaptation_rate:.2f})")
     
     return streaming_result
 
@@ -1961,13 +1982,18 @@ def update_model_from_streaming_execution(
     use_ordered: bool,
     pickle_size: Optional[int] = None,
     coefficient_of_variation: Optional[float] = None,
+    adaptive_chunking_enabled: Optional[bool] = None,
+    adaptation_rate: Optional[float] = None,
+    min_chunksize: Optional[int] = None,
+    max_chunksize: Optional[int] = None,
     verbose: bool = False
 ) -> bool:
     """
     Update ML model with actual streaming execution results (online learning for streaming).
     
     This function implements online learning specifically for streaming workloads,
-    capturing streaming-specific parameters like buffer_size and use_ordered (imap vs imap_unordered).
+    capturing streaming-specific parameters like buffer_size and use_ordered (imap vs imap_unordered),
+    plus adaptive chunking parameters for heterogeneous workloads.
     
     Args:
         func: The function that was executed in streaming mode
@@ -1980,6 +2006,10 @@ def update_model_from_streaming_execution(
         use_ordered: Whether ordered (imap) was used vs unordered (imap_unordered)
         pickle_size: Average pickle size of return objects (bytes)
         coefficient_of_variation: CV of execution times (0-2)
+        adaptive_chunking_enabled: Whether adaptive chunking was used (Iteration 120)
+        adaptation_rate: Adaptation rate used (0-1) if adaptive chunking enabled (Iteration 120)
+        min_chunksize: Minimum chunk size used if adaptive chunking enabled (Iteration 120)
+        max_chunksize: Maximum chunk size used if adaptive chunking enabled (Iteration 120)
         verbose: If True, print diagnostic information
     
     Returns:
@@ -1990,17 +2020,23 @@ def update_model_from_streaming_execution(
         >>> result = optimize_streaming(my_func, data, enable_ml_prediction=True)
         >>> # Execute and measure actual performance
         >>> actual_speedup = measure_actual_speedup(...)
-        >>> # Update model with streaming results
+        >>> # Update model with streaming results including adaptive chunking
         >>> update_model_from_streaming_execution(
         ...     my_func, len(data), 0.001,
         ...     result.n_jobs, result.chunksize, actual_speedup,
-        ...     result.buffer_size, result.use_ordered
+        ...     result.buffer_size, result.use_ordered,
+        ...     adaptive_chunking_enabled=True,
+        ...     adaptation_rate=0.3
         ... )
     
     New in Iteration 115:
         This function enables streaming workloads to benefit from online learning,
         just like batch workloads. The model learns optimal buffer sizes and ordering
         preferences over time for better predictions.
+    
+    New in Iteration 120:
+        Added adaptive chunking parameter tracking for streaming workloads. ML can now
+        learn optimal adaptation rates for heterogeneous streaming workloads.
     """
     try:
         # Compute function complexity
@@ -2038,7 +2074,11 @@ def update_model_from_streaming_execution(
             timestamp=time.time(),
             buffer_size=buffer_size,
             use_ordered=use_ordered,
-            is_streaming=True
+            is_streaming=True,
+            adaptive_chunking_enabled=adaptive_chunking_enabled,
+            adaptation_rate=adaptation_rate,
+            min_chunksize=min_chunksize,
+            max_chunksize=max_chunksize
         )
         
         # Save to cache in ML-specific format for training
@@ -2070,7 +2110,12 @@ def update_model_from_streaming_execution(
             # Streaming-specific parameters (Iteration 115)
             'buffer_size': buffer_size,
             'use_ordered': use_ordered,
-            'is_streaming': True
+            'is_streaming': True,
+            # Adaptive chunking parameters (Iteration 120)
+            'adaptive_chunking_enabled': adaptive_chunking_enabled,
+            'adaptation_rate': adaptation_rate,
+            'min_chunksize': min_chunksize,
+            'max_chunksize': max_chunksize
         }
         
         # Write to file atomically
@@ -2083,6 +2128,8 @@ def update_model_from_streaming_execution(
             print(f"✓ Streaming Online Learning: Added training sample to model")
             print(f"  n_jobs={actual_n_jobs}, chunksize={actual_chunksize}, speedup={actual_speedup:.2f}x")
             print(f"  buffer_size={buffer_size}, use_ordered={use_ordered}")
+            if adaptive_chunking_enabled:
+                print(f"  adaptive_chunking: enabled (rate={adaptation_rate:.2f})")
             print(f"  Training data saved to: {cache_file.name}")
         
         return True
