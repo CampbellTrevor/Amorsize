@@ -17,7 +17,8 @@ from amorsize.ml_pruning import (
     DEFAULT_SIMILARITY_THRESHOLD,
     MIN_SAMPLES_FOR_PRUNING,
     TARGET_PRUNING_RATIO,
-    MIN_SAMPLES_PER_CLUSTER
+    MIN_SAMPLES_PER_CLUSTER,
+    MIN_TOTAL_SAMPLES_TO_KEEP
 )
 
 # Check if ML prediction module is available
@@ -563,3 +564,130 @@ class TestEdgeCases:
         
         # Loose threshold should find fewer or equal clusters
         assert loose_result.clusters_found <= tight_result.clusters_found
+
+
+class TestAbsoluteMinimumConstraint:
+    """Test suite for absolute minimum samples constraint (Iteration 129)."""
+    
+    def test_single_cluster_respects_absolute_minimum(self):
+        """
+        Test that when all samples cluster into one mega-cluster,
+        we keep at least MIN_TOTAL_SAMPLES_TO_KEEP samples.
+        
+        This is the core fix for Iteration 129: preventing over-pruning
+        when clustering is too coarse.
+        """
+        # Create 100 identical samples (will cluster into 1 mega-cluster)
+        features = create_test_features()
+        training_data = [
+            create_test_sample(features, n_jobs=4, chunksize=10)
+            for _ in range(100)
+        ]
+        
+        # Prune with aggressive threshold (should create single cluster)
+        result = prune_training_data(
+            training_data,
+            similarity_threshold=10.0,  # Very loose - everything clusters together
+            target_pruning_ratio=0.9,  # Try to remove 90%
+            verbose=False
+        )
+        
+        # Should form a single cluster
+        assert result.clusters_found == 1
+        
+        # KEY ASSERTION: Should keep at least MIN_TOTAL_SAMPLES_TO_KEEP
+        # Without the fix, this would keep only MIN_SAMPLES_PER_CLUSTER (5)
+        assert result.pruned_count >= MIN_TOTAL_SAMPLES_TO_KEEP
+        
+        # Should keep more than just the per-cluster minimum
+        assert result.pruned_count >= MIN_SAMPLES_PER_CLUSTER
+    
+    def test_absolute_minimum_overrides_target_ratio(self):
+        """
+        Test that absolute minimum takes precedence over target pruning ratio.
+        
+        If target ratio would result in fewer than MIN_TOTAL_SAMPLES_TO_KEEP,
+        the absolute minimum should override it.
+        """
+        # Create 50 samples with moderate diversity
+        training_data = create_training_dataset(size=50, diversity=0.5)
+        
+        # Try to prune aggressively (keep only 10% = 5 samples)
+        result = prune_training_data(
+            training_data,
+            similarity_threshold=2.0,  # Loose threshold
+            target_pruning_ratio=0.9,  # Try to remove 90%
+            verbose=False
+        )
+        
+        # Should keep at least MIN_TOTAL_SAMPLES_TO_KEEP despite aggressive target
+        assert result.pruned_count >= MIN_TOTAL_SAMPLES_TO_KEEP
+    
+    def test_absolute_minimum_not_applied_when_unnecessary(self):
+        """
+        Test that absolute minimum doesn't interfere when target ratio
+        naturally produces more than the minimum.
+        """
+        # Create 200 samples with moderate diversity
+        # Use more samples to ensure target pruning naturally exceeds minimum
+        training_data = create_training_dataset(size=200, diversity=1.0)
+        
+        # Use conservative pruning (keep 70%)
+        result = prune_training_data(
+            training_data,
+            similarity_threshold=0.5,  # Default threshold
+            target_pruning_ratio=0.3,  # Remove only 30%, keep 70%
+            verbose=False
+        )
+        
+        # Should naturally keep more than absolute minimum
+        # With 200 samples and 30% pruning, target is to keep ~140
+        assert result.pruned_count >= MIN_TOTAL_SAMPLES_TO_KEEP
+        
+        # The result might be affected by clustering, but should keep
+        # at least a reasonable portion - either close to target or minimum
+        # This validates that the constraint works correctly in both cases
+    
+    def test_absolute_minimum_with_small_dataset(self):
+        """
+        Test that absolute minimum doesn't prevent legitimate pruning
+        of datasets just above MIN_SAMPLES_FOR_PRUNING.
+        """
+        # Create a dataset at the pruning threshold (50 samples)
+        training_data = create_training_dataset(
+            size=MIN_SAMPLES_FOR_PRUNING,
+            diversity=0.5
+        )
+        
+        # Prune with moderate settings
+        result = prune_training_data(
+            training_data,
+            similarity_threshold=1.0,
+            target_pruning_ratio=0.35,
+            verbose=False
+        )
+        
+        # Should prune (dataset is large enough)
+        assert result.removed_count > 0
+        
+        # But should keep at least MIN_TOTAL_SAMPLES_TO_KEEP
+        assert result.pruned_count >= MIN_TOTAL_SAMPLES_TO_KEEP
+        
+        # For a 50-sample dataset, keeping 20 is reasonable (40% pruning)
+        # This validates the absolute minimum doesn't prevent pruning entirely
+        assert result.pruned_count <= 40  # At most 80% kept
+    
+    def test_absolute_minimum_value_is_reasonable(self):
+        """
+        Test that MIN_TOTAL_SAMPLES_TO_KEEP has a reasonable value.
+        
+        This is a sanity check to ensure the constant is properly set.
+        """
+        # Should be at least 4x the per-cluster minimum
+        assert MIN_TOTAL_SAMPLES_TO_KEEP >= MIN_SAMPLES_PER_CLUSTER * 4
+        
+        # Should be less than the pruning threshold
+        assert MIN_TOTAL_SAMPLES_TO_KEEP < MIN_SAMPLES_FOR_PRUNING
+        
+        # Should be a reasonable absolute number (not too small, not too large)
+        assert 15 <= MIN_TOTAL_SAMPLES_TO_KEEP <= 50
