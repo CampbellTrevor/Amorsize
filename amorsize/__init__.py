@@ -97,10 +97,13 @@ try:
         StreamingPredictionResult,
         CalibrationData,
         SystemFingerprint,
+        WorkloadCluster,
         MIN_TRAINING_SAMPLES,
         DEFAULT_CONFIDENCE_THRESHOLD,
         MIN_SYSTEM_SIMILARITY,
-        CROSS_SYSTEM_WEIGHT
+        CROSS_SYSTEM_WEIGHT,
+        MIN_CLUSTERING_SAMPLES,
+        MAX_CLUSTERS
     )
     _has_ml_prediction = True
 except ImportError:
@@ -124,10 +127,13 @@ except ImportError:
     StreamingPredictionResult = None
     CalibrationData = None
     SystemFingerprint = None
+    WorkloadCluster = None
     MIN_TRAINING_SAMPLES = 3
     DEFAULT_CONFIDENCE_THRESHOLD = 0.7
     MIN_SYSTEM_SIMILARITY = 0.8
     CROSS_SYSTEM_WEIGHT = 0.7
+    MIN_CLUSTERING_SAMPLES = 10
+    MAX_CLUSTERS = 5
 
 # Distributed cache functions (optional, requires redis-py)
 try:
@@ -235,10 +241,13 @@ __all__ = [
     "StreamingPredictionResult",
     "CalibrationData",
     "SystemFingerprint",
+    "WorkloadCluster",
     "MIN_TRAINING_SAMPLES",
     "DEFAULT_CONFIDENCE_THRESHOLD",
     "MIN_SYSTEM_SIMILARITY",
     "CROSS_SYSTEM_WEIGHT",
+    "MIN_CLUSTERING_SAMPLES",
+    "MAX_CLUSTERS",
     "AdaptiveChunkingPool",
     "create_adaptive_pool",
     "PoolManager",
