@@ -38,10 +38,11 @@ except ImportError:
 # Samples with distance < threshold are considered similar
 # Range: 0.0 (identical) to sqrt(12) ≈ 3.46 (maximally different)
 # With 12-dimensional normalized features, typical distances are 0.5-2.0
-DEFAULT_SIMILARITY_THRESHOLD = 1.0  # Increased from 0.5 for better clustering
+DEFAULT_SIMILARITY_THRESHOLD = 0.5  # More conservative to prevent over-clustering
 
 # Minimum samples to keep per cluster (preserves diversity)
-MIN_SAMPLES_PER_CLUSTER = 2
+# Increased from 2 to 5 to maintain better accuracy
+MIN_SAMPLES_PER_CLUSTER = 5
 
 # Maximum samples to keep per cluster (prevents cluster domination)
 MAX_SAMPLES_PER_CLUSTER = 20
