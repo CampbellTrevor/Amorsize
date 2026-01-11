@@ -162,15 +162,9 @@ class TestCloudWatchMetrics:
     
     def test_cloudwatch_error_isolation(self):
         """Test that CloudWatch errors don't crash execution."""
-        # Create mocked CloudWatch with error-raising client
-        mock_boto3 = MagicMock()
-        mock_client = MagicMock()
+        # Set up mocked CloudWatch with error-raising client
+        metrics, mock_client = self._setup_mock_cloudwatch()
         mock_client.put_metric_data.side_effect = Exception("Network error")
-        mock_boto3.client.return_value = mock_client
-        
-        metrics = CloudWatchMetrics()
-        metrics._boto3 = mock_boto3
-        metrics._has_boto3 = True
         
         # Create context
         ctx = HookContext(
