@@ -28,7 +28,9 @@ def run_command(description, command):
     print(f"{description}")
     print(f"Command: {command}")
     print()
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    # Split command for safer execution (no shell=True)
+    cmd_parts = command.split()
+    result = subprocess.run(cmd_parts, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
         print(f"ERROR: {result.stderr}")

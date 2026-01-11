@@ -377,10 +377,15 @@ def _show_overhead_breakdown(profile) -> None:
     """
     total_overhead = profile.overhead_spawn + profile.overhead_ipc + profile.overhead_chunking
     
+    # Pre-compute percentages to avoid redundant calculations
+    spawn_pct = (profile.overhead_spawn / total_overhead * 100) if total_overhead > 0 else 0.0
+    ipc_pct = (profile.overhead_ipc / total_overhead * 100) if total_overhead > 0 else 0.0
+    chunking_pct = (profile.overhead_chunking / total_overhead * 100) if total_overhead > 0 else 0.0
+    
     print(f"\n{colorize('Overhead Components:', Colors.BOLD)}")
-    print(f"  Spawn overhead:    {profile.overhead_spawn:.4f}s  ({colorize(f'{profile.overhead_spawn/total_overhead*100:.1f}%' if total_overhead > 0 else '0.0%', Colors.CYAN)})")
-    print(f"  IPC overhead:      {profile.overhead_ipc:.4f}s  ({colorize(f'{profile.overhead_ipc/total_overhead*100:.1f}%' if total_overhead > 0 else '0.0%', Colors.CYAN)})")
-    print(f"  Chunking overhead: {profile.overhead_chunking:.4f}s  ({colorize(f'{profile.overhead_chunking/total_overhead*100:.1f}%' if total_overhead > 0 else '0.0%', Colors.CYAN)})")
+    print(f"  Spawn overhead:    {profile.overhead_spawn:.4f}s  ({colorize(f'{spawn_pct:.1f}%', Colors.CYAN)})")
+    print(f"  IPC overhead:      {profile.overhead_ipc:.4f}s  ({colorize(f'{ipc_pct:.1f}%', Colors.CYAN)})")
+    print(f"  Chunking overhead: {profile.overhead_chunking:.4f}s  ({colorize(f'{chunking_pct:.1f}%', Colors.CYAN)})")
     print(f"  {colorize('Total overhead:', Colors.BOLD)}    {colorize(f'{total_overhead:.4f}s', Colors.BOLD + Colors.YELLOW)}")
     
     print(f"\n{colorize('Performance Breakdown:', Colors.BOLD)}")
@@ -414,7 +419,7 @@ def _show_user_friendly_explanation(result) -> None:
     """
     profile = result.profile
     if not profile:
-        print("Profiling not enabled. Use --profile for detailed analysis.")
+        print("Profiling not enabled. Note: --explain automatically enables profiling when needed.")
         return
     
     # Explain the decision
@@ -509,8 +514,24 @@ def format_output_json(result, mode: str):
     print(json.dumps(output, indent=2))
 
 
+def _set_color_mode_from_args(args: argparse.Namespace):
+    """
+    Set color mode based on command-line arguments.
+    
+    Args:
+        args: Command-line arguments
+    """
+    if hasattr(args, 'no_color') and args.no_color:
+        set_color_mode(False)
+    elif hasattr(args, 'color') and args.color:
+        set_color_mode(True)
+
+
 def cmd_optimize(args: argparse.Namespace):
     """Execute the 'optimize' command."""
+    # Set color mode first
+    _set_color_mode_from_args(args)
+    
     # Load function
     func = load_function(args.function)
     
@@ -538,12 +559,6 @@ def cmd_optimize(args: argparse.Namespace):
         use_chunking_benchmark=not args.no_chunking_benchmark,
         auto_adjust_for_nested_parallelism=not args.no_auto_adjust
     )
-    
-    # Set color mode based on args
-    if hasattr(args, 'no_color') and args.no_color:
-        set_color_mode(False)
-    elif hasattr(args, 'color') and args.color:
-        set_color_mode(True)
     
     # Format and display output
     if args.json:
@@ -577,6 +592,9 @@ def cmd_optimize(args: argparse.Namespace):
 
 def cmd_execute(args: argparse.Namespace):
     """Execute the 'execute' command."""
+    # Set color mode first
+    _set_color_mode_from_args(args)
+    
     # Load function
     func = load_function(args.function)
     
@@ -673,12 +691,6 @@ def cmd_execute(args: argparse.Namespace):
         auto_adjust_for_nested_parallelism=not args.no_auto_adjust,
         return_optimization_result=True  # Always get both for CLI
     )
-    
-    # Set color mode based on args
-    if hasattr(args, 'no_color') and args.no_color:
-        set_color_mode(False)
-    elif hasattr(args, 'color') and args.color:
-        set_color_mode(True)
     
     # Format and display output
     if args.json:
