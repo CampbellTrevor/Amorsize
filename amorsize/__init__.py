@@ -138,6 +138,17 @@ except ImportError:
     GCPMonitoringMetrics = None
     OpenTelemetryTracer = None
 
+# Dashboard templates (always available - no extra dependencies)
+from .dashboards import (
+    get_azure_monitor_workbook,
+    get_cloudwatch_alarms,
+    get_cloudwatch_dashboard,
+    get_gcp_dashboard,
+    get_grafana_dashboard,
+    deploy_cloudwatch_alarms,
+    deploy_cloudwatch_dashboard,
+)
+
 # ML prediction functions (optional feature)
 try:
     from .ml_prediction import (
@@ -393,4 +404,11 @@ __all__ = [
     "AzureMonitorMetrics",
     "GCPMonitoringMetrics",
     "OpenTelemetryTracer",
+    "get_cloudwatch_dashboard",
+    "get_cloudwatch_alarms",
+    "get_grafana_dashboard",
+    "get_azure_monitor_workbook",
+    "get_gcp_dashboard",
+    "deploy_cloudwatch_dashboard",
+    "deploy_cloudwatch_alarms",
 ]
