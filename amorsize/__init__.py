@@ -87,6 +87,8 @@ from .cost_model import (
 try:
     from .ml_prediction import (
         predict_parameters,
+        update_model_from_execution,
+        load_ml_training_data,
         PredictionResult,
         MIN_TRAINING_SAMPLES,
         DEFAULT_CONFIDENCE_THRESHOLD
@@ -96,6 +98,10 @@ except ImportError:
     _has_ml_prediction = False
     # Stubs for when ML module is not available
     def predict_parameters(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
+    def update_model_from_execution(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
+    def load_ml_training_data(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     PredictionResult = None
     MIN_TRAINING_SAMPLES = 3
@@ -197,6 +203,8 @@ __all__ = [
     "CacheValidationResult",
     "configure_logging",
     "predict_parameters",
+    "update_model_from_execution",
+    "load_ml_training_data",
     "PredictionResult",
     "MIN_TRAINING_SAMPLES",
     "DEFAULT_CONFIDENCE_THRESHOLD",

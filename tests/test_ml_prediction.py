@@ -322,6 +322,18 @@ class TestPredictParametersAPI:
     
     def test_predict_parameters_no_training_data(self):
         """Test predict_parameters with no training data."""
+        # Clear ML training data to ensure no data exists
+        from amorsize.ml_prediction import _get_ml_cache_dir
+        cache_dir = _get_ml_cache_dir()
+        for f in cache_dir.glob("ml_training_*.json"):
+            f.unlink()
+        
+        # Also clear optimization cache which is used by load_training_data_from_cache
+        from amorsize.cache import get_cache_dir
+        opt_cache_dir = get_cache_dir()
+        for f in opt_cache_dir.glob("opt_*.json"):
+            f.unlink()
+        
         result = predict_parameters(
             func=simple_function,
             data_size=1000,
@@ -334,6 +346,18 @@ class TestPredictParametersAPI:
     
     def test_predict_parameters_with_verbose(self):
         """Test predict_parameters with verbose output."""
+        # Clear ML training data to ensure no data exists
+        from amorsize.ml_prediction import _get_ml_cache_dir
+        cache_dir = _get_ml_cache_dir()
+        for f in cache_dir.glob("ml_training_*.json"):
+            f.unlink()
+        
+        # Also clear optimization cache which is used by load_training_data_from_cache
+        from amorsize.cache import get_cache_dir
+        opt_cache_dir = get_cache_dir()
+        for f in opt_cache_dir.glob("opt_*.json"):
+            f.unlink()
+        
         result = predict_parameters(
             func=simple_function,
             data_size=1000,
