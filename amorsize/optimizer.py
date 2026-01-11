@@ -707,8 +707,10 @@ def optimize(
                 system CPU and memory load in addition to hardware constraints. This is
                 useful in multi-tenant environments or when other processes are competing
                 for resources. When enabled, worker count is reduced if CPU load exceeds
-                70% or memory pressure exceeds 75%. (default: False for backward
-                compatibility). Must be a boolean. Requires psutil for load detection.
+                the threshold (default: 70%) or memory pressure exceeds the threshold
+                (default: 75%). These thresholds are internal defaults in the implementation.
+                (default: False for backward compatibility). Must be a boolean. Requires
+                psutil for load detection.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative

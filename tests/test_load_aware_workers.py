@@ -189,6 +189,19 @@ class TestCalculateLoadAwareWorkers:
             # Should be significantly reduced for very high pressure
             assert workers <= 4  # Should be at most half
             assert workers >= 1
+    
+    def test_threshold_edge_case_100_percent(self):
+        """Test that 100% thresholds don't cause division by zero."""
+        with patch('amorsize.system_info.calculate_max_workers', return_value=8), \
+             patch('amorsize.system_info.get_current_cpu_load', return_value=95.0), \
+             patch('amorsize.system_info.get_memory_pressure', return_value=95.0):
+            
+            # Should not raise ZeroDivisionError
+            workers = calculate_load_aware_workers(
+                8, 1024*1024*1024, cpu_threshold=100.0, memory_threshold=100.0
+            )
+            assert workers >= 1  # Should still return valid result
+            assert workers <= 8
 
 
 class TestLoadAwareIntegration:

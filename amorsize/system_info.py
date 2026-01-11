@@ -1277,38 +1277,48 @@ def calculate_load_aware_workers(
     cpu_adjusted_workers = base_workers
     
     if current_cpu >= cpu_threshold:
-        # Calculate available CPU capacity
-        available_cpu_percent = max(0.0, 100.0 - current_cpu)
-        cpu_capacity_ratio = available_cpu_percent / (100.0 - cpu_threshold)
-        
-        if aggressive_reduction:
-            # More aggressive: scale linearly with available capacity
-            cpu_adjusted_workers = max(1, int(base_workers * cpu_capacity_ratio))
+        # Prevent division by zero if cpu_threshold is 100.0
+        if cpu_threshold >= 100.0:
+            # If threshold is 100%, any load should reduce workers
+            cpu_adjusted_workers = max(1, base_workers // 2)
         else:
-            # Conservative: reduce by 25% if over threshold, 50% if very high (>90%)
-            if current_cpu >= 90.0:
-                cpu_adjusted_workers = max(1, base_workers // 2)
+            # Calculate available CPU capacity
+            available_cpu_percent = max(0.0, 100.0 - current_cpu)
+            cpu_capacity_ratio = available_cpu_percent / (100.0 - cpu_threshold)
+            
+            if aggressive_reduction:
+                # More aggressive: scale linearly with available capacity
+                cpu_adjusted_workers = max(1, int(base_workers * cpu_capacity_ratio))
             else:
-                cpu_adjusted_workers = max(1, int(base_workers * 0.75))
+                # Conservative: reduce by 25% if over threshold, 50% if very high (>90%)
+                if current_cpu >= 90.0:
+                    cpu_adjusted_workers = max(1, base_workers // 2)
+                else:
+                    cpu_adjusted_workers = max(1, int(base_workers * 0.75))
     
     # Step 3: Check real-time memory pressure
     current_memory = get_memory_pressure()
     memory_adjusted_workers = base_workers
     
     if current_memory >= memory_threshold:
-        # Calculate available memory capacity
-        available_memory_percent = max(0.0, 100.0 - current_memory)
-        memory_capacity_ratio = available_memory_percent / (100.0 - memory_threshold)
-        
-        if aggressive_reduction:
-            # More aggressive: scale linearly with available capacity
-            memory_adjusted_workers = max(1, int(base_workers * memory_capacity_ratio))
+        # Prevent division by zero if memory_threshold is 100.0
+        if memory_threshold >= 100.0:
+            # If threshold is 100%, any pressure should reduce workers
+            memory_adjusted_workers = max(1, base_workers // 2)
         else:
-            # Conservative: reduce by 25% if over threshold, 50% if very high (>90%)
-            if current_memory >= 90.0:
-                memory_adjusted_workers = max(1, base_workers // 2)
+            # Calculate available memory capacity
+            available_memory_percent = max(0.0, 100.0 - current_memory)
+            memory_capacity_ratio = available_memory_percent / (100.0 - memory_threshold)
+            
+            if aggressive_reduction:
+                # More aggressive: scale linearly with available capacity
+                memory_adjusted_workers = max(1, int(base_workers * memory_capacity_ratio))
             else:
-                memory_adjusted_workers = max(1, int(base_workers * 0.75))
+                # Conservative: reduce by 25% if over threshold, 50% if very high (>90%)
+                if current_memory >= 90.0:
+                    memory_adjusted_workers = max(1, base_workers // 2)
+                else:
+                    memory_adjusted_workers = max(1, int(base_workers * 0.75))
     
     # Step 4: Apply the most conservative worker count
     # (take the minimum to ensure we don't overload any resource)
