@@ -1,4 +1,162 @@
-# Context for Next Agent - Iteration 118
+# Context for Next Agent - Iteration 119
+
+## What Was Accomplished in Iteration 118
+
+**FEATURE IMPORTANCE ANALYSIS** - Implemented comprehensive feature importance analysis to help users understand which workload characteristics drive optimization decisions.
+
+### Implementation Completed
+
+1. **Fixed analyze_feature_importance() Method** (amorsize/ml_prediction.py):
+   - Updated feature names list to include all 12 features (was missing 4 hardware features)
+   - Added: 'l3_cache_size', 'numa_nodes', 'memory_bandwidth', 'has_numa'
+   - These were added in Iteration 114 but not included in feature importance analysis
+   - Variance-based importance now correctly covers all features
+
+2. **New analyze_feature_importance_correlation() Method** (amorsize/ml_prediction.py):
+   - Calculates correlation between features and optimal parameters
+   - Returns separate importance scores for n_jobs and chunksize
+   - Also provides combined importance score (average of both)
+   - Uses Pearson correlation coefficient (absolute value)
+   - Normalized to [0, 1] range for consistency
+   - ~120 lines of new functionality
+
+3. **New _calculate_correlation() Helper Method** (amorsize/ml_prediction.py):
+   - Calculates Pearson correlation coefficient
+   - Handles edge cases (insufficient data, zero variance)
+   - Returns value in [-1, 1] range
+   - Clean mathematical implementation
+
+4. **Comprehensive Testing** (tests/test_ml_prediction.py):
+   - Updated existing tests to expect 12 features instead of 8
+   - Added TestFeatureImportanceCorrelation class with 4 new tests:
+     * test_correlation_importance_with_training_data
+     * test_correlation_importance_insufficient_samples
+     * test_correlation_importance_zero_variance
+     * test_correlation_importance_perfect_correlation
+   - All 7 feature importance tests passing (3 variance + 4 correlation)
+   - All 40 ML prediction tests passing
+   - Total: 1586 tests passing (up from 1582)
+
+5. **Comprehensive Example** (examples/feature_importance_demo.py):
+   - 6 comprehensive demos (~450 lines):
+     * Demo 1: Basic variance-based feature importance
+     * Demo 2: Correlation-based feature importance
+     * Demo 3: Comparing variance vs correlation methods
+     * Demo 4: Identifying key features for measurement
+     * Demo 5: Hardware feature importance
+     * Demo 6: Debugging with feature importance
+   - Beautiful formatted output with bar charts
+   - Real-world usage scenarios
+   - Best practices and integration guidance
+
+### Key Features
+
+**How It Works:**
+1. Variance-based importance: Measures how much each feature varies across workloads
+   - High variance = more potential to discriminate between optimizations
+   - Identifies diverse features
+2. Correlation-based importance: Measures how well each feature predicts optimal parameters
+   - High correlation = more predictive power
+   - Separate scores for n_jobs and chunksize
+   - Identifies which features drive each parameter
+
+**Benefits:**
+- ✅ Understand what drives optimization decisions
+- ✅ Identify which features to measure accurately (save overhead on minor features)
+- ✅ Debug unexpected optimization results
+- ✅ Gain insights into workload characteristics
+- ✅ Guide future feature engineering
+- ✅ Works with all 12 features including hardware-aware features
+- ✅ No breaking changes to API
+- ✅ Zero configuration required
+
+**Use Cases:**
+1. **Understanding**: See which workload characteristics matter most
+2. **Measurement Optimization**: Focus effort on high-importance features
+3. **Debugging**: Investigate why optimizer made specific recommendations
+4. **Feature Engineering**: Guide addition of new features
+5. **Cross-System Learning**: Understand hardware feature importance
+
+**Architecture:**
+```
+SimpleLinearPredictor
+    │
+    ├─→ analyze_feature_importance() [FIXED in Iteration 118]
+    │   ├─→ Calculate variance for each of 12 features
+    │   ├─→ Normalize to [0, 1] range
+    │   └─→ Return {feature_name: importance_score}
+    │
+    └─→ analyze_feature_importance_correlation() [NEW in Iteration 118]
+        ├─→ Calculate correlation for each feature with n_jobs
+        ├─→ Calculate correlation for each feature with chunksize
+        ├─→ Calculate combined importance (average)
+        ├─→ Normalize all to [0, 1] range
+        └─→ Return {
+              'n_jobs': {feature: score},
+              'chunksize': {feature: score},
+              'combined': {feature: score}
+            }
+```
+
+### Testing Results
+
+**All Tests Passing:**
+- 7/7 feature importance tests (3 variance + 4 correlation) ✅
+- 40/40 ML prediction tests ✅
+- 24/24 cross-system learning tests ✅
+- 27/27 confidence calibration tests ✅
+- 19/19 batch online learning tests ✅
+- Total: 1586/1586 tests passing ✅
+
+**Test Coverage:**
+- Variance-based importance with all 12 features
+- Correlation-based importance (n_jobs, chunksize, combined)
+- Insufficient samples handling
+- Zero variance handling
+- Perfect correlation scenarios
+- Integration with existing ML system
+
+### Example Output
+
+```
+Variance-Based Feature Importance:
+----------------------------------------------------------------------
+start_method              1.000 ████████████████████████████████████████
+coefficient_of_variation  0.083 ███
+data_size                 0.019 
+execution_time            0.018 
+pickle_size               0.002 
+...
+
+Feature Importance for n_jobs:
+----------------------------------------------------------------------
+data_size                 1.000 ████████████████████████████████████████
+execution_time            1.000 ███████████████████████████████████████
+pickle_size               0.965 ██████████████████████████████████████
+...
+
+Feature Categorization:
+🔴 CRITICAL (> 0.7) - Measure accurately:
+   • coefficient_of_variation: 1.000
+   • function_complexity: 0.993
+🟡 IMPORTANT (0.4-0.7) - Measure reasonably:
+   • start_method: 0.512
+🟢 MINOR (< 0.4) - Rough estimates OK:
+   • physical_cores: 0.312
+```
+
+### Security Summary
+
+**No security vulnerabilities expected** - follows same patterns as Iterations 114-117.
+
+**Code Review:** Pending
+
+**Architecture Notes:**
+- Pure mathematical operations (variance, correlation)
+- No external dependencies
+- No file I/O or network operations
+- Handles edge cases gracefully
+- Conservative normalization prevents numerical issues
 
 ## What Was Accomplished in Iteration 117
 
