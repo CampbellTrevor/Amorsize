@@ -9,6 +9,7 @@ Enables running Amorsize from the command line:
 import argparse
 import importlib
 import json
+import os
 import sys
 from typing import Any, Callable, List, Optional
 
@@ -19,6 +20,83 @@ from .history import (
     save_result, load_result, list_results, delete_result,
     compare_entries, clear_history
 )
+
+
+# ANSI color codes for terminal output
+class Colors:
+    """ANSI escape codes for colored terminal output."""
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    
+    # Foreground colors
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    GRAY = '\033[90m'
+    
+    # Background colors
+    BG_RED = '\033[101m'
+    BG_GREEN = '\033[102m'
+    BG_YELLOW = '\033[103m'
+
+
+# Global color settings
+_USE_COLOR = None
+
+
+def should_use_color() -> bool:
+    """
+    Determine if colored output should be used.
+    
+    Returns:
+        True if colors should be used, False otherwise
+    """
+    global _USE_COLOR
+    
+    if _USE_COLOR is not None:
+        return _USE_COLOR
+    
+    # Check if output is a TTY
+    if not sys.stdout.isatty():
+        return False
+    
+    # Check NO_COLOR environment variable (https://no-color.org/)
+    if os.environ.get('NO_COLOR'):
+        return False
+    
+    # Check TERM environment variable
+    term = os.environ.get('TERM', '')
+    if term == 'dumb':
+        return False
+    
+    return True
+
+
+def set_color_mode(enabled: bool):
+    """Set whether colored output should be used."""
+    global _USE_COLOR
+    _USE_COLOR = enabled
+
+
+def colorize(text: str, color: str) -> str:
+    """
+    Apply color to text if colors are enabled.
+    
+    Args:
+        text: Text to colorize
+        color: Color code from Colors class
+        
+    Returns:
+        Colored text if colors enabled, otherwise plain text
+    """
+    if should_use_color():
+        return f"{color}{text}{Colors.RESET}"
+    return text
 
 
 def load_function(function_path: str) -> Callable:
@@ -129,51 +207,277 @@ def load_data(args: argparse.Namespace) -> List[Any]:
     )
 
 
-def format_output_human(result, mode: str, show_profile: bool = False):
+def format_output_human(result, mode: str, args: argparse.Namespace):
     """
     Format optimization result in human-readable form.
     
     Args:
         result: OptimizationResult or (results, OptimizationResult) tuple
         mode: "optimize" or "execute"
-        show_profile: Whether to show detailed profile
+        args: Command-line arguments (for flags like --quiet, --explain, etc.)
     """
+    # Extract flags
+    quiet = getattr(args, 'quiet', False)
+    show_explain = getattr(args, 'explain', False)
+    show_tips = getattr(args, 'tips', False)
+    show_overhead = getattr(args, 'show_overhead', False)
+    show_profile = getattr(args, 'profile', False)
+    
     # Handle execute mode with tuple result
     if mode == "execute" and isinstance(result, tuple):
         results, opt_result = result
-        print(f"\n{'='*70}")
-        print("EXECUTION COMPLETE")
-        print(f"{'='*70}")
-        print(f"Processed {len(results)} items")
-        print(f"Sample results (first 5): {results[:5]}")
+        if not quiet:
+            print(f"\n{colorize('='*70, Colors.CYAN)}")
+            print(colorize("EXECUTION COMPLETE", Colors.BOLD + Colors.GREEN))
+            print(f"{colorize('='*70, Colors.CYAN)}")
+            print(f"Processed {colorize(str(len(results)), Colors.BOLD)} items")
+            print(f"Sample results (first 5): {results[:5]}")
         result = opt_result
-        print(f"\n{'='*70}")
-        print("OPTIMIZATION DETAILS")
-        print(f"{'='*70}")
+        if not quiet:
+            print(f"\n{colorize('='*70, Colors.CYAN)}")
+            print(colorize("OPTIMIZATION DETAILS", Colors.BOLD + Colors.CYAN))
+            print(f"{colorize('='*70, Colors.CYAN)}")
     else:
-        print(f"\n{'='*70}")
-        print("OPTIMIZATION ANALYSIS")
-        print(f"{'='*70}")
+        if not quiet:
+            print(f"\n{colorize('='*70, Colors.CYAN)}")
+            print(colorize("OPTIMIZATION ANALYSIS", Colors.BOLD + Colors.CYAN))
+            print(f"{colorize('='*70, Colors.CYAN)}")
     
-    # Show basic results
-    print(f"\nRecommendation:")
-    print(f"  n_jobs:            {result.n_jobs}")
-    print(f"  chunksize:         {result.chunksize}")
-    print(f"  estimated_speedup: {result.estimated_speedup:.2f}x")
-    print(f"\nReason:")
+    # Quiet mode: just show the essentials
+    if quiet:
+        print(f"n_jobs={result.n_jobs} chunksize={result.chunksize} speedup={result.estimated_speedup:.2f}x")
+        return
+    
+    # Show basic results with colors
+    print(f"\n{colorize('Recommendation:', Colors.BOLD + Colors.GREEN)}")
+    print(f"  {colorize('n_jobs:', Colors.BOLD)}            {colorize(str(result.n_jobs), Colors.BOLD + Colors.CYAN)}")
+    print(f"  {colorize('chunksize:', Colors.BOLD)}         {colorize(str(result.chunksize), Colors.BOLD + Colors.CYAN)}")
+    speedup_color = Colors.GREEN if result.estimated_speedup > 1.5 else Colors.YELLOW if result.estimated_speedup > 1.0 else Colors.RED
+    print(f"  {colorize('estimated_speedup:', Colors.BOLD)} {colorize(f'{result.estimated_speedup:.2f}x', Colors.BOLD + speedup_color)}")
+    
+    print(f"\n{colorize('Reason:', Colors.BOLD)}")
     print(f"  {result.reason}")
     
+    # Show warnings
     if result.warnings:
-        print(f"\nWarnings:")
+        print(f"\n{colorize('Warnings:', Colors.BOLD + Colors.YELLOW)}")
         for warning in result.warnings:
-            print(f"  ⚠ {warning}")
+            print(f"  {colorize('⚠', Colors.YELLOW)} {warning}")
     
-    # Show detailed profile if requested
+    # Show optimization tips if requested
+    if show_tips:
+        tips = _generate_optimization_tips(result)
+        if tips:
+            print(f"\n{colorize('='*70, Colors.CYAN)}")
+            print(colorize("OPTIMIZATION TIPS", Colors.BOLD + Colors.MAGENTA))
+            print(f"{colorize('='*70, Colors.CYAN)}")
+            for i, tip in enumerate(tips, 1):
+                print(f"\n{colorize(f'{i}.', Colors.BOLD + Colors.MAGENTA)} {tip}")
+    
+    # Show overhead breakdown if requested
+    if show_overhead and result.profile:
+        print(f"\n{colorize('='*70, Colors.CYAN)}")
+        print(colorize("OVERHEAD BREAKDOWN", Colors.BOLD + Colors.YELLOW))
+        print(f"{colorize('='*70, Colors.CYAN)}")
+        _show_overhead_breakdown(result.profile)
+    
+    # Show user-friendly explanation if requested
+    if show_explain and result.profile:
+        print(f"\n{colorize('='*70, Colors.CYAN)}")
+        print(colorize("DETAILED EXPLANATION", Colors.BOLD + Colors.BLUE))
+        print(f"{colorize('='*70, Colors.CYAN)}")
+        _show_user_friendly_explanation(result)
+    
+    # Show detailed profile if requested (technical details)
     if show_profile and result.profile:
-        print(f"\n{'='*70}")
-        print("DETAILED DIAGNOSTIC PROFILE")
-        print(f"{'='*70}")
+        print(f"\n{colorize('='*70, Colors.CYAN)}")
+        print(colorize("DETAILED DIAGNOSTIC PROFILE", Colors.BOLD + Colors.GRAY))
+        print(f"{colorize('='*70, Colors.CYAN)}")
         print(result.explain())
+
+
+def _generate_optimization_tips(result) -> List[str]:
+    """
+    Generate actionable optimization tips based on the result.
+    
+    Args:
+        result: OptimizationResult
+        
+    Returns:
+        List of tip strings
+    """
+    tips = []
+    
+    # Tip: Low speedup
+    if result.estimated_speedup < 1.2:
+        tips.append(
+            f"{colorize('Low speedup detected', Colors.BOLD)} (< 1.2x): "
+            f"Your function may be too fast or have high overhead. "
+            f"Consider batching multiple items together or using serial execution."
+        )
+    
+    # Tip: High n_jobs
+    if result.profile and result.n_jobs >= result.profile.physical_cores:
+        tips.append(
+            f"{colorize('Using all cores', Colors.BOLD)}: "
+            f"n_jobs={result.n_jobs} matches or exceeds physical cores ({result.profile.physical_cores}). "
+            f"This is optimal for CPU-bound tasks but may cause oversubscription if your function uses internal threading."
+        )
+    
+    # Tip: Small chunksize
+    if result.profile and result.chunksize < 10:
+        tips.append(
+            f"{colorize('Small chunksize', Colors.BOLD)} ({result.chunksize}): "
+            f"Each chunk processes few items. This is optimal for heterogeneous workloads "
+            f"but may have higher overhead. Consider increasing target_chunk_duration if overhead is high."
+        )
+    
+    # Tip: Large chunksize
+    if result.profile and result.chunksize > 100:
+        tips.append(
+            f"{colorize('Large chunksize', Colors.BOLD)} ({result.chunksize}): "
+            f"Each chunk processes many items. This reduces overhead but may cause load imbalance. "
+            f"Consider decreasing target_chunk_duration for better load distribution."
+        )
+    
+    # Tip: Memory constraints
+    if result.profile and result.profile.max_workers_memory < result.profile.max_workers_cpu:
+        tips.append(
+            f"{colorize('Memory-constrained', Colors.BOLD)}: "
+            f"Available memory limits n_jobs to {result.profile.max_workers_memory} "
+            f"(physical cores: {result.profile.physical_cores}). "
+            f"Consider reducing memory usage in your function or processing smaller batches."
+        )
+    
+    # Tip: I/O bound workload
+    if result.profile and result.profile.workload_type in ("io_bound", "mixed"):
+        tips.append(
+            f"{colorize('I/O-bound workload detected', Colors.BOLD)}: "
+            f"Consider using {colorize('ThreadPoolExecutor', Colors.CYAN)} or {colorize('asyncio', Colors.CYAN)} "
+            f"instead of multiprocessing for better performance with I/O operations."
+        )
+    
+    # Tip: Heterogeneous workload
+    if result.profile and result.profile.is_heterogeneous:
+        tips.append(
+            f"{colorize('Heterogeneous workload', Colors.BOLD)} (CV={result.profile.coefficient_of_variation:.2f}): "
+            f"Item processing times vary significantly. Amorsize automatically reduces chunksize "
+            f"to improve load balancing. Consider sorting items by expected processing time if possible."
+        )
+    
+    return tips
+
+
+def _show_overhead_breakdown(profile) -> None:
+    """
+    Show detailed overhead breakdown.
+    
+    Args:
+        profile: DiagnosticProfile with overhead measurements
+    """
+    total_overhead = profile.overhead_spawn + profile.overhead_ipc + profile.overhead_chunking
+    
+    # Pre-compute percentages to avoid redundant calculations
+    spawn_pct = (profile.overhead_spawn / total_overhead * 100) if total_overhead > 0 else 0.0
+    ipc_pct = (profile.overhead_ipc / total_overhead * 100) if total_overhead > 0 else 0.0
+    chunking_pct = (profile.overhead_chunking / total_overhead * 100) if total_overhead > 0 else 0.0
+    
+    print(f"\n{colorize('Overhead Components:', Colors.BOLD)}")
+    print(f"  Spawn overhead:    {profile.overhead_spawn:.4f}s  ({colorize(f'{spawn_pct:.1f}%', Colors.CYAN)})")
+    print(f"  IPC overhead:      {profile.overhead_ipc:.4f}s  ({colorize(f'{ipc_pct:.1f}%', Colors.CYAN)})")
+    print(f"  Chunking overhead: {profile.overhead_chunking:.4f}s  ({colorize(f'{chunking_pct:.1f}%', Colors.CYAN)})")
+    print(f"  {colorize('Total overhead:', Colors.BOLD)}    {colorize(f'{total_overhead:.4f}s', Colors.BOLD + Colors.YELLOW)}")
+    
+    print(f"\n{colorize('Performance Breakdown:', Colors.BOLD)}")
+    print(f"  Parallel compute:  {profile.parallel_compute_time:.4f}s")
+    print(f"  Total overhead:    {total_overhead:.4f}s")
+    total_time = profile.parallel_compute_time + total_overhead
+    print(f"  {colorize('Total time:', Colors.BOLD)}        {colorize(f'{total_time:.4f}s', Colors.BOLD + Colors.GREEN)}")
+    
+    if total_time > 0:
+        efficiency = profile.parallel_compute_time / total_time * 100
+        print(f"\n{colorize('Efficiency:', Colors.BOLD)} {colorize(f'{efficiency:.1f}%', Colors.BOLD + Colors.GREEN)} "
+              f"(compute time / total time)")
+    
+    # Show per-item breakdown
+    if profile.total_items > 0:
+        print(f"\n{colorize('Per-Item Costs:', Colors.BOLD)}")
+        print(f"  Avg execution time:  {profile.avg_execution_time*1000:.2f}ms")
+        print(f"  Avg pickle time:     {profile.avg_pickle_time*1000:.2f}ms")
+        print(f"  Avg data pickle:     {profile.avg_data_pickle_time*1000:.2f}ms")
+        
+        spawn_per_worker = profile.spawn_cost if profile.max_workers_cpu > 0 else 0
+        print(f"  Spawn cost/worker:   {spawn_per_worker*1000:.2f}ms")
+
+
+def _show_user_friendly_explanation(result) -> None:
+    """
+    Show user-friendly explanation of the optimization decision.
+    
+    Args:
+        result: OptimizationResult
+    """
+    profile = result.profile
+    if not profile:
+        # This should not happen when --explain is used due to automatic profiling,
+        # but provide a helpful message just in case
+        print("Note: Profiling data not available. This feature requires profiling to be enabled.")
+        return
+    
+    # Explain the decision
+    print(f"\n{colorize('Why these parameters?', Colors.BOLD)}\n")
+    
+    # Explain n_jobs
+    print(f"{colorize('n_jobs =', Colors.BOLD)} {colorize(str(result.n_jobs), Colors.BOLD + Colors.CYAN)}")
+    if result.n_jobs == 1:
+        print(f"  → Single worker (serial execution) because parallelization overhead exceeds benefits")
+    elif result.n_jobs == profile.physical_cores:
+        print(f"  → Using all {profile.physical_cores} physical cores for maximum CPU utilization")
+    elif result.n_jobs < profile.physical_cores:
+        if profile.max_workers_memory < profile.max_workers_cpu:
+            print(f"  → Limited by available memory (can only safely run {result.n_jobs} workers)")
+        else:
+            print(f"  → Using {result.n_jobs} workers to balance parallelism and overhead")
+    else:
+        print(f"  → Using {result.n_jobs} workers (includes hyperthreading)")
+    
+    # Explain chunksize
+    print(f"\n{colorize('chunksize =', Colors.BOLD)} {colorize(str(result.chunksize), Colors.BOLD + Colors.CYAN)}")
+    target_duration = profile.target_chunk_duration
+    actual_duration = profile.avg_execution_time * result.chunksize
+    print(f"  → Target duration: {target_duration}s per chunk")
+    print(f"  → Actual duration: ~{actual_duration:.3f}s per chunk")
+    print(f"  → Each worker processes {result.chunksize} items per chunk")
+    
+    if profile.is_heterogeneous:
+        print(f"  → Reduced from default due to heterogeneous workload (CV={profile.coefficient_of_variation:.2f})")
+    
+    # Explain speedup
+    print(f"\n{colorize('estimated_speedup =', Colors.BOLD)} {colorize(f'{result.estimated_speedup:.2f}x', Colors.BOLD + Colors.GREEN)}")
+    serial_time = profile.estimated_serial_time
+    parallel_time = profile.parallel_compute_time + profile.overhead_spawn + profile.overhead_ipc + profile.overhead_chunking
+    print(f"  → Serial time: {serial_time:.3f}s")
+    print(f"  → Parallel time: {parallel_time:.3f}s (includes overhead)")
+    print(f"  → Speedup: {serial_time:.3f}s / {parallel_time:.3f}s = {result.estimated_speedup:.2f}x")
+    
+    # Explain efficiency
+    theoretical_max = min(result.n_jobs, profile.physical_cores)
+    efficiency = (result.estimated_speedup / theoretical_max) * 100 if theoretical_max > 0 else 0
+    print(f"  → Efficiency: {efficiency:.1f}% (actual speedup / theoretical max speedup of {theoretical_max}x)")
+    
+    # Key factors
+    print(f"\n{colorize('Key factors considered:', Colors.BOLD)}")
+    print(f"  • Physical cores: {profile.physical_cores}")
+    print(f"  • Logical cores: {profile.logical_cores}")
+    print(f"  • Available memory: {profile.available_memory / (1024**3):.1f} GB")
+    print(f"  • Start method: {profile.multiprocessing_start_method}")
+    print(f"  • Spawn cost: {profile.spawn_cost*1000:.1f}ms per worker")
+    print(f"  • Workload type: {profile.workload_type}")
+    
+    if profile.rejection_reasons:
+        print(f"\n{colorize('Constraints that limited optimization:', Colors.BOLD + Colors.YELLOW)}")
+        for reason in profile.rejection_reasons:
+            print(f"  {colorize('•', Colors.YELLOW)} {reason}")
 
 
 def format_output_json(result, mode: str):
@@ -212,13 +516,38 @@ def format_output_json(result, mode: str):
     print(json.dumps(output, indent=2))
 
 
+def _set_color_mode_from_args(args: argparse.Namespace):
+    """
+    Set color mode based on command-line arguments.
+    
+    Args:
+        args: Command-line arguments
+    """
+    if hasattr(args, 'no_color') and args.no_color:
+        set_color_mode(False)
+    elif hasattr(args, 'color') and args.color:
+        set_color_mode(True)
+
+
 def cmd_optimize(args: argparse.Namespace):
     """Execute the 'optimize' command."""
+    # Set color mode first
+    _set_color_mode_from_args(args)
+    
     # Load function
     func = load_function(args.function)
     
     # Load data
     data = load_data(args)
+    
+    # Determine if profiling is needed
+    # Profile is needed for: --profile, --explain, --tips, --show-overhead
+    need_profile = (
+        args.profile or 
+        getattr(args, 'explain', False) or 
+        getattr(args, 'tips', False) or 
+        getattr(args, 'show_overhead', False)
+    )
     
     # Run optimization
     result = optimize(
@@ -227,7 +556,7 @@ def cmd_optimize(args: argparse.Namespace):
         sample_size=args.sample_size,
         target_chunk_duration=args.target_chunk_duration,
         verbose=args.verbose,
-        profile=args.profile,
+        profile=need_profile,  # Enable profiling if any feature needs it
         use_spawn_benchmark=not args.no_spawn_benchmark,
         use_chunking_benchmark=not args.no_chunking_benchmark,
         auto_adjust_for_nested_parallelism=not args.no_auto_adjust
@@ -237,7 +566,7 @@ def cmd_optimize(args: argparse.Namespace):
     if args.json:
         format_output_json(result, "optimize")
     else:
-        format_output_human(result, "optimize", show_profile=args.profile)
+        format_output_human(result, "optimize", args)
     
     # Save configuration if requested
     if hasattr(args, 'save_config') and args.save_config:
@@ -265,11 +594,22 @@ def cmd_optimize(args: argparse.Namespace):
 
 def cmd_execute(args: argparse.Namespace):
     """Execute the 'execute' command."""
+    # Set color mode first
+    _set_color_mode_from_args(args)
+    
     # Load function
     func = load_function(args.function)
     
     # Load data
     data = load_data(args)
+    
+    # Determine if profiling is needed
+    need_profile = (
+        args.profile or 
+        getattr(args, 'explain', False) or 
+        getattr(args, 'tips', False) or 
+        getattr(args, 'show_overhead', False)
+    )
     
     # Check if we should load config instead of optimizing
     if hasattr(args, 'load_config') and args.load_config:
@@ -347,7 +687,7 @@ def cmd_execute(args: argparse.Namespace):
         sample_size=args.sample_size,
         target_chunk_duration=args.target_chunk_duration,
         verbose=args.verbose,
-        profile=args.profile,
+        profile=need_profile,  # Enable profiling if any feature needs it
         use_spawn_benchmark=not args.no_spawn_benchmark,
         use_chunking_benchmark=not args.no_chunking_benchmark,
         auto_adjust_for_nested_parallelism=not args.no_auto_adjust,
@@ -358,7 +698,7 @@ def cmd_execute(args: argparse.Namespace):
     if args.json:
         format_output_json(result, "execute")
     else:
-        format_output_human(result, "execute", show_profile=args.profile)
+        format_output_human(result, "execute", args)
 
 
 def cmd_validate(args: argparse.Namespace):
@@ -899,6 +1239,15 @@ Examples:
   # Get detailed profiling
   python -m amorsize optimize math.factorial --data-range 100 --profile
   
+  # Show user-friendly explanation with tips
+  python -m amorsize optimize math.sqrt --data-range 1000 --explain --tips
+  
+  # Show overhead breakdown
+  python -m amorsize optimize mymodule.func --data-range 100 --show-overhead
+  
+  # Quiet mode (just the recommendation)
+  python -m amorsize optimize math.sqrt --data-range 1000 --quiet
+  
   # Output as JSON for scripting
   python -m amorsize optimize math.sqrt --data-range 1000 --json
   
@@ -991,7 +1340,38 @@ Examples:
         '--profile',
         '-p',
         action='store_true',
-        help='Show detailed diagnostic profile'
+        help='Show detailed diagnostic profile (technical details)'
+    )
+    parent_parser.add_argument(
+        '--explain',
+        action='store_true',
+        help='Show user-friendly explanation of optimization decisions'
+    )
+    parent_parser.add_argument(
+        '--tips',
+        action='store_true',
+        help='Show actionable optimization tips and recommendations'
+    )
+    parent_parser.add_argument(
+        '--show-overhead',
+        action='store_true',
+        help='Show detailed overhead breakdown (spawn, IPC, chunking)'
+    )
+    parent_parser.add_argument(
+        '--quiet',
+        '-q',
+        action='store_true',
+        help='Minimal output (just the recommendation)'
+    )
+    parent_parser.add_argument(
+        '--color',
+        action='store_true',
+        help='Force colored output even if not a TTY'
+    )
+    parent_parser.add_argument(
+        '--no-color',
+        action='store_true',
+        help='Disable colored output'
     )
     
     # Benchmarking options
