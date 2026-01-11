@@ -9,7 +9,7 @@ This prevents cascade failures and reduces system load during outages.
 import functools
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Optional, Tuple, Type, Union
 
