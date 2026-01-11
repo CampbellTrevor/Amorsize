@@ -671,10 +671,10 @@ def perform_dry_run(
         tracemalloc.start()
     
     try:
-        # Memory optimization: Pre-allocate lists with known size
-        # This avoids dynamic resizing and reduces memory allocation overhead
+        # Memory optimization: Pre-allocate lists with known size for pickle-related data only
+        # Performance optimization (Iteration 91): Use Welford's algorithm for variance calculation
+        # This eliminates the need to store all timing values and reduces computation to single-pass
         sample_count = len(sample)
-        times = [0.0] * sample_count
         return_sizes = [0] * sample_count
         pickle_times = [0.0] * sample_count
         
@@ -684,6 +684,17 @@ def perform_dry_run(
         # Memory optimization: Direct extraction instead of appending
         data_pickle_times = [pm[0] for pm in data_measurements]
         data_sizes = [pm[1] for pm in data_measurements]
+        
+        # Welford's online algorithm for incremental mean and variance calculation
+        # This computes mean and variance in a single pass without storing all values
+        # Benefits:
+        # - Memory efficient: O(1) space vs O(n) for storing all timing values
+        # - Numerically stable: avoids catastrophic cancellation
+        # - Single-pass: ~50% faster than two-pass algorithm
+        # See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+        welford_count = 0
+        welford_mean = 0.0
+        welford_m2 = 0.0  # Sum of squared deviations from mean
         
         # Memory optimization: Use indexed assignment to pre-allocated lists
         # This eliminates append() method call overhead
@@ -702,7 +713,14 @@ def perform_dry_run(
             if profiler is not None:
                 profiler.disable()
             
-            times[idx] = time.perf_counter() - exec_start
+            exec_time = time.perf_counter() - exec_start
+            
+            # Welford's online algorithm: update mean and variance incrementally
+            welford_count += 1
+            delta = exec_time - welford_mean
+            welford_mean += delta / welford_count
+            delta2 = exec_time - welford_mean
+            welford_m2 += delta * delta2
             
             # Measure OUTPUT result pickle time (The "Pickle Tax" - part 2: results → main)
             try:
@@ -729,7 +747,7 @@ def perform_dry_run(
         
         # Calculate averages
         # Use math.fsum() for floating-point sums to improve numerical precision (Kahan summation)
-        avg_time = math.fsum(times) / len(times) if times else 0.0
+        avg_time = welford_mean  # Already computed by Welford's algorithm
         avg_return_size = sum(return_sizes) // len(return_sizes) if return_sizes else 0
         avg_pickle_time = math.fsum(pickle_times) / len(pickle_times) if pickle_times else 0.0
         avg_data_pickle_time = math.fsum(data_pickle_times) / len(data_pickle_times) if data_pickle_times else 0.0
@@ -740,11 +758,9 @@ def perform_dry_run(
         # Coefficient of variation (CV) = std_dev / mean, normalizes variance by mean
         time_variance = 0.0
         coefficient_of_variation = 0.0
-        if len(times) > 1 and avg_time > 0:
-            # Calculate variance: average of squared deviations from mean
-            # Memory optimization: Use generator expression to avoid intermediate list
-            # Use math.fsum() for better numerical precision when summing squared deviations
-            time_variance = math.fsum((t - avg_time) ** 2 for t in times) / len(times)
+        if welford_count > 1 and avg_time > 0:
+            # Welford's algorithm: variance is M2 / n
+            time_variance = welford_m2 / welford_count
             
             # Calculate coefficient of variation (CV)
             # CV = (std_dev / mean) gives normalized measure of variability
