@@ -23,6 +23,19 @@ def compute_heavy(x):
     return result
 
 
+def get_executor_type(result):
+    """
+    Helper function to safely get executor type from optimization result.
+    
+    Args:
+        result: OptimizationResult instance
+    
+    Returns:
+        Executor type string ("process" or "thread"), defaulting to "process"
+    """
+    return result.executor_type if hasattr(result, 'executor_type') else "process"
+
+
 def example_1_without_pool_manager():
     """
     Example 1: Traditional approach WITHOUT pool manager.
@@ -83,8 +96,7 @@ def example_2_with_pool_manager():
             result = optimize(compute_heavy, data, verbose=False)
             
             # Get pool from manager (reuses existing pool if available)
-            executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
-            pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=executor_type)
+            pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=get_executor_type(result))
             
             # Execute with the reused pool
             results = pool.map(compute_heavy, result.data, chunksize=result.chunksize)
@@ -125,8 +137,7 @@ def example_3_global_pool_manager():
         result = optimize(compute_heavy, data, verbose=False)
         
         # Get pool from global manager
-        executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
-        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=executor_type)
+        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=get_executor_type(result))
         
         # Execute
         results = pool.map(compute_heavy, result.data, chunksize=result.chunksize)
@@ -162,8 +173,7 @@ def example_4_context_manager():
     result = optimize(compute_heavy, data, verbose=False)
     
     # Use context manager for automatic pool management
-    executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
-    with managed_pool(n_jobs=result.n_jobs, executor_type=executor_type) as pool:
+    with managed_pool(n_jobs=result.n_jobs, executor_type=get_executor_type(result)) as pool:
         results = pool.map(compute_heavy, result.data, chunksize=result.chunksize)
     
     print(f"  Processed {len(results)} items")
@@ -195,8 +205,7 @@ def example_5_web_service_pattern():
         result = optimize(request["func"], request["data"], verbose=False)
         
         # Reuse pool
-        executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
-        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=executor_type)
+        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=get_executor_type(result))
         results = pool.map(request["func"], result.data, chunksize=result.chunksize)
         
         print(f"  Request {i+1}: Processed {len(results)} items")

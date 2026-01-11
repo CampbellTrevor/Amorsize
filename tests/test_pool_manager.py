@@ -366,7 +366,9 @@ class TestThreadSafety:
     def test_concurrent_different_pools(self):
         """Test creating different pools concurrently."""
         manager = PoolManager()
-        pools = {i: [] for i in range(1, 5)}  # Use 1-4 instead of 0-3
+        # Use n_jobs 1-4 (not 0-3) because n_jobs=0 would fail validation in get_pool()
+        # which requires n_jobs > 0
+        pools = {i: [] for i in range(1, 5)}
         errors = []
         lock = threading.Lock()
         
