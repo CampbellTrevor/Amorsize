@@ -135,7 +135,7 @@ KNN_DISTANCE_EPSILON = 0.01
 # Enable feature selection to reduce dimensionality and improve prediction speed
 ENABLE_FEATURE_SELECTION = True
 
-# Target number of features to select (reduces from 12 to 5-7)
+# Target number of features to select (reduces from 12 to 7)
 TARGET_SELECTED_FEATURES = 7
 
 # Minimum number of training samples needed for feature selection
@@ -1484,18 +1484,21 @@ class SimpleLinearPredictor:
             candidates = self.training_data
         
         # Calculate distances to all candidates
-        # If feature selection is enabled, apply it to both query and candidate features
-        distances = []
-        for sample in candidates:
-            if self.enable_feature_selection and len(self.training_data) >= MIN_SAMPLES_FOR_FEATURE_SELECTION:
-                # Use reduced feature vectors for distance calculation
-                query_vec = self._apply_feature_selection(features.to_vector())
+        # Optimization: Pre-compute query vector once if using feature selection
+        if self.enable_feature_selection and len(self.training_data) >= MIN_SAMPLES_FOR_FEATURE_SELECTION:
+            # Use reduced feature vectors for distance calculation
+            query_vec = self._apply_feature_selection(features.to_vector())
+            distances = []
+            for sample in candidates:
                 candidate_vec = self._apply_feature_selection(sample.features.to_vector())
                 dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(query_vec, candidate_vec)))
-            else:
-                # Use full feature vectors
+                distances.append((dist, sample))
+        else:
+            # Use full feature vectors
+            distances = []
+            for sample in candidates:
                 dist = features.distance(sample.features)
-            distances.append((dist, sample))
+                distances.append((dist, sample))
         
         # Sort by distance and take k nearest
         distances.sort(key=lambda x: x[0])
