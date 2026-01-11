@@ -19,6 +19,7 @@ import math
 import os
 import time
 import hashlib
+import random
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -851,8 +852,7 @@ def _cluster_workloads(
                 ]
                 new_centroids.append(new_centroid)
             else:
-                # Empty cluster - reinitialize randomly
-                import random
+                # Empty cluster - reinitialize randomly using random module imported at top
                 new_centroids.append(random.choice(feature_vectors))
         
         # Check convergence (max centroid movement)
@@ -939,9 +939,7 @@ def _kmeans_plus_plus_init(
     Returns:
         List of initial centroid vectors
     """
-    import random
-    
-    # Choose first centroid randomly
+    # Choose first centroid randomly (using random module imported at top)
     centroids = [random.choice(feature_vectors)]
     
     # Choose remaining centroids

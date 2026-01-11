@@ -142,16 +142,56 @@ class TestClusteringAlgorithm:
                     function_complexity=300
                 )
                 n_jobs = 6
-                chunksize=200
+                chunksize = 200
                 speedup = 4.5
-            else:  # mixed - alternate between patterns
-                if i % 3 == 0:
-                    feature_pattern_recursive = "cpu"
-                elif i % 3 == 1:
-                    feature_pattern_recursive = "io"
+            else:  # mixed - create diverse samples
+                # Cycle through patterns to create truly mixed data
+                pattern_index = i % 3
+                if pattern_index == 0:
+                    # CPU-intensive
+                    features = WorkloadFeatures(
+                        data_size=1000 + i * 100,
+                        estimated_item_time=0.001 + i * 0.0001,
+                        physical_cores=8,
+                        available_memory=8 * 1024**3,
+                        start_method="fork",
+                        pickle_size=100,
+                        coefficient_of_variation=0.2,
+                        function_complexity=500
+                    )
+                    n_jobs = 8
+                    chunksize = 10
+                    speedup = 6.0
+                elif pattern_index == 1:
+                    # I/O-bound
+                    features = WorkloadFeatures(
+                        data_size=10000 + i * 100,
+                        estimated_item_time=0.00001,
+                        physical_cores=8,
+                        available_memory=8 * 1024**3,
+                        start_method="spawn",
+                        pickle_size=10000 + i * 1000,
+                        coefficient_of_variation=0.3,
+                        function_complexity=200
+                    )
+                    n_jobs = 4
+                    chunksize = 100
+                    speedup = 2.0
                 else:
-                    feature_pattern_recursive = "memory"
-                return self._create_training_data(n_samples, feature_pattern_recursive)
+                    # Memory-intensive
+                    features = WorkloadFeatures(
+                        data_size=100000 + i * 1000,
+                        estimated_item_time=0.00005,
+                        physical_cores=8,
+                        available_memory=32 * 1024**3,
+                        start_method="fork",
+                        pickle_size=500,
+                        coefficient_of_variation=0.1,
+                        function_complexity=300
+                    )
+                    n_jobs = 6
+                    chunksize = 200
+                    speedup = 4.5
             
             sample = TrainingData(
                 features=features,
