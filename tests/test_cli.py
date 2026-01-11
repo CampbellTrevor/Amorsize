@@ -977,7 +977,7 @@ class TestCLIEnhancements:
         assert "Spawn overhead" in result.stdout or "spawn" in result.stdout.lower()
     
     def test_quiet_flag(self):
-        """Test --quiet/-q flag shows minimal output."""
+        """Test --quiet flag shows minimal output."""
         result = subprocess.run(
             [
                 sys.executable, "-m", "amorsize",
