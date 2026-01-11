@@ -19,7 +19,7 @@ profiler.disable()
 
 # See results
 stats = pstats.Stats(profiler)
-stats.sort_stats('cumulative')
+stats.sort_stats('cumulative')  # Sort by cumulative time (total time including subcalls)
 stats.print_stats(20)
 ```
 
@@ -108,7 +108,7 @@ result = optimize(my_func, prepared_data)
 ```python
 from functools import lru_cache
 
-# Cache expensive computations
+# Cache expensive computations (maxsize=128 stores 128 most recent results)
 @lru_cache(maxsize=128)
 def expensive_computation(x):
     # Heavy computation here

@@ -358,6 +358,7 @@ def get_multiprocessing_start_method() -> str:
         try:
             _CACHED_START_METHOD = multiprocessing.get_start_method()
         except RuntimeError:
+            # Fallback to platform-specific default (helper function)
             _CACHED_START_METHOD = _get_default_start_method()
         
         return _CACHED_START_METHOD
