@@ -5,6 +5,8 @@ This test suite validates that the optimizer correctly implements the 0.2s
 target chunk duration across various edge cases and workload characteristics.
 """
 
+import time
+
 import pytest
 from amorsize import optimize
 
@@ -326,8 +328,6 @@ class TestChunksizeIntegration:
     
     def test_chunksize_produces_expected_chunk_duration(self):
         """Test that actual chunk execution time is close to target."""
-        import time
-        
         def timed_function(x):
             # Function with consistent ~0.002s execution time
             result = 0
