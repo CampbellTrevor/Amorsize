@@ -7,6 +7,7 @@ users make informed decisions about parallelization parameters.
 """
 
 import time
+import math
 from typing import Any, Callable, List, Union, Iterator, Optional, Tuple
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
@@ -301,8 +302,9 @@ def compare_strategies(
         process_times = [t for c, t in zip(configs, execution_times) if c.executor_type == "process"]
         
         if thread_times and process_times:
-            avg_thread = sum(thread_times) / len(thread_times)
-            avg_process = sum(process_times) / len(process_times)
+            # Use math.fsum() for better numerical precision in timing averages
+            avg_thread = math.fsum(thread_times) / len(thread_times)
+            avg_process = math.fsum(process_times) / len(process_times)
             
             if avg_thread < avg_process * 0.9:
                 recommendations.append("Threading is significantly faster - workload may be I/O-bound")

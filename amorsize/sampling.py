@@ -11,6 +11,7 @@ import os
 import cProfile
 import pstats
 import io
+import math
 from typing import Any, Callable, Iterator, List, Tuple, Union, Optional, Dict
 import itertools
 
@@ -727,10 +728,11 @@ def perform_dry_run(
             peak = 0
         
         # Calculate averages
-        avg_time = sum(times) / len(times) if times else 0.0
+        # Use math.fsum() for floating-point sums to improve numerical precision (Kahan summation)
+        avg_time = math.fsum(times) / len(times) if times else 0.0
         avg_return_size = sum(return_sizes) // len(return_sizes) if return_sizes else 0
-        avg_pickle_time = sum(pickle_times) / len(pickle_times) if pickle_times else 0.0
-        avg_data_pickle_time = sum(data_pickle_times) / len(data_pickle_times) if data_pickle_times else 0.0
+        avg_pickle_time = math.fsum(pickle_times) / len(pickle_times) if pickle_times else 0.0
+        avg_data_pickle_time = math.fsum(data_pickle_times) / len(data_pickle_times) if data_pickle_times else 0.0
         avg_data_size = sum(data_sizes) // len(data_sizes) if data_sizes else 0
         
         # Calculate variance and coefficient of variation for heterogeneous workload detection
@@ -741,7 +743,8 @@ def perform_dry_run(
         if len(times) > 1 and avg_time > 0:
             # Calculate variance: average of squared deviations from mean
             # Memory optimization: Use generator expression to avoid intermediate list
-            time_variance = sum((t - avg_time) ** 2 for t in times) / len(times)
+            # Use math.fsum() for better numerical precision when summing squared deviations
+            time_variance = math.fsum((t - avg_time) ** 2 for t in times) / len(times)
             
             # Calculate coefficient of variation (CV)
             # CV = (std_dev / mean) gives normalized measure of variability
