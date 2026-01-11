@@ -510,8 +510,9 @@ def format_output_yaml(result, mode: str):
         import yaml
         print(yaml.dump(output, default_flow_style=False, sort_keys=False))
     except ImportError:
-        print("Error: PyYAML library not installed. Install with: pip install pyyaml", file=sys.stderr)
-        print("Falling back to JSON format:", file=sys.stderr)
+        # Print warning to stderr, then output JSON to stdout
+        print("Warning: PyYAML library not installed. Install with: pip install pyyaml", file=sys.stderr)
+        print("Outputting JSON format instead.\n", file=sys.stderr)
         print(json.dumps(output, indent=2))
 
 

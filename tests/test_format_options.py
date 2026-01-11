@@ -83,8 +83,10 @@ class TestFormatOption:
             assert "n_jobs" in data
         except ImportError:
             # If PyYAML not installed, should fall back to JSON
-            if "Error: PyYAML library not installed" in stderr:
-                data = json.loads(stdout.split("Falling back to JSON format:")[1].strip())
+            # Warning goes to stderr, JSON goes to stdout
+            if "Warning: PyYAML library not installed" in stderr:
+                # The stdout should be pure JSON now
+                data = json.loads(stdout)
                 assert data["mode"] == "optimize"
 
     def test_format_table(self):
