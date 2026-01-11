@@ -33,6 +33,11 @@ from .error_messages import (
 )
 
 
+# Common recommendation messages for picklability issues
+_RECOMMENDATION_USE_CLOUDPICKLE = "Use cloudpickle or dill for more flexible serialization"
+_RECOMMENDATION_EXTRACT_SERIALIZABLE = "Extract only serializable data from complex objects"
+
+
 class DiagnosticProfile:
     """
     Comprehensive diagnostic information about optimization decisions.
@@ -1223,9 +1228,9 @@ def optimize(
             if diag:
                 diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
                 # Add actionable recommendations from the error message
-                diag.recommendations.append("Use cloudpickle or dill for more flexible serialization")
+                diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
                 diag.recommendations.append("Pass serializable identifiers instead of unpicklable objects")
-                diag.recommendations.append("Extract only serializable data from complex objects")
+                diag.recommendations.append(_RECOMMENDATION_EXTRACT_SERIALIZABLE)
         else:
             # Generic sampling failure
             error_message = get_sampling_failure_message(sampling_result.error)
@@ -1262,7 +1267,7 @@ def optimize(
             # Add actionable recommendations that match the error message content
             diag.recommendations.append("Convert lambda to regular function at module level")
             diag.recommendations.append("Move nested functions to module level")
-            diag.recommendations.append("Use cloudpickle for more flexible serialization")
+            diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
         logger.log_rejection("function_not_picklable", {"executor_type": executor_type})
         _report_progress("Optimization complete", 1.0)
         if verbose:
@@ -1294,9 +1299,9 @@ def optimize(
         if diag:
             diag.rejection_reasons.append(f"Data items are not picklable - multiprocessing requires picklable data")
             # Add actionable recommendations that match the error message content
-            diag.recommendations.append("Use cloudpickle or dill for more flexible serialization")
+            diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
             diag.recommendations.append("Pass file paths/connection strings instead of file handles/connections")
-            diag.recommendations.append("Extract only serializable data from complex objects")
+            diag.recommendations.append(_RECOMMENDATION_EXTRACT_SERIALIZABLE)
         
         _report_progress("Optimization complete", 1.0)
         if verbose:
