@@ -87,9 +87,11 @@ result = optimize(processor.process, data)
 
 #### 4. Alternative: Use cloudpickle
 
-```python
+```bash
 pip install cloudpickle
+```
 
+```python
 # cloudpickle can handle more complex functions
 # Use with concurrent.futures.ProcessPoolExecutor
 from concurrent.futures import ProcessPoolExecutor
@@ -563,6 +565,7 @@ if __name__ == '__main__':
 #### 4. Consider Using fork (Unix only)
 
 ```python
+import os
 import multiprocessing
 
 # On Unix systems (not Windows), can use fork
@@ -613,7 +616,9 @@ print(f"Detected memory: {memory_gb:.2f} GB")
 ```bash
 # Set available memory manually
 export AMORSIZE_MAX_MEMORY_GB=2
+```
 
+```python
 # Or in Python
 import os
 os.environ['AMORSIZE_MAX_MEMORY_GB'] = '2'
