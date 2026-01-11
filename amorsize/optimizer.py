@@ -983,7 +983,8 @@ def optimize(
     # Compute ML features for cache (for ML training)
     # These features help improve ML prediction accuracy over time
     ml_pickle_size = sampling_result.return_size if sampling_result.return_size > 0 else None
-    ml_coefficient_of_variation = sampling_result.coefficient_of_variation if sampling_result.coefficient_of_variation > 0 else None
+    # CV of 0.0 is valid (perfectly homogeneous workload) - include if available
+    ml_coefficient_of_variation = sampling_result.coefficient_of_variation if sampling_result.coefficient_of_variation >= 0 else None
     ml_function_complexity = None
     
     # Compute function complexity (bytecode size)
