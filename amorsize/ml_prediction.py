@@ -857,7 +857,8 @@ class SimpleLinearPredictor:
             # Need at least 2 samples to compute variance
             return {}
         
-        # Updated in Iteration 118 to include all 12 features (added hardware features from Iteration 114)
+        # Updated in Iteration 118 to include all 12 features
+        # (added l3_cache_size, numa_nodes, memory_bandwidth, has_numa from Iteration 114)
         feature_names = [
             'data_size',
             'execution_time',
@@ -960,16 +961,17 @@ class SimpleLinearPredictor:
             chunksize_correlations.append(abs(corr))  # Use absolute value
         
         # Normalize correlations to [0, 1] range
-        max_n_jobs_corr = max(n_jobs_correlations) if n_jobs_correlations else 1.0
-        max_chunksize_corr = max(chunksize_correlations) if chunksize_correlations else 1.0
+        # Handle case where all correlations are 0.0 (avoid division by zero)
+        max_n_jobs_corr = max(n_jobs_correlations) if n_jobs_correlations and max(n_jobs_correlations) > 0 else 1.0
+        max_chunksize_corr = max(chunksize_correlations) if chunksize_correlations and max(chunksize_correlations) > 0 else 1.0
         
         n_jobs_importance = {}
         chunksize_importance = {}
         combined_importance = {}
         
         for i, name in enumerate(feature_names):
-            n_jobs_score = n_jobs_correlations[i] / max_n_jobs_corr if max_n_jobs_corr > 0 else 0.0
-            chunksize_score = chunksize_correlations[i] / max_chunksize_corr if max_chunksize_corr > 0 else 0.0
+            n_jobs_score = n_jobs_correlations[i] / max_n_jobs_corr
+            chunksize_score = chunksize_correlations[i] / max_chunksize_corr
             
             n_jobs_importance[name] = n_jobs_score
             chunksize_importance[name] = chunksize_score

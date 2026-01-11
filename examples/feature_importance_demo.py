@@ -294,7 +294,7 @@ def demo_5_hardware_features_importance():
                 cache_info=SimpleNamespace(l3_size=config['cache'] * 1024 * 1024),
                 numa_info=SimpleNamespace(
                     numa_nodes=config['numa'],
-                    has_numa=config['numa'] > 1  # Fix: add has_numa attribute
+                    has_numa=config['numa'] > 1  # True when multiple NUMA nodes present
                 ),
                 memory_bandwidth=SimpleNamespace(bandwidth_gb_per_sec=config['bandwidth'])
             )

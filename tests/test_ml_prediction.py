@@ -814,6 +814,38 @@ class TestFeatureImportanceCorrelation:
         # All features should have 0 correlation with constant chunksize
         for feature in importance['chunksize']:
             assert importance['chunksize'][feature] == 0.0
+    
+    def test_correlation_importance_all_zero_correlations(self):
+        """Test correlation importance when all correlations are zero (division by zero protection)."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Create data where features don't vary AND outcomes don't vary
+        # This creates all zero correlations
+        for i in range(5):
+            features = WorkloadFeatures(
+                data_size=1000,  # Constant
+                estimated_item_time=0.01,  # Constant
+                physical_cores=8,
+                available_memory=16 * 1024**3,
+                start_method='fork'
+            )
+            sample = TrainingData(
+                features=features,
+                n_jobs=4,  # Constant
+                chunksize=100,  # Constant
+                speedup=1.5,
+                timestamp=time.time()
+            )
+            predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance_correlation()
+        
+        # Should handle all-zero correlations gracefully
+        # All features should have 0.0 importance (no correlation)
+        for key in ['n_jobs', 'chunksize', 'combined']:
+            for score in importance[key].values():
+                assert score == 0.0
+
 
 
 
