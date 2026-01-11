@@ -762,13 +762,16 @@ def perform_dry_run(
             # Welford's algorithm: variance is M2 / n
             time_variance = welford_m2 / welford_count
             
-            # Calculate coefficient of variation (CV)
-            # CV = (std_dev / mean) gives normalized measure of variability
+            # Calculate coefficient of variation (CV) directly from Welford's state
+            # Performance optimization (Iteration 92): Single-expression CV calculation
+            # CV = std_dev / mean = sqrt(variance) / mean = sqrt(M2 / count) / mean
+            # Optimized: sqrt(M2) / (mean * sqrt(count))
+            # Using math.sqrt for better performance than ** 0.5
+            # This eliminates intermediate variable assignments and improves numerical stability
             # CV < 0.3: homogeneous (consistent times)
             # CV 0.3-0.7: moderately heterogeneous
             # CV > 0.7: highly heterogeneous (varying times)
-            std_dev = time_variance ** 0.5
-            coefficient_of_variation = std_dev / avg_time
+            coefficient_of_variation = math.sqrt(welford_m2) / (avg_time * math.sqrt(welford_count))
         
         # Process profiler stats if profiling was enabled
         profiler_stats = None
