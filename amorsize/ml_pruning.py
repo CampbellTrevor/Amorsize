@@ -20,7 +20,7 @@ Pruning Strategy:
 
 import math
 import time
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Tuple, Optional, Set
 from dataclasses import dataclass
 
 # Import from ml_prediction module
@@ -162,7 +162,7 @@ def _find_similar_samples(
     Samples with feature distance < threshold are grouped together.
     
     NOTE: Feature distance is in range [0, sqrt(12)] ≈ [0, 3.46]
-    Threshold of 0.5 means features must be quite similar (within ~14% of max distance)
+    Default threshold of 1.0 means features must be quite similar (within ~29% of max distance)
     
     Args:
         training_data: List of training samples
@@ -178,13 +178,6 @@ def _find_similar_samples(
     
     clusters: List[Set[int]] = []
     assigned = set()
-    
-    # Normalize threshold to account for actual feature space
-    # Feature vectors are 12-dimensional normalized features
-    # Max possible distance is sqrt(12) ≈ 3.46
-    # Scale threshold appropriately
-    max_distance = math.sqrt(12)
-    normalized_threshold = similarity_threshold
     
     for i in range(n):
         if i in assigned:
@@ -203,7 +196,7 @@ def _find_similar_samples(
             # Calculate distance to cluster representative (sample i)
             distance = training_data[i].features.distance(training_data[j].features)
             
-            if distance < normalized_threshold:
+            if distance < similarity_threshold:
                 cluster.add(j)
                 assigned.add(j)
         

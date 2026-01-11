@@ -23,7 +23,6 @@ from amorsize.ml_pruning import (
 # Check if ML prediction module is available
 try:
     from amorsize.ml_prediction import TrainingData, WorkloadFeatures
-    from amorsize.system_info import get_physical_cores, get_available_memory, get_multiprocessing_start_method
     HAS_ML_PREDICTION = True
 except ImportError:
     HAS_ML_PREDICTION = False
