@@ -557,13 +557,16 @@ def load_training_data_from_cache() -> List[TrainingData]:
     Load training data from optimization cache.
     
     Scans the cache directory for successful optimization results
-    and extracts training data from them.
+    and extracts training data from them. Also loads data from online
+    learning (actual execution results).
     
     Enhanced in Iteration 104 to extract pickle_size, coefficient_of_variation,
     and function_complexity features when available.
     
+    Enhanced in Iteration 112 to include online learning data from actual executions.
+    
     Returns:
-        List of TrainingData samples
+        List of TrainingData samples from both cache and online learning
     """
     training_data = []
     
@@ -632,6 +635,15 @@ def load_training_data_from_cache() -> List[TrainingData]:
     except Exception:
         # If cache access fails, return empty list
         # This is not a critical error - prediction will just fall back to dry-run
+        pass
+    
+    # Also load online learning training data (from actual executions)
+    # This data is typically more accurate as it reflects real performance
+    try:
+        online_learning_data = load_ml_training_data()
+        training_data.extend(online_learning_data)
+    except Exception:
+        # Silently fail if online learning data can't be loaded
         pass
     
     return training_data
@@ -718,9 +730,182 @@ def predict_parameters(
     return prediction
 
 
+def update_model_from_execution(
+    func: Callable,
+    data_size: int,
+    estimated_item_time: float,
+    actual_n_jobs: int,
+    actual_chunksize: int,
+    actual_speedup: float,
+    pickle_size: Optional[int] = None,
+    coefficient_of_variation: Optional[float] = None,
+    verbose: bool = False
+) -> bool:
+    """
+    Update ML model with actual execution results (online learning).
+    
+    This function implements online learning by adding actual execution results
+    to the training data, allowing the model to continuously improve without
+    manual retraining.
+    
+    Args:
+        func: The function that was executed
+        data_size: Number of items processed
+        estimated_item_time: Estimated per-item execution time (seconds)
+        actual_n_jobs: Actual number of workers that were optimal
+        actual_chunksize: Actual chunk size that was optimal
+        actual_speedup: Actual speedup achieved
+        pickle_size: Average pickle size of return objects (bytes)
+        coefficient_of_variation: CV of execution times (0-2)
+        verbose: If True, print diagnostic information
+    
+    Returns:
+        True if successfully updated, False otherwise
+    
+    Example:
+        >>> # After executing with optimized parameters
+        >>> result = optimize(my_func, data, verbose=True)
+        >>> # Execute and measure actual performance
+        >>> actual_speedup = measure_actual_speedup(...)
+        >>> # Update model with results
+        >>> update_model_from_execution(
+        ...     my_func, len(data), 0.001,
+        ...     result.n_jobs, result.chunksize, actual_speedup
+        ... )
+    """
+    try:
+        # Compute function complexity
+        function_complexity = _compute_function_complexity(func)
+        
+        # Create features for this execution
+        features = WorkloadFeatures(
+            data_size=data_size,
+            estimated_item_time=estimated_item_time,
+            physical_cores=get_physical_cores(),
+            available_memory=get_available_memory(),
+            start_method=get_multiprocessing_start_method(),
+            pickle_size=pickle_size,
+            coefficient_of_variation=coefficient_of_variation,
+            function_complexity=function_complexity
+        )
+        
+        # Create training sample from execution results
+        training_sample = TrainingData(
+            features=features,
+            n_jobs=actual_n_jobs,
+            chunksize=actual_chunksize,
+            speedup=actual_speedup,
+            timestamp=time.time()
+        )
+        
+        # Save to cache in ML-specific format for training
+        # This uses the same cache infrastructure but with execution results
+        cache_dir = _get_ml_cache_dir()
+        
+        # Generate unique filename based on timestamp and function hash
+        func_hash = _compute_function_signature(func)
+        timestamp = int(time.time() * 1000)  # Milliseconds for uniqueness
+        cache_file = cache_dir / f"ml_training_{func_hash}_{timestamp}.json"
+        
+        # Prepare data for JSON serialization
+        training_data = {
+            'features': {
+                'data_size': features.data_size,
+                'estimated_item_time': features.estimated_item_time,
+                'physical_cores': features.physical_cores,
+                'available_memory': features.available_memory,
+                'start_method': features.start_method,
+                'pickle_size': pickle_size,
+                'coefficient_of_variation': coefficient_of_variation,
+                'function_complexity': function_complexity
+            },
+            'n_jobs': actual_n_jobs,
+            'chunksize': actual_chunksize,
+            'speedup': actual_speedup,
+            'timestamp': training_sample.timestamp,
+            'function_signature': func_hash
+        }
+        
+        # Write to file atomically
+        temp_file = cache_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(training_data, f, indent=2)
+        temp_file.replace(cache_file)
+        
+        if verbose:
+            print(f"✓ Online Learning: Added training sample to model")
+            print(f"  n_jobs={actual_n_jobs}, chunksize={actual_chunksize}, speedup={actual_speedup:.2f}x")
+            print(f"  Training data saved to: {cache_file.name}")
+        
+        return True
+        
+    except Exception as e:
+        if verbose:
+            print(f"⚠ Online Learning: Failed to update model: {e}")
+        return False
+
+
+def load_ml_training_data() -> List[TrainingData]:
+    """
+    Load training data specifically saved by online learning.
+    
+    This loads data from ml_training_*.json files saved by
+    update_model_from_execution(), which contain actual execution results.
+    
+    Returns:
+        List of TrainingData samples from online learning
+    """
+    training_data = []
+    
+    try:
+        cache_dir = _get_ml_cache_dir()
+        
+        # Load ML-specific training files
+        for cache_file in cache_dir.glob("ml_training_*.json"):
+            try:
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                
+                # Extract features
+                feat_dict = data.get('features', {})
+                features = WorkloadFeatures(
+                    data_size=feat_dict.get('data_size', 1000),
+                    estimated_item_time=feat_dict.get('estimated_item_time', 0.01),
+                    physical_cores=feat_dict.get('physical_cores', get_physical_cores()),
+                    available_memory=feat_dict.get('available_memory', get_available_memory()),
+                    start_method=feat_dict.get('start_method', get_multiprocessing_start_method()),
+                    pickle_size=feat_dict.get('pickle_size'),
+                    coefficient_of_variation=feat_dict.get('coefficient_of_variation'),
+                    function_complexity=feat_dict.get('function_complexity')
+                )
+                
+                # Create training sample
+                sample = TrainingData(
+                    features=features,
+                    n_jobs=data['n_jobs'],
+                    chunksize=data['chunksize'],
+                    speedup=data.get('speedup', 1.0),
+                    timestamp=data.get('timestamp', time.time())
+                )
+                
+                training_data.append(sample)
+                
+            except (json.JSONDecodeError, KeyError, ValueError):
+                # Skip corrupted files
+                continue
+    
+    except Exception:
+        # If cache access fails, return empty list
+        pass
+    
+    return training_data
+
+
 # Export public API
 __all__ = [
     'predict_parameters',
+    'update_model_from_execution',
+    'load_ml_training_data',
     'PredictionResult',
     'WorkloadFeatures',
     'TrainingData',
