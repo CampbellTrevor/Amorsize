@@ -37,6 +37,9 @@ MIN_TRAINING_SAMPLES = 3
 # Note: optimize() function uses 0.7 as default for consistency with conservative approach
 DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
+# Filename format for ML training data
+ML_TRAINING_FILE_FORMAT = "ml_training_{func_hash}_{timestamp}.json"
+
 
 class PredictionResult:
     """
@@ -628,23 +631,23 @@ def load_training_data_from_cache() -> List[TrainingData]:
                 
                 training_data.append(sample)
                 
-            except (json.JSONDecodeError, KeyError, ValueError):
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 # Skip corrupted or incompatible cache entries
                 continue
     
-    except Exception:
+    except (OSError, IOError, PermissionError):
         # If cache access fails, return empty list
         # This is not a critical error - prediction will just fall back to dry-run
+        pass
+    except ImportError:
+        # get_cache_dir may not be available
         pass
     
     # Also load online learning training data (from actual executions)
     # This data is typically more accurate as it reflects real performance
-    try:
-        online_learning_data = load_ml_training_data()
-        training_data.extend(online_learning_data)
-    except Exception:
-        # Silently fail if online learning data can't be loaded
-        pass
+    # load_ml_training_data() already has its own exception handling
+    online_learning_data = load_ml_training_data()
+    training_data.extend(online_learning_data)
     
     return training_data
 
@@ -802,10 +805,13 @@ def update_model_from_execution(
         # This uses the same cache infrastructure but with execution results
         cache_dir = _get_ml_cache_dir()
         
-        # Generate unique filename based on timestamp and function hash
+        # Generate unique filename using the format constant
         func_hash = _compute_function_signature(func)
-        timestamp = int(time.time() * 1000)  # Milliseconds for uniqueness
-        cache_file = cache_dir / f"ml_training_{func_hash}_{timestamp}.json"
+        timestamp_ms = int(time.time() * 1000)  # Milliseconds for uniqueness
+        cache_file = cache_dir / ML_TRAINING_FILE_FORMAT.format(
+            func_hash=func_hash,
+            timestamp=timestamp_ms
+        )
         
         # Prepare data for JSON serialization
         training_data = {
@@ -839,9 +845,20 @@ def update_model_from_execution(
         
         return True
         
-    except Exception as e:
+    except (OSError, IOError, PermissionError) as e:
+        # File system errors
         if verbose:
-            print(f"⚠ Online Learning: Failed to update model: {e}")
+            print(f"⚠ Online Learning: Failed to write training data: {e}")
+        return False
+    except (TypeError, ValueError) as e:
+        # JSON serialization errors
+        if verbose:
+            print(f"⚠ Online Learning: Failed to serialize training data: {e}")
+        return False
+    except Exception as e:
+        # Catch-all for unexpected errors
+        if verbose:
+            print(f"⚠ Online Learning: Unexpected error: {e}")
         return False
 
 
@@ -890,12 +907,17 @@ def load_ml_training_data() -> List[TrainingData]:
                 
                 training_data.append(sample)
                 
-            except (json.JSONDecodeError, KeyError, ValueError):
-                # Skip corrupted files
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+                # Skip corrupted or invalid files
+                # Could log these in verbose mode for debugging
+                continue
+            except (OSError, IOError) as e:
+                # Skip files with read errors
                 continue
     
-    except Exception:
-        # If cache access fails, return empty list
+    except (OSError, IOError, PermissionError):
+        # If cache directory access fails, return empty list
+        # This is not a critical error - prediction will just have less data
         pass
     
     return training_data

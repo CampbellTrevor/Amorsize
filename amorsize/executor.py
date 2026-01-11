@@ -10,6 +10,10 @@ from multiprocessing import Pool
 from .optimizer import optimize
 
 
+# Default estimated item time when not available from optimization result
+DEFAULT_ESTIMATED_ITEM_TIME = 0.01
+
+
 def execute(
     func: Callable[[Any], Any],
     data: Union[List, Iterator],
@@ -153,12 +157,12 @@ def execute(
             # Import online learning function
             from .ml_prediction import update_model_from_execution
             
-            # Calculate data size
-            data_size = len(list(opt_result.data)) if hasattr(opt_result.data, '__len__') else len(results)
+            # Calculate data size from results (avoids consuming iterator)
+            data_size = len(results)
             
             # Estimate actual per-item time from optimization result
             # This is approximate but useful for training
-            estimated_item_time = getattr(opt_result, 'avg_execution_time', 0.01)
+            estimated_item_time = getattr(opt_result, 'avg_execution_time', DEFAULT_ESTIMATED_ITEM_TIME)
             
             # Get additional features if available from optimization result
             pickle_size = getattr(opt_result, 'pickle_size', None)
