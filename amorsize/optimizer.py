@@ -397,7 +397,8 @@ def _validate_optimize_parameters(
     enable_memory_tracking: bool,
     use_ml_prediction: bool,
     ml_confidence_threshold: float,
-    adjust_for_system_load: bool
+    adjust_for_system_load: bool,
+    use_advanced_cost_model: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -482,6 +483,10 @@ def _validate_optimize_parameters(
     # Validate adjust_for_system_load
     if not isinstance(adjust_for_system_load, bool):
         return f"adjust_for_system_load must be a boolean, got {type(adjust_for_system_load).__name__}"
+    
+    # Validate use_advanced_cost_model
+    if not isinstance(use_advanced_cost_model, bool):
+        return f"use_advanced_cost_model must be a boolean, got {type(use_advanced_cost_model).__name__}"
     
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
@@ -598,7 +603,8 @@ def optimize(
     enable_memory_tracking: bool = True,
     use_ml_prediction: bool = False,
     ml_confidence_threshold: float = 0.7,
-    adjust_for_system_load: bool = False
+    adjust_for_system_load: bool = False,
+    use_advanced_cost_model: bool = False
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -711,6 +717,16 @@ def optimize(
                 (default: 75%). These thresholds are internal defaults in the implementation.
                 (default: False for backward compatibility). Must be a boolean. Requires
                 psutil for load detection.
+        use_advanced_cost_model: If True, use advanced cost modeling that accounts for
+                hardware-level effects beyond basic Amdahl's Law, including:
+                - Cache coherency overhead (L1/L2/L3 cache effects)
+                - Memory bandwidth saturation (memory bus contention)
+                - NUMA penalties (cross-node access overhead)
+                - False sharing (cache line ping-ponging)
+                This provides more accurate speedup predictions on multi-core systems but
+                adds ~10-20ms overhead for topology detection (cached after first call).
+                (default: False for backward compatibility). Must be a boolean.
+                Recommended for: large core counts (>8), NUMA systems, memory-intensive workloads.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -753,7 +769,8 @@ def optimize(
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
         auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io,
         enable_function_profiling, use_cache, enable_memory_tracking,
-        use_ml_prediction, ml_confidence_threshold, adjust_for_system_load
+        use_ml_prediction, ml_confidence_threshold, adjust_for_system_load,
+        use_advanced_cost_model
     )
     
     if validation_error:
@@ -1502,17 +1519,55 @@ def optimize(
     _report_progress("Estimating speedup", 0.9)
     
     if estimated_total_time and optimal_n_jobs > 1 and total_items > 0:
-        # Use refined Amdahl's Law calculation with overhead accounting
-        estimated_speedup = calculate_amdahl_speedup(
-            total_compute_time=estimated_total_time,
-            pickle_overhead_per_item=avg_pickle_time,
-            spawn_cost_per_worker=spawn_cost,
-            chunking_overhead_per_chunk=chunking_overhead,
-            n_jobs=optimal_n_jobs,
-            chunksize=optimal_chunksize,
-            total_items=total_items,
-            data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
-        )
+        # Choose cost model based on user preference
+        if use_advanced_cost_model:
+            # Import cost model module lazily
+            from .cost_model import detect_system_topology, calculate_advanced_amdahl_speedup
+            
+            # Detect system topology (cached after first call)
+            system_topology = detect_system_topology(physical_cores)
+            
+            if verbose:
+                print(f"Using advanced cost model with:")
+                print(f"  L1 cache: {system_topology.cache_info.l1_size / 1024:.0f}KB")
+                print(f"  L2 cache: {system_topology.cache_info.l2_size / 1024:.0f}KB")
+                print(f"  L3 cache: {system_topology.cache_info.l3_size / (1024*1024):.0f}MB")
+                print(f"  NUMA nodes: {system_topology.numa_info.numa_nodes}")
+                print(f"  Memory bandwidth: {system_topology.memory_bandwidth.bandwidth_gb_per_sec:.1f} GB/s")
+            
+            # Use advanced cost model with hardware topology
+            estimated_speedup, cost_breakdown = calculate_advanced_amdahl_speedup(
+                total_compute_time=estimated_total_time,
+                pickle_overhead_per_item=avg_pickle_time,
+                spawn_cost_per_worker=spawn_cost,
+                chunking_overhead_per_chunk=chunking_overhead,
+                n_jobs=optimal_n_jobs,
+                chunksize=optimal_chunksize,
+                total_items=total_items,
+                data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time,
+                system_topology=system_topology,
+                data_size_per_item=sampling_result.data_size,
+                return_size_per_item=return_size
+            )
+            
+            if verbose:
+                print(f"Advanced cost factors:")
+                print(f"  Cache coherency: {cost_breakdown['cache_coherency_factor']:.3f}x overhead")
+                print(f"  Bandwidth slowdown: {cost_breakdown['bandwidth_slowdown']:.3f}x")
+                print(f"  False sharing: {cost_breakdown['false_sharing_factor']:.3f}x overhead")
+        else:
+            # Use basic Amdahl's Law calculation
+            estimated_speedup = calculate_amdahl_speedup(
+                total_compute_time=estimated_total_time,
+                pickle_overhead_per_item=avg_pickle_time,
+                spawn_cost_per_worker=spawn_cost,
+                chunking_overhead_per_chunk=chunking_overhead,
+                n_jobs=optimal_n_jobs,
+                chunksize=optimal_chunksize,
+                total_items=total_items,
+                data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
+            )
+            cost_breakdown = None
         
         # Populate diagnostic profile with speedup analysis
         if diag:
@@ -1525,7 +1580,12 @@ def optimize(
             diag.overhead_spawn = spawn_cost * optimal_n_jobs
             diag.overhead_ipc = avg_pickle_time * total_items
             diag.overhead_chunking = chunking_overhead * num_chunks
-            diag.parallel_compute_time = estimated_total_time / optimal_n_jobs
+            
+            # Use advanced cost model breakdown if available
+            if cost_breakdown is not None:
+                diag.parallel_compute_time = cost_breakdown['parallel_compute']
+            else:
+                diag.parallel_compute_time = estimated_total_time / optimal_n_jobs
         
         if verbose:
             print(f"Estimated speedup: {estimated_speedup:.2f}x")
