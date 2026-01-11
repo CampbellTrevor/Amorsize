@@ -1238,7 +1238,7 @@ def optimize(
                 if sampling_result.unpicklable_data_index < len(sampling_result.sample):
                     item = sampling_result.sample[sampling_result.unpicklable_data_index]
                     item_type = type(item).__name__
-            except:
+            except (IndexError, AttributeError, TypeError):
                 pass
         
         error_message = get_data_picklability_error_message(

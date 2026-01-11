@@ -1,48 +1,52 @@
-# Context for Next Agent - Iteration 133
+# Context for Next Agent - Iteration 134
 
-## What Was Accomplished in Iteration 132
+## What Was Accomplished in Iteration 133
 
-**SPAWN COST MEASUREMENT VERIFICATION** - Successfully verified that spawn cost measurement accurately captures process creation overhead with comprehensive quality validation.
+**ENHANCED ERROR MESSAGES & ACTIONABLE GUIDANCE** - Successfully implemented comprehensive, user-friendly error messages with concrete examples and step-by-step solutions for all common optimization failure scenarios.
 
 ### Implementation Completed
 
-1. **Comprehensive Spawn Cost Verification Suite** (`tests/test_spawn_cost_verification.py`):
-   - 23 new tests verifying spawn cost measurement quality
-   - All tests passing (23/23) ✅
-   - Validates measurement accuracy, consistency, platform awareness, performance, and reliability
+1. **New Error Messages Module** (`amorsize/error_messages.py`):
+   - 7 specialized error message functions with actionable guidance
+   - All functions tested and working (32 new tests, all passing) ✅
+   - Provides clear structure: Common Causes → Solutions → Code Examples
+   - Includes before/after examples (❌ vs ✅) for clarity
 
-2. **Test Coverage** - Verified spawn cost measurement handles:
-   - ✅ **Accuracy**: Reflects actual pool creation overhead (within 10x of marginal cost)
-   - ✅ **Order of Magnitude**: Correct for each start method (fork: 1-100ms, spawn: 50-1000ms, forkserver: 10-500ms)
-   - ✅ **Start Method Awareness**: Respects actual start method, not just OS default
-   - ✅ **Consistency**: Repeated measurements have CV < 1.0 (stable)
-   - ✅ **Cached Stability**: Cached value remains identical across calls
-   - ✅ **Estimate Consistency**: Within 10x of estimate (quality check validation)
-   - ✅ **Platform Detection**: Correctly identifies fork/spawn/forkserver
-   - ✅ **Estimate Accuracy**: Uses correct constants for start method
-   - ✅ **Measurement Speed**: Completes in < 500ms, cached access < 1ms
-   - ✅ **Benchmark Flag**: Respects use_benchmark parameter
-   - ✅ **Fallback Reliability**: Falls back to estimate on errors
-   - ✅ **Concurrent Access**: Thread-safe caching works correctly
-   - ✅ **Quality Checks**: Rejects unrealistic values
-   - ✅ **Integration**: Used by optimizer without errors
-   - ✅ **Optimization Influence**: Affects optimizer decisions appropriately
+2. **Enhanced Error Functions**:
+   - ✅ `get_picklability_error_message()` - Lambda/nested function guidance
+   - ✅ `get_data_picklability_error_message()` - Unpicklable data guidance
+   - ✅ `get_memory_constraint_message()` - Memory solutions with code
+   - ✅ `get_no_speedup_benefit_message()` - Function too fast guidance
+   - ✅ `get_workload_too_small_message()` - Small dataset guidance
+   - ✅ `get_sampling_failure_message()` - Debugging help
+   - ✅ `format_warning_with_guidance()` - Warning enhancements
 
-3. **Validation Results**:
-   - Measured spawn cost on fork (Linux): ~4.8ms (within 1-100ms range) ✅
-   - Estimate for fork: 15ms (reasonable fallback) ✅
-   - Measurement time: ~10ms (fast enough for optimization) ✅
-   - Quality validation: 4 checks ensure measurement reliability ✅
-   - All 39 spawn cost tests passing (16 existing + 23 new) ✅
+3. **Optimizer Integration** - Updated 5 key error paths:
+   - ✅ Sampling failures (line ~1175)
+   - ✅ Function picklability (line ~1192)
+   - ✅ Data picklability (line ~1211)
+   - ✅ Memory constraints (line ~1551)
+   - ✅ Workload too small (line ~1408)
+   - ✅ No speedup benefit (line ~1676)
+
+4. **Test Coverage**:
+   - 32 new tests in `tests/test_enhanced_error_messages.py`
+   - All 66 core tests passing ✅
+   - Tests validate message quality, structure, and integration
+   - Backward compatibility maintained
+
+5. **Documentation**:
+   - Demo script: `examples/demo_enhanced_errors.py`
+   - Shows enhanced UX in action
+   - Interactive walkthrough of error scenarios
 
 ### Code Quality
 
-- **Spawn Cost Measurement**: ✅ VERIFIED - Accurately captures process creation overhead
-- **Quality Validation**: ✅ ROBUST - 4 quality checks ensure reliable measurements
-- **Platform Awareness**: ✅ COMPLETE - Handles fork/spawn/forkserver correctly
-- **Performance**: ✅ EFFICIENT - Fast measurement (~10ms), instant cached access
-- **Reliability**: ✅ PRODUCTION-READY - Graceful fallback, thread-safe, handles edge cases
-- **Test Coverage**: ✅ COMPREHENSIVE - 39 tests, all passing
+- **Error Messages**: ✅ EXCELLENT - Clear, actionable, with code examples
+- **Integration**: ✅ SEAMLESS - All error paths updated, no regressions
+- **Test Coverage**: ✅ COMPREHENSIVE - 32 tests, 100% pass rate
+- **User Experience**: ✅ SIGNIFICANTLY IMPROVED - From terse errors to actionable guidance
+- **Backward Compatibility**: ✅ MAINTAINED - All existing tests pass
 
 ### Strategic Priorities for Next Iteration
 
@@ -62,40 +66,46 @@ Following the decision matrix from the problem statement:
    - Chunksize calculation: ✅ Verified correct implementation (Iteration 131)
    - Spawn cost measurement: ✅ Verified accurate and reliable (Iteration 132)
 
-4. **UX & ROBUSTNESS** - ⚠️ Next Priority
-   - Edge case handling: ✓ Good (pickling errors, zero-length data)
+4. **UX & ROBUSTNESS** - ⚠️ In Progress (Iteration 133 Complete)
+   - Error messages: ✅ Enhanced with actionable guidance (Iteration 133)
    - API cleanliness: ✓ `from amorsize import optimize`
-   - Error messages: ⚠️ Could be improved
-   - Documentation: ⚠️ Could be enhanced
+   - Edge case handling: ✓ Good (pickling errors, zero-length data)
+   - Documentation: ⚠️ Could be enhanced further
+   - CLI experience: ⚠️ Could add more features
 
-### Recommendation for Iteration 133
+### Recommendation for Iteration 134
 
-**Focus on UX & Robustness** (Priority #4 from decision matrix):
+**Continue UX & Robustness Enhancements** (Priority #4 from decision matrix):
 
-All core logic is now verified and production-ready! The next iteration should focus on:
+With error messaging now excellent, the next iteration should focus on:
 
-1. **Error Messaging Enhancement**: Improve error messages when optimization fails
-   - Clear guidance when function is not picklable
-   - Helpful warnings when parallelization is not beneficial
-   - Actionable advice when memory constraints are hit
+1. **Documentation Enhancement**: 
+   - Add "Troubleshooting Guide" to docs/
+   - Create "Best Practices" guide
+   - Expand README with more real-world examples
+   - Add "Performance Tuning" guide
 
-2. **Documentation Enhancement**: Add comprehensive examples and docstrings
-   - Usage patterns for common scenarios
-   - Performance tuning guide
-   - Troubleshooting guide for edge cases
+2. **CLI Experience Enhancement**:
+   - Add `--explain` flag for detailed diagnostics
+   - Add `--tips` flag for optimization suggestions
+   - Improve help text with examples
+   - Add more output formatting options
 
-3. **API Polish**: Review and enhance the public API surface
-   - Ensure consistent naming conventions
-   - Add convenience functions for common use cases
-   - Improve type hints and IDE support
+3. **API Convenience Functions**:
+   - Add `optimize_or_execute()` - one-liner for common case
+   - Add `quick_optimize()` - skip profiling for speed
+   - Add `safe_optimize()` - extra validation and checks
 
-Choose the highest-value UX improvement that will help users get the most out of Amorsize.
+Choose the highest-value UX improvement that complements the error messaging enhancements from Iteration 133.
 
-## Files Modified in Iteration 132
+## Files Modified in Iteration 133
 
-- `tests/test_spawn_cost_verification.py` - NEW: Comprehensive verification suite for spawn cost measurement quality (23 tests)
+- `amorsize/error_messages.py` - NEW: Comprehensive error message functions (7 functions)
+- `amorsize/optimizer.py` - Enhanced 6 error paths with actionable guidance
+- `tests/test_enhanced_error_messages.py` - NEW: 32 comprehensive tests
+- `examples/demo_enhanced_errors.py` - NEW: Interactive demonstration
 
-## Architecture Status After Iteration 132
+## Architecture Status After Iteration 133
 
 The optimizer now has:
 ✅ **Robust Infrastructure**: Physical core detection, memory limits, cgroup-aware
@@ -104,18 +114,18 @@ The optimizer now has:
   - Amdahl's Law with IPC overlap ✅
   - Chunksize calculation with 0.2s target ✅
   - Spawn cost measurement: VERIFIED ✅
-⚠️ **UX & Robustness**: Good foundation, next priority for enhancement
+✅ **Enhanced UX & Robustness**: 
+  - Excellent error messages with actionable guidance ✅
+  - Good API cleanliness ✓
+  - Solid edge case handling ✓
+  - Documentation: Next priority ⚠️
 
-## Key Insights from Iteration 132
+## Key Insights from Iteration 133
 
-1. **Spawn Cost Measurement is Accurate**: Reflects actual pool creation overhead within 10x of marginal cost
-2. **Quality Validation Works**: 4 quality checks ensure measurements are reliable
-   - Check 1: Within start-method-specific bounds (fork: 1-100ms, spawn: 50-1000ms)
-   - Check 2: Signal strength validation (2-worker > 1.1x 1-worker time)
-   - Check 3: Consistency with estimate (within 10x)
-   - Check 4: Overhead fraction validation (< 90% of total time)
-3. **Platform Awareness is Correct**: Properly handles fork/spawn/forkserver differences
-4. **Performance is Excellent**: Measurement takes ~10ms, cached access is instant
-5. **Reliability is Robust**: Thread-safe caching, graceful fallbacks, handles errors
+1. **Error Messages Transform UX**: Clear, actionable guidance dramatically improves user experience
+2. **Code Examples Are Essential**: Before/after examples (❌ vs ✅) help users fix issues quickly
+3. **Structure Matters**: "Common Causes → Solutions → Examples" pattern is highly effective
+4. **Verbose Mode Integration**: Enhanced messages shine when verbose=True is used
+5. **Minimal Changes Required**: Only ~100 lines of optimizer changes for major UX improvement
 
-All core logic components are now verified and production-ready! The optimizer has a solid foundation for accurate parallelization decisions.
+The foundation is now rock-solid. Error handling provides excellent guidance. The next iteration should focus on documentation and convenience features to make Amorsize even easier to use effectively.

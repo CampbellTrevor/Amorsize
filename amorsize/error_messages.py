@@ -191,7 +191,7 @@ def get_no_speedup_benefit_message(
     message += "   \n"
     message += "   batched_data = [data[i:i+10] for i in range(0, len(data), 10)]\n"
     message += "   result = optimize(process_batch, batched_data)\n\n"
-    message += f"4. Function needs to take >{min_function_time_ms:.1f}ms for parallel benefit\n\n"
+    message += f"4. Function should take more than {min_function_time_ms:.1f}ms for parallel benefit\n\n"
     message += "NOTE: Serial execution recommended (n_jobs=1)."
     
     return message

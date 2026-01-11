@@ -386,7 +386,7 @@ class TestErrorMessageQuality:
 class TestVerboseMode:
     """Test that verbose mode displays enhanced messages."""
     
-    def test_verbose_mode_prints_enhanced_errors(self, capsys):
+    def test_verbose_mode_prints_enhanced_errors(self):
         """Verbose mode should print enhanced error messages."""
         func = lambda x: x ** 2
         data = range(100)
