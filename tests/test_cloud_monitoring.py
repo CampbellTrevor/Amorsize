@@ -33,8 +33,7 @@ from amorsize.monitoring import (
 class TestCloudWatchMetrics:
     """Tests for AWS CloudWatch integration."""
     
-    @staticmethod
-    def _setup_mock_cloudwatch():
+    def _setup_mock_cloudwatch(self):
         """
         Helper method to set up a mocked CloudWatchMetrics instance.
         
@@ -177,6 +176,7 @@ class TestCloudWatchMetrics:
         ctx = HookContext(
             event=HookEvent.PRE_EXECUTE,
             timestamp=time.time(),
+            n_jobs=4,
         )
         
         # Should not raise exception
