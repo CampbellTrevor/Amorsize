@@ -180,7 +180,10 @@ def optimize_streaming(
     adaptation_rate: float = 0.3,
     pool_manager: Optional[Any] = None,
     enable_memory_backpressure: bool = False,
-    memory_threshold: float = 0.8
+    memory_threshold: float = 0.8,
+    enable_ml_prediction: bool = False,
+    ml_confidence_threshold: float = 0.7,
+    estimated_item_time: Optional[float] = None
 ) -> StreamingOptimizationResult:
     """
     Optimize parameters for streaming workloads using imap/imap_unordered.
@@ -222,6 +225,14 @@ def optimize_streaming(
         memory_threshold: Memory usage threshold (0.0-1.0) to trigger backpressure
                          (default: 0.8 = 80%). Only used when 
                          enable_memory_backpressure=True.
+        enable_ml_prediction: Use ML to predict parameters without dry-run sampling
+                             (default: False). Requires historical training data.
+                             10-100x faster than dry-run when confident prediction available.
+        ml_confidence_threshold: Minimum confidence (0-1) required for ML prediction
+                                (default: 0.7). Falls back to dry-run if confidence too low.
+        estimated_item_time: Optional rough estimate of per-item execution time (seconds).
+                            Only used for ML prediction when enable_ml_prediction=True.
+                            If not provided, a default estimate will be used.
     
     Returns:
         StreamingOptimizationResult with optimal parameters for streaming:
@@ -283,6 +294,89 @@ def optimize_streaming(
         adaptation_rate, pool_manager, enable_memory_backpressure, 
         memory_threshold
     )
+    
+    # Try ML prediction first if enabled
+    if enable_ml_prediction:
+        try:
+            from .ml_prediction import predict_streaming_parameters
+            
+            # Estimate data size for ML prediction
+            from .sampling import estimate_total_items
+            data_size = estimate_total_items(data, hasattr(data, '__iter__') and not hasattr(data, '__len__'))
+            
+            # Use provided estimate or default
+            item_time = estimated_item_time if estimated_item_time is not None else 0.01
+            
+            if data_size > 0:
+                ml_result = predict_streaming_parameters(
+                    func=func,
+                    data_size=data_size,
+                    estimated_item_time=item_time,
+                    confidence_threshold=ml_confidence_threshold,
+                    verbose=verbose,
+                    prefer_ordered=prefer_ordered
+                )
+                
+                if ml_result is not None:
+                    # ML prediction succeeded with high confidence
+                    if verbose:
+                        print(f"\n{'='*60}")
+                        print("ML-ENHANCED STREAMING OPTIMIZATION")
+                        print(f"{'='*60}")
+                        print(f"✓ ML Prediction: n_jobs={ml_result.n_jobs}, "
+                              f"chunksize={ml_result.chunksize}, "
+                              f"buffer_size={ml_result.buffer_size}")
+                        print(f"  Confidence: {ml_result.confidence:.1%}")
+                        method = "imap" if ml_result.use_ordered else "imap_unordered"
+                        print(f"  Method: {method}")
+                        print(f"  Training samples: {ml_result.training_samples}")
+                        print(f"\n→ Using ML prediction (10-100x faster than dry-run)")
+                        print(f"{'='*60}\n")
+                    
+                    # Determine buffer size (prefer user override)
+                    final_buffer_size = buffer_size if buffer_size is not None else ml_result.buffer_size
+                    
+                    # Determine adaptive chunking parameters
+                    adaptive_params = {}
+                    if enable_adaptive_chunking:
+                        adaptive_params = {
+                            'initial_chunksize': ml_result.chunksize,
+                            'target_chunk_duration': target_chunk_duration,
+                            'adaptation_rate': adaptation_rate,
+                            'min_chunksize': max(1, ml_result.chunksize // 4),
+                            'max_chunksize': ml_result.chunksize * 4
+                        }
+                    
+                    # Return ML-based result
+                    return StreamingOptimizationResult(
+                        n_jobs=ml_result.n_jobs,
+                        chunksize=ml_result.chunksize,
+                        use_ordered=ml_result.use_ordered,
+                        reason=ml_result.reason,
+                        estimated_speedup=2.0,  # Conservative estimate without dry-run
+                        warnings=[],
+                        data=data,
+                        profile=None,  # No profile available from ML prediction
+                        use_adaptive_chunking=enable_adaptive_chunking,
+                        adaptive_chunking_params=adaptive_params,
+                        buffer_size=final_buffer_size,
+                        memory_backpressure_enabled=enable_memory_backpressure
+                    )
+                elif verbose:
+                    print(f"\n{'='*60}")
+                    print("ML PREDICTION CONFIDENCE TOO LOW")
+                    print(f"{'='*60}")
+                    print(f"→ Falling back to dry-run sampling for accurate analysis")
+                    print(f"{'='*60}\n")
+            elif verbose:
+                print(f"\nℹ Cannot estimate data size - skipping ML prediction\n")
+                
+        except ImportError:
+            if verbose:
+                print(f"\n⚠ ML prediction module not available - using dry-run sampling\n")
+        except Exception as e:
+            if verbose:
+                print(f"\n⚠ ML prediction error: {e} - falling back to dry-run\n")
     
     # Initialize diagnostic profile if requested
     diag = DiagnosticProfile() if profile else None

@@ -11,6 +11,7 @@ Key Features:
 - Provides confidence scores for predictions
 - Falls back to dry-run sampling if confidence is low
 - k-Nearest Neighbors model (no external ML dependencies)
+- Supports both batch (optimize) and streaming (optimize_streaming) workloads
 """
 
 import json
@@ -74,6 +75,57 @@ class PredictionResult:
         return (
             f"PredictionResult(n_jobs={self.n_jobs}, "
             f"chunksize={self.chunksize}, "
+            f"confidence={self.confidence:.2f})"
+        )
+
+
+class StreamingPredictionResult(PredictionResult):
+    """
+    Container for ML prediction results specific to streaming workloads.
+    
+    Extends PredictionResult with streaming-specific parameters like
+    buffer size and ordering preference.
+    
+    Attributes:
+        n_jobs: Predicted number of workers
+        chunksize: Predicted chunk size
+        confidence: Confidence score (0-1) for this prediction
+        reason: Explanation of prediction
+        training_samples: Number of historical samples used for training
+        feature_match_score: How well the current workload matches training data
+        buffer_size: Predicted optimal buffer size for imap/imap_unordered
+        use_ordered: Whether to use ordered (imap) vs unordered (imap_unordered)
+    """
+    
+    def __init__(
+        self,
+        n_jobs: int,
+        chunksize: int,
+        confidence: float,
+        reason: str,
+        training_samples: int,
+        feature_match_score: float,
+        buffer_size: Optional[int] = None,
+        use_ordered: bool = True
+    ):
+        super().__init__(
+            n_jobs=n_jobs,
+            chunksize=chunksize,
+            confidence=confidence,
+            reason=reason,
+            training_samples=training_samples,
+            feature_match_score=feature_match_score
+        )
+        self.buffer_size = buffer_size if buffer_size is not None else n_jobs * 3
+        self.use_ordered = use_ordered
+    
+    def __repr__(self):
+        method = "imap" if self.use_ordered else "imap_unordered"
+        return (
+            f"StreamingPredictionResult(n_jobs={self.n_jobs}, "
+            f"chunksize={self.chunksize}, "
+            f"buffer_size={self.buffer_size}, "
+            f"method={method}, "
             f"confidence={self.confidence:.2f})"
         )
 
@@ -731,6 +783,124 @@ def predict_parameters(
             print(f"ML Prediction: Low confidence (< {confidence_threshold:.1%}), falling back to dry-run")
     
     return prediction
+
+
+def predict_streaming_parameters(
+    func: Callable,
+    data_size: int,
+    estimated_item_time: float = 0.01,
+    confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    verbose: bool = False,
+    pickle_size: Optional[int] = None,
+    coefficient_of_variation: Optional[float] = None,
+    prefer_ordered: Optional[bool] = None
+) -> Optional[StreamingPredictionResult]:
+    """
+    Predict optimal streaming parameters (n_jobs, chunksize, buffer_size) using ML model.
+    
+    This function extends predict_parameters() to also predict streaming-specific
+    parameters like buffer_size and ordering preference (imap vs imap_unordered).
+    
+    Args:
+        func: Function to optimize (used for grouping related workloads)
+        data_size: Number of items in the dataset
+        estimated_item_time: Rough estimate of per-item execution time (seconds)
+        confidence_threshold: Minimum confidence to return prediction (0-1)
+        verbose: If True, print diagnostic information
+        pickle_size: Average pickle size of return objects (bytes) - optional
+        coefficient_of_variation: CV of execution times (0-2) - optional
+        prefer_ordered: User preference for ordering (None = auto-decide)
+    
+    Returns:
+        StreamingPredictionResult if confident enough, None if should fall back to dry-run
+    
+    Example:
+        >>> result = predict_streaming_parameters(my_func, 10000, 0.001)
+        >>> if result and result.confidence > 0.7:
+        ...     print(f"Using ML prediction: n_jobs={result.n_jobs}, buffer={result.buffer_size}")
+        ... else:
+        ...     print("Falling back to dry-run sampling")
+    """
+    # First get base prediction using standard predict_parameters
+    base_prediction = predict_parameters(
+        func=func,
+        data_size=data_size,
+        estimated_item_time=estimated_item_time,
+        confidence_threshold=confidence_threshold,
+        verbose=verbose,
+        pickle_size=pickle_size,
+        coefficient_of_variation=coefficient_of_variation
+    )
+    
+    if base_prediction is None:
+        if verbose:
+            print("ML Streaming Prediction: Base prediction failed, falling back to dry-run")
+        return None
+    
+    # Calculate buffer size based on n_jobs
+    # Default: n_jobs * 3 for good throughput without excessive memory
+    buffer_size = base_prediction.n_jobs * 3
+    
+    # Adjust buffer size based on estimated memory usage
+    physical_cores = get_physical_cores()
+    available_memory = get_available_memory()
+    
+    if pickle_size and pickle_size > 0:
+        # Conservative buffer: use 10% of available memory
+        max_buffer_memory = available_memory * 0.1
+        max_buffer_items = int(max_buffer_memory / pickle_size)
+        
+        # Clamp buffer size to memory constraint
+        if max_buffer_items < buffer_size:
+            buffer_size = max(base_prediction.n_jobs, max_buffer_items)
+            if verbose:
+                print(f"ML Streaming Prediction: Adjusted buffer_size to {buffer_size} "
+                      f"based on memory constraints")
+    
+    # Determine ordering preference
+    # Use unordered (imap_unordered) if user doesn't care and it's beneficial
+    use_ordered = True
+    if prefer_ordered is None:
+        # Auto-decide: use unordered if workload is heterogeneous or data is large
+        # Unordered provides better load balancing for heterogeneous workloads
+        if coefficient_of_variation is not None and coefficient_of_variation > 0.5:
+            use_ordered = False
+            if verbose:
+                print(f"ML Streaming Prediction: Recommending imap_unordered "
+                      f"for heterogeneous workload (CV={coefficient_of_variation:.2f})")
+        elif data_size > 10000:
+            # For large datasets, unordered can provide better throughput
+            use_ordered = False
+            if verbose:
+                print(f"ML Streaming Prediction: Recommending imap_unordered "
+                      f"for large dataset ({data_size} items)")
+    else:
+        use_ordered = prefer_ordered
+        if verbose:
+            method = "imap" if use_ordered else "imap_unordered"
+            print(f"ML Streaming Prediction: Using user preference: {method}")
+    
+    # Create streaming-specific result
+    streaming_result = StreamingPredictionResult(
+        n_jobs=base_prediction.n_jobs,
+        chunksize=base_prediction.chunksize,
+        confidence=base_prediction.confidence,
+        reason=f"ML prediction for streaming workload: {base_prediction.reason}",
+        training_samples=base_prediction.training_samples,
+        feature_match_score=base_prediction.feature_match_score,
+        buffer_size=buffer_size,
+        use_ordered=use_ordered
+    )
+    
+    if verbose:
+        method = "imap" if use_ordered else "imap_unordered"
+        print(f"ML Streaming Prediction: Success")
+        print(f"  n_jobs={streaming_result.n_jobs}, "
+              f"chunksize={streaming_result.chunksize}, "
+              f"buffer_size={streaming_result.buffer_size}")
+        print(f"  method={method}, confidence={streaming_result.confidence:.1%}")
+    
+    return streaming_result
 
 
 def update_model_from_execution(
