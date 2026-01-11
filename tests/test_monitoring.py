@@ -584,7 +584,8 @@ class TestEdgeCasesAndErrorHandling:
         assert 'n_jobs' in payload
         assert payload['n_jobs'] == 4
         # None values should be filtered out
-        assert 'chunksize' not in payload or payload.get('chunksize') is None
+        assert 'chunksize' not in payload
+        assert 'total_items' not in payload
     
     def test_prometheus_thread_safety_with_concurrent_servers(self):
         """Test that multiple Prometheus instances don't interfere."""

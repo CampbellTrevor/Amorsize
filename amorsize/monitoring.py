@@ -198,11 +198,11 @@ class PrometheusMetrics:
                     self._workers_active = ctx.n_jobs
             
             elif ctx.event == HookEvent.POST_EXECUTE:
-                if ctx.elapsed_time > 0:
+                if ctx.elapsed_time is not None:
                     self._execution_duration_seconds.append(ctx.elapsed_time)
                 if ctx.total_items:
                     self._items_processed_total += ctx.total_items
-                if ctx.throughput_items_per_sec > 0:
+                if ctx.throughput_items_per_sec is not None:
                     self._throughput_items_per_second = ctx.throughput_items_per_sec
                 self._workers_active = 0  # Execution complete
             
@@ -421,11 +421,11 @@ def create_statsd_hook(
                     client.gauge('workers.active', ctx.n_jobs)
             
             elif ctx.event == HookEvent.POST_EXECUTE:
-                if ctx.elapsed_time > 0:
+                if ctx.elapsed_time is not None:
                     client.timing('execution.duration', int(ctx.elapsed_time * 1000))
                 if ctx.total_items:
                     client.increment('items.processed', ctx.total_items)
-                if ctx.throughput_items_per_sec > 0:
+                if ctx.throughput_items_per_sec is not None:
                     client.gauge('throughput', ctx.throughput_items_per_sec)
                 client.gauge('workers.active', 0)
             
