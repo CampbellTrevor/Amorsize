@@ -1607,6 +1607,9 @@ class SimpleLinearPredictor:
         If no persisted weights exist, use initial weights.
         This allows the ensemble to remember which strategies work best
         across program executions.
+        
+        Validates loaded weights for security: ensures only expected strategies
+        with reasonable numeric values are loaded.
         """
         if not self.enable_ensemble:
             return
@@ -1619,7 +1622,33 @@ class SimpleLinearPredictor:
             if weights_path.exists():
                 with open(weights_path, 'r') as f:
                     data = json.load(f)
-                    self.ensemble_weights = data.get('weights', INITIAL_ENSEMBLE_WEIGHTS)
+                    loaded_weights = data.get('weights', {})
+                    
+                    # Validate loaded weights (security)
+                    if not isinstance(loaded_weights, dict):
+                        return  # Invalid format, use initial weights
+                    
+                    # Only load weights for expected strategies
+                    valid_strategies = {'knn', 'linear', 'cluster'}
+                    validated_weights = {}
+                    
+                    for strategy, weight in loaded_weights.items():
+                        # Check strategy name is expected
+                        if strategy not in valid_strategies:
+                            continue
+                        
+                        # Check weight is numeric and reasonable
+                        if not isinstance(weight, (int, float)):
+                            continue
+                        
+                        # Enforce reasonable bounds [MIN_STRATEGY_WEIGHT, 10.0]
+                        # Weights above 10.0 are unrealistic and could indicate corruption
+                        if MIN_STRATEGY_WEIGHT <= weight <= 10.0:
+                            validated_weights[strategy] = float(weight)
+                    
+                    # Only use validated weights if we got all expected strategies
+                    if len(validated_weights) >= 2:  # Need at least 2 strategies
+                        self.ensemble_weights = validated_weights
         except Exception:
             # If loading fails, just use initial weights
             pass
