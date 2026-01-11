@@ -1,71 +1,69 @@
-# Context for Next Agent - Iteration 96 Complete
+# Context for Next Agent - Iteration 97 Complete
 
 ## What Was Accomplished
 
-**PERFORMANCE OPTIMIZATION** - Consolidated 4 separate conditional checks into a single check when calculating averages in the dry_run sampling loop. Achieved ~47ns savings per dry_run (9.9% improvement in averaging section) with cleaner, more maintainable code structure. All tests pass (1189 passing, including 20 new tests) with zero security vulnerabilities.
+**PERFORMANCE OPTIMIZATION** - Inlined delta2 calculation in Welford's variance algorithm, eliminating a temporary variable assignment in the hot sampling loop. Achieved ~6ns savings per iteration (~30ns per typical 5-item dry_run, 1.068x speedup) with zero complexity cost. All tests pass (1199 passing, including 8 new tests) with zero security vulnerabilities.
 
-### Critical Achievement (Iteration 96)
+### Critical Achievement (Iteration 97)
 
-**Averaging Conditional Check Consolidation**
+**Welford's Algorithm delta2 Inline Optimization**
 
-Following the problem statement's guidance to select "ONE atomic, high-value task" and continuing the pattern of micro-optimizations from iterations 84-95, I identified and consolidated redundant conditional checks in the averaging calculations section of the sampling loop.
+Following the problem statement's guidance to select "ONE atomic, high-value task" and continuing the pattern of micro-optimizations from iterations 84-96, I identified and eliminated a temporary variable in Welford's online variance algorithm.
 
 **Optimization Details**:
 
 1. **Implementation**:
-   - Consolidated 4 separate `if sample_count > 0` checks into single if-else block (lines 790-809 in sampling.py)
-   - Changed from inline ternary operators: `result = calculation if sample_count > 0 else 0`
-   - To single conditional block with all calculations grouped together
-   - Eliminates 3 redundant conditional checks per dry_run from hot path
-   - Code is more maintainable and follows standard control flow patterns
+   - Eliminated `delta2` temporary variable in Welford's algorithm (lines 729-733 and 763-767 in sampling.py)
+   - Changed from: `delta2 = exec_time - welford_mean; welford_m2 += delta * delta2`
+   - To: `welford_m2 += delta * (exec_time - welford_mean)`
+   - Applies to both profiling and non-profiling code paths
+   - One less variable assignment per sample iteration
 
 2. **Performance Impact**:
-   - **Savings**: ~47ns per dry_run (measured from micro-benchmark)
-   - **Percentage**: 9.9% improvement in averaging calculation section
-   - **Real-world**: Typical dry_run remains fast at ~1.21ms
-   - **Zero cost**: No additional complexity, actually cleaner code structure
+   - **Savings**: ~6ns per iteration (measured from micro-benchmark)
+   - **Total**: ~30ns per typical 5-item dry_run
+   - **Speedup**: 1.068x in benchmark
+   - **Zero cost**: No additional complexity, mathematically identical
    - **Optimization target**: Every single dry_run benefits from this change
 
 3. **Correctness**:
    - Functionally identical to original implementation
-   - sample_count > 0 is guaranteed at this point (empty sample returns early at line 606)
-   - Maintains defensive programming pattern for robustness
+   - Mathematically equivalent (delta * (exec_time - welford_mean) = delta * delta2)
    - All tests pass with zero regressions
+   - Numerical stability verified
    - Fully backward compatible
 
 4. **Code Changes**:
-   - `amorsize/sampling.py`: Consolidated averaging calculations (lines 790-809)
-   - `tests/test_averaging_conditional_consolidation.py`: Added 20 comprehensive tests (new file)
-   - `benchmarks/benchmark_averaging_conditional_consolidation.py`: Added performance benchmark (new file)
+   - `amorsize/sampling.py`: Inlined delta2 in both profiling paths (lines 729-733, 763-767)
+   - `tests/test_welford_delta2_inline.py`: Added 8 comprehensive tests (new file)
+   - `benchmarks/benchmark_welford_delta2_inline.py`: Added performance benchmark (new file)
 
-5. **Comprehensive Testing** (20 new tests):
-   - Correctness for normal, single-item, and large samples (3 tests)
-   - Edge cases: empty data, generators, large objects (3 tests)
-   - Numerical stability and consistency (2 tests)
-   - Integration with optimize() function (3 tests)
-   - Backward compatibility (3 tests)
-   - Performance characteristics (2 tests)
-   - Exception handling (2 tests)
-   - Diagnostic output validation (2 tests)
+5. **Comprehensive Testing** (8 new tests):
+   - Basic correctness verification
+   - Profiling path correctness (with and without profiling enabled)
+   - Numerical stability
+   - Heterogeneous workload detection
+   - Integration with optimize()
+   - Edge cases: single sample, two samples
 
 6. **Code Review & Security**:
-   - All tests pass: 1189 tests (1169 existing + 20 new from averaging optimization)
+   - All tests pass: 1199 tests (1191 existing + 8 new from delta2 optimization)
    - Zero regressions from optimization
-   - Code review: 2 minor suggestions about time.sleep() in tests (non-critical)
+   - Code review: Addressed all feedback (performance number consistency, comment clarity)
    - Security scan: Zero vulnerabilities
    - Fully backward compatible - no API changes
 
 **Quality Assurance**:
-- ✅ All 1189 tests passing (1169 existing + 20 new averaging tests)
+- ✅ All 1199 tests passing (1191 existing + 8 new delta2 tests)
 - ✅ Zero regressions from optimization
-- ✅ Benchmark validates ~47ns improvement per dry_run
+- ✅ Benchmark validates ~6ns improvement per iteration
 - ✅ Fully backward compatible - no API changes
-- ✅ Code is actually cleaner and more maintainable
+- ✅ Mathematically identical to original
 - ✅ Zero security vulnerabilities
 - ✅ Zero additional complexity
-- ✅ Follows standard Python control flow patterns
+- ✅ Cleaner code (fewer variable assignments)
 
-### Comprehensive Analysis Results (Iteration 96)
+### Comprehensive Analysis Results (Iteration 97)
 
 **Strategic Priority Verification:**
 
@@ -93,6 +91,7 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
    - Diagnostics: Extensive profiling with `profile=True`
 
 **Previous Iterations Summary:**
+- **Iteration 96**: Averaging conditional consolidation (1189 tests passing, ~47ns speedup, +20 tests)
 - **Iteration 95**: Profiler conditional elimination (1170 tests passing, ~1.1ns per iteration, +16 tests)
 - **Iteration 94**: Sample count variable reuse in returns (1155 tests passing, ~58ns speedup, +20 tests)
 - **Iteration 93**: Sample count caching in averages (1135 tests passing, 2.6-3.3% speedup, +21 tests)
@@ -111,19 +110,18 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
 
 ### Test Coverage Summary
 
-**Test Suite Status**: 1189 tests passing, 0 failures, 49 skipped
+**Test Suite Status**: 1199 tests passing, 0 failures, 49 skipped
 
-**New Tests (Iteration 96)**: +20 averaging conditional consolidation tests (in test_averaging_conditional_consolidation.py)
-- Correctness for normal, single-item, and large samples
-- Edge cases (empty data, generators, large objects)
-- Numerical stability and consistency
+**New Tests (Iteration 97)**: +8 delta2 inline optimization tests (in test_welford_delta2_inline.py)
+- Basic correctness verification
+- Profiling path correctness (with and without profiling)
+- Numerical stability
+- Heterogeneous workload detection
 - Integration with optimize()
-- Backward compatibility
-- Performance characteristics
-- Exception handling
-- Diagnostic output validation
+- Edge cases (single sample, two samples)
 
 **Performance Validation**:
+- Welford delta2 inline: ~6ns per iteration, ~30ns per 5-item dry_run (1.068x speedup) - Iteration 97
 - Averaging conditional consolidation: ~47ns savings per dry run (9.9% in averaging section) - Iteration 96
 - Profiler conditional elimination: ~1.1ns per iteration, fast path optimized - Iteration 95
 - Sample count reuse: ~58ns savings per dry run (eliminates 2 len() calls) - Iteration 94
@@ -147,15 +145,14 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
 
 **Security**: Zero vulnerabilities (CodeQL scan passed)
 
-## Iteration 96: The "Missing Piece" Analysis
+## Iteration 97: The "Missing Piece" Analysis
 
 After comprehensive analysis of the codebase against the problem statement's Strategic Priorities, **no critical missing pieces were identified**. All foundations are solid and the codebase has reached high maturity.
 
-Selected task: **Averaging Conditional Check Consolidation** (continuing micro-optimization pattern)
-- Consolidated 4 separate conditional checks into single if-else block
-- Eliminated 3 redundant conditional evaluations per dry_run
-- Achieved ~47ns savings per dry_run (9.9% in averaging section)
-- Improved code maintainability and clarity
+Selected task: **Welford's Algorithm delta2 Inline Optimization** (continuing micro-optimization pattern)
+- Eliminated temporary variable (`delta2`) in Welford's variance calculation
+- Inlined the calculation directly into M2 update
+- Achieved ~6ns savings per iteration (~30ns per typical 5-item dry_run)
 - Zero complexity cost
 - Added comprehensive tests with zero regressions
 - Zero security vulnerabilities introduced
@@ -163,7 +160,7 @@ Selected task: **Averaging Conditional Check Consolidation** (continuing micro-o
 
 ## Recommended Focus for Next Agent
 
-Given the mature state of the codebase (all Strategic Priorities complete, 1189 tests passing, comprehensive edge case coverage, multiple performance optimizations completed including averaging conditional consolidation), the next high-value increments should focus on:
+Given the mature state of the codebase (all Strategic Priorities complete, 1199 tests passing, comprehensive edge case coverage, multiple performance optimizations completed including Welford delta2 inline), the next high-value increments should focus on:
 
 ### Option 1: Additional Performance Optimizations (CONTINUING)
 - ~~Cache physical core count~~ ✅ COMPLETED (Iteration 84)
@@ -179,6 +176,7 @@ Given the mature state of the codebase (all Strategic Priorities complete, 1189 
 - ~~Eliminate redundant len(sample) calls in return statements~~ ✅ COMPLETED (Iteration 94)
 - ~~Eliminate profiler conditional checks in sampling loop~~ ✅ COMPLETED (Iteration 95)
 - ~~Consolidate averaging conditional checks~~ ✅ COMPLETED (Iteration 96)
+- ~~Inline delta2 calculation in Welford's algorithm~~ ✅ COMPLETED (Iteration 97)
 - **Profile the entire dry run loop for additional micro-optimizations**
   - Look for other redundant calculations or function calls
   - Analyze if any other variables can be cached or computed more efficiently
@@ -216,3 +214,4 @@ Given the mature state of the codebase (all Strategic Priorities complete, 1189 
 **Recommendation**: Continue with micro-optimizations in **Option 1** by profiling the entire dry run loop, or transition to:
 - **Option 4 (Documentation & Examples)** - Improve adoption and reduce support burden
 - **Option 5 (Integration Testing)** - Validate real-world compatibility
+
