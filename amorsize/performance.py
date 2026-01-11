@@ -485,7 +485,7 @@ def compare_performance_results(
     with open(current_path, 'r') as f:
         current = json.load(f)
 
-    comparison = {
+    comparison: Dict[str, List[Any]] = {
         'regressions': [],
         'improvements': [],
         'unchanged': [],
