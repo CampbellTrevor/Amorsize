@@ -22,6 +22,15 @@ from .system_info import (
 )
 from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator, estimate_internal_threads, check_parallel_environment_vars
 from .structured_logging import get_logger
+from .error_messages import (
+    get_picklability_error_message,
+    get_data_picklability_error_message,
+    get_memory_constraint_message,
+    get_no_speedup_benefit_message,
+    get_workload_too_small_message,
+    get_sampling_failure_message,
+    format_warning_with_guidance
+)
 
 
 class DiagnosticProfile:
@@ -1173,16 +1182,21 @@ def optimize(
     
     # Check for errors during sampling
     if sampling_result.error:
+        error_message = get_sampling_failure_message(sampling_result.error)
         if diag:
             diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
         logger.log_rejection("sampling_failed", {"error": str(sampling_result.error)})
         _report_progress("Optimization complete", 1.0)
+        if verbose:
+            print("\n" + "="*70)
+            print(error_message)
+            print("="*70)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason=f"Error during sampling: {str(sampling_result.error)}",
             estimated_speedup=1.0,
-            warnings=[f"Sampling failed: {str(sampling_result.error)}"],
+            warnings=[error_message],
             data=reconstructed_data,
             profile=diag,
             executor_type=executor_type,  # Preserve I/O-bound threading decision
@@ -1191,17 +1205,23 @@ def optimize(
     
     # Check picklability
     if not sampling_result.is_picklable:
+        func_name = getattr(func, '__name__', None)
+        error_message = get_picklability_error_message(func_name)
         if diag:
             diag.rejection_reasons.append("Function is not picklable - multiprocessing requires picklable functions")
-            diag.recommendations.append("Use dill or cloudpickle to serialize complex functions")
+            diag.recommendations.append("See detailed guidance in warnings")
         logger.log_rejection("function_not_picklable", {"executor_type": executor_type})
         _report_progress("Optimization complete", 1.0)
+        if verbose:
+            print("\n" + "="*70)
+            print(error_message)
+            print("="*70)
         return OptimizationResult(
             n_jobs=1,
             chunksize=1,
             reason="Function is not picklable - cannot use multiprocessing",
             estimated_speedup=1.0,
-            warnings=["Function cannot be pickled. Use serial execution."],
+            warnings=[error_message],
             data=reconstructed_data,
             profile=diag,
             executor_type=executor_type,  # Preserve I/O-bound threading decision
@@ -1210,22 +1230,38 @@ def optimize(
     
     # Check if data items are picklable
     if not sampling_result.data_items_picklable:
-        error_msg = f"Data item at index {sampling_result.unpicklable_data_index} is not picklable"
-        if sampling_result.data_pickle_error:
-            error_msg += f": {type(sampling_result.data_pickle_error).__name__}"
+        error_type = type(sampling_result.data_pickle_error).__name__ if sampling_result.data_pickle_error else None
+        # Try to get the type of the unpicklable item if available
+        item_type = None
+        if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
+            try:
+                if sampling_result.unpicklable_data_index < len(sampling_result.sample):
+                    item = sampling_result.sample[sampling_result.unpicklable_data_index]
+                    item_type = type(item).__name__
+            except (IndexError, AttributeError, TypeError):
+                pass
+        
+        error_message = get_data_picklability_error_message(
+            sampling_result.unpicklable_data_index or 0,
+            error_type,
+            item_type
+        )
         
         if diag:
             diag.rejection_reasons.append(f"Data items are not picklable - multiprocessing requires picklable data")
-            diag.recommendations.append("Ensure data items don't contain thread locks, file handles, or other unpicklable objects")
-            diag.recommendations.append("Consider using dill or cloudpickle for more flexible serialization")
+            diag.recommendations.append("See detailed guidance in warnings")
         
         _report_progress("Optimization complete", 1.0)
+        if verbose:
+            print("\n" + "="*70)
+            print(error_message)
+            print("="*70)
         return _make_result_and_cache(
             n_jobs=1,
             chunksize=1,
-            reason=f"Data items are not picklable - {error_msg}",
+            reason=f"Data items are not picklable",
             estimated_speedup=1.0,
-            warnings=[error_msg + ". Use serial execution."],
+            warnings=[error_message],
             data=reconstructed_data,
             profile=diag,
             executor=executor_type,  # Preserve I/O-bound threading decision
@@ -1380,11 +1416,25 @@ def optimize(
                 )
                 diag.estimated_speedup = 1.0
             
+            # Calculate min items recommended
+            min_items_recommended = max(50, total_items * 2)
+            
+            # Create enhanced workload too small message
+            workload_message = get_workload_too_small_message(
+                total_items,
+                test_speedup,
+                min_items_recommended
+            )
+            result_warnings.append(workload_message)
+            
             if verbose:
                 print(f"Workload too small for parallelization:")
                 print(f"  Total work: {estimated_total_time:.3f}s")
                 print(f"  Best speedup (2 workers): {test_speedup:.2f}x")
                 print(f"  Threshold: 1.2x")
+                print("\n" + "="*70)
+                print(workload_message)
+                print("="*70)
             
             _report_progress("Optimization complete", 1.0)
             # For serial execution (n_jobs=1), cap chunksize at total_items to avoid nonsensical values
@@ -1517,14 +1567,29 @@ def optimize(
         diag.max_workers_memory = max_workers
     
     if max_workers < physical_cores:
+        # Calculate memory metrics for enhanced message
+        estimated_memory_per_worker_mb = (
+            (sampling_result.peak_memory + sampling_result.return_size + sampling_result.data_size) / (1024 * 1024)
+        )
+        available_memory = get_available_memory()
+        available_memory_mb = available_memory / (1024 * 1024)
+        
+        # Create enhanced memory constraint message
+        memory_message = get_memory_constraint_message(
+            estimated_memory_per_worker_mb,
+            available_memory_mb,
+            physical_cores,
+            max_workers
+        )
+        
         constraint_msg = (
             f"Memory constraints limit workers to {max_workers} "
             f"(physical cores: {physical_cores})"
         )
-        result_warnings.append(constraint_msg)
+        result_warnings.append(memory_message)
         if diag:
             diag.constraints.append(constraint_msg)
-            diag.recommendations.append("Consider reducing memory footprint per job or adding more RAM")
+            diag.recommendations.append("See memory guidance in warnings")
     
     # For CPU-bound tasks, use physical cores (not logical/hyperthreaded)
     optimal_n_jobs = max_workers
@@ -1614,14 +1679,35 @@ def optimize(
                 diag.estimated_speedup = 1.0
                 diag.rejection_reasons.append(f"Estimated speedup ({estimated_speedup:.2f}x) below 1.2x threshold")
                 diag.rejection_reasons.append("Parallelization overhead exceeds performance gains")
-                diag.recommendations.append("Function needs to be slower or data size larger to benefit from parallelization")
+                diag.recommendations.append("See detailed guidance in warnings")
+            
+            # Calculate enhanced no-benefit message
+            avg_function_time_ms = sampling_result.avg_time * 1000
+            overhead_ms = spawn_cost * 1000
+            # Calculate minimum function time needed for benefit
+            min_function_time_ms = overhead_ms * 1.2 / optimal_n_jobs if optimal_n_jobs > 1 else overhead_ms * 1.2
+            
+            no_benefit_message = get_no_speedup_benefit_message(
+                estimated_speedup,
+                avg_function_time_ms,
+                overhead_ms,
+                min_function_time_ms
+            )
+            
+            if verbose:
+                print(f"Parallelization provides minimal benefit:")
+                print(f"  Estimated speedup: {estimated_speedup:.2f}x (threshold: 1.2x)")
+                print("\n" + "="*70)
+                print(no_benefit_message)
+                print("="*70)
+            
             _report_progress("Optimization complete", 1.0)
             return OptimizationResult(
                 n_jobs=1,
                 chunksize=1,
                 reason=f"Parallelization provides minimal benefit (estimated speedup: {estimated_speedup:.2f}x)",
                 estimated_speedup=1.0,
-                warnings=result_warnings + ["Overhead costs make parallelization inefficient for this workload"],
+                warnings=result_warnings + [no_benefit_message],
                 data=reconstructed_data,
                 profile=diag,
                 executor_type=executor_type,  # Preserve I/O-bound threading decision
