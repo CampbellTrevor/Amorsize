@@ -87,9 +87,11 @@ from .cost_model import (
 try:
     from .ml_prediction import (
         predict_parameters,
+        predict_streaming_parameters,
         update_model_from_execution,
         load_ml_training_data,
         PredictionResult,
+        StreamingPredictionResult,
         MIN_TRAINING_SAMPLES,
         DEFAULT_CONFIDENCE_THRESHOLD
     )
@@ -99,11 +101,14 @@ except ImportError:
     # Stubs for when ML module is not available
     def predict_parameters(*args, **kwargs):
         raise ImportError("ML prediction module not available")
+    def predict_streaming_parameters(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
     def update_model_from_execution(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     def load_ml_training_data(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     PredictionResult = None
+    StreamingPredictionResult = None
     MIN_TRAINING_SAMPLES = 3
     DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
@@ -203,9 +208,11 @@ __all__ = [
     "CacheValidationResult",
     "configure_logging",
     "predict_parameters",
+    "predict_streaming_parameters",
     "update_model_from_execution",
     "load_ml_training_data",
     "PredictionResult",
+    "StreamingPredictionResult",
     "MIN_TRAINING_SAMPLES",
     "DEFAULT_CONFIDENCE_THRESHOLD",
     "AdaptiveChunkingPool",
