@@ -67,6 +67,7 @@ from .cache import (
     CacheValidationResult
 )
 from .structured_logging import configure_logging
+from .adaptive_chunking import AdaptiveChunkingPool, create_adaptive_pool
 
 # ML prediction functions (optional feature)
 try:
@@ -184,5 +185,7 @@ __all__ = [
     "predict_parameters",
     "PredictionResult",
     "MIN_TRAINING_SAMPLES",
-    "DEFAULT_CONFIDENCE_THRESHOLD"
+    "DEFAULT_CONFIDENCE_THRESHOLD",
+    "AdaptiveChunkingPool",
+    "create_adaptive_pool"
 ]
