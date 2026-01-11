@@ -658,20 +658,23 @@ def perform_dry_run(
         tracemalloc.start()
     
     try:
-        times = []
-        return_sizes = []
-        pickle_times = []
-        data_pickle_times = []
-        data_sizes = []
+        # Memory optimization: Pre-allocate lists with known size
+        # This avoids dynamic resizing and reduces memory allocation overhead
+        sample_count = len(sample)
+        times = [0.0] * sample_count
+        return_sizes = [0] * sample_count
+        pickle_times = [0.0] * sample_count
         
         # Extract pre-measured data pickle times and sizes
         # This avoids redundant pickle.dumps() calls that were already done
         # during the picklability check
-        for pickle_time, data_size in data_measurements:
-            data_pickle_times.append(pickle_time)
-            data_sizes.append(data_size)
+        # Memory optimization: Direct extraction instead of appending
+        data_pickle_times = [pm[0] for pm in data_measurements]
+        data_sizes = [pm[1] for pm in data_measurements]
         
-        for item in sample:
+        # Memory optimization: Use indexed assignment to pre-allocated lists
+        # This eliminates append() method call overhead
+        for idx, item in enumerate(sample):
             
             # Measure execution time
             start_time = time.perf_counter()
@@ -687,7 +690,7 @@ def perform_dry_run(
             
             end_time = time.perf_counter()
             
-            times.append(end_time - start_time)
+            times[idx] = end_time - start_time
             
             # Measure OUTPUT result pickle time (The "Pickle Tax" - part 2: results → main)
             try:
@@ -696,12 +699,12 @@ def perform_dry_run(
                 pickled = pickle.dumps(result)
                 pickle_end = time.perf_counter()
                 
-                pickle_times.append(pickle_end - pickle_start)
-                return_sizes.append(len(pickled))
+                pickle_times[idx] = pickle_end - pickle_start
+                return_sizes[idx] = len(pickled)
             except:
                 # Fallback to sys.getsizeof if pickling fails
-                return_sizes.append(sys.getsizeof(result))
-                pickle_times.append(0.0)
+                return_sizes[idx] = sys.getsizeof(result)
+                pickle_times[idx] = 0.0
         
         # Get peak memory usage (only if tracking was enabled)
         if enable_memory_tracking:
@@ -726,8 +729,8 @@ def perform_dry_run(
         coefficient_of_variation = 0.0
         if len(times) > 1 and avg_time > 0:
             # Calculate variance: average of squared deviations from mean
-            squared_diffs = [(t - avg_time) ** 2 for t in times]
-            time_variance = sum(squared_diffs) / len(times)
+            # Memory optimization: Use generator expression to avoid intermediate list
+            time_variance = sum((t - avg_time) ** 2 for t in times) / len(times)
             
             # Calculate coefficient of variation (CV)
             # CV = (std_dev / mean) gives normalized measure of variability
