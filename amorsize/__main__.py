@@ -492,13 +492,153 @@ def format_output_json(result, mode: str):
         result: OptimizationResult or (results, OptimizationResult) tuple
         mode: "optimize" or "execute"
     """
+    output = _prepare_structured_output(result, mode)
+    print(json.dumps(output, indent=2))
+
+
+def format_output_yaml(result, mode: str):
+    """
+    Format optimization result as YAML.
+
+    Args:
+        result: OptimizationResult or (results, OptimizationResult) tuple
+        mode: "optimize" or "execute"
+    """
+    output = _prepare_structured_output(result, mode)
+    
+    try:
+        import yaml
+        print(yaml.dump(output, default_flow_style=False, sort_keys=False))
+    except ImportError:
+        print("Error: PyYAML library not installed. Install with: pip install pyyaml", file=sys.stderr)
+        print("Falling back to JSON format:", file=sys.stderr)
+        print(json.dumps(output, indent=2))
+
+
+def format_output_table(result, mode: str):
+    """
+    Format optimization result as ASCII table.
+
+    Args:
+        result: OptimizationResult or (results, OptimizationResult) tuple
+        mode: "optimize" or "execute"
+    """
+    # Handle execute mode with tuple result
+    if mode == "execute" and isinstance(result, tuple):
+        results, opt_result = result
+        print("\n╔══════════════════════════════════════════════════════════╗")
+        print("║                   EXECUTION RESULTS                      ║")
+        print("╚══════════════════════════════════════════════════════════╝")
+        print(f"\n  Items Processed:  {len(results)}")
+        print(f"  Sample Results:   {results[:5]}")
+        result = opt_result
+        print("\n╔══════════════════════════════════════════════════════════╗")
+        print("║                 OPTIMIZATION DETAILS                     ║")
+        print("╚══════════════════════════════════════════════════════════╝")
+    else:
+        print("\n╔══════════════════════════════════════════════════════════╗")
+        print("║              OPTIMIZATION RECOMMENDATION                 ║")
+        print("╚══════════════════════════════════════════════════════════╝")
+
+    # Basic parameters table
+    print("\n┌─────────────────────┬────────────────────────────────────┐")
+    print("│ Parameter           │ Value                              │")
+    print("├─────────────────────┼────────────────────────────────────┤")
+    print(f"│ n_jobs              │ {result.n_jobs:<34} │")
+    print(f"│ chunksize           │ {result.chunksize:<34} │")
+    print(f"│ estimated_speedup   │ {result.estimated_speedup:.2f}x{' ':<30} │")
+    print("└─────────────────────┴────────────────────────────────────┘")
+
+    # Reason
+    print(f"\nReason: {result.reason}")
+
+    # Warnings
+    if result.warnings:
+        print("\n⚠ Warnings:")
+        for warning in result.warnings:
+            print(f"  • {warning}")
+
+    # Profile information if available
+    if result.profile:
+        print("\n┌─────────────────────┬────────────────────────────────────┐")
+        print("│ System Information  │ Value                              │")
+        print("├─────────────────────┼────────────────────────────────────┤")
+        print(f"│ Physical Cores      │ {result.profile.physical_cores:<34} │")
+        print(f"│ Logical Cores       │ {result.profile.logical_cores:<34} │")
+        memory_gb = result.profile.available_memory / (1024**3)
+        print(f"│ Available Memory    │ {memory_gb:.1f} GB{' ':<28} │")
+        print(f"│ Start Method        │ {result.profile.multiprocessing_start_method:<34} │")
+        print(f"│ Workload Type       │ {result.profile.workload_type:<34} │")
+        print("└─────────────────────┴────────────────────────────────────┘")
+
+
+def format_output_markdown(result, mode: str):
+    """
+    Format optimization result as Markdown.
+
+    Args:
+        result: OptimizationResult or (results, OptimizationResult) tuple
+        mode: "optimize" or "execute"
+    """
+    # Handle execute mode with tuple result
+    if mode == "execute" and isinstance(result, tuple):
+        results, opt_result = result
+        print("\n## Execution Results\n")
+        print(f"- **Items Processed:** {len(results)}")
+        print(f"- **Sample Results:** `{results[:5]}`")
+        result = opt_result
+        print("\n## Optimization Details\n")
+    else:
+        print("\n## Optimization Recommendation\n")
+
+    # Basic parameters
+    print("### Parameters\n")
+    print("| Parameter | Value |")
+    print("|-----------|-------|")
+    print(f"| n_jobs | {result.n_jobs} |")
+    print(f"| chunksize | {result.chunksize} |")
+    print(f"| estimated_speedup | {result.estimated_speedup:.2f}x |")
+
+    # Reason
+    print(f"\n### Reason\n\n{result.reason}")
+
+    # Warnings
+    if result.warnings:
+        print("\n### ⚠️ Warnings\n")
+        for warning in result.warnings:
+            print(f"- {warning}")
+
+    # Profile information if available
+    if result.profile:
+        print("\n### System Information\n")
+        print("| Property | Value |")
+        print("|----------|-------|")
+        print(f"| Physical Cores | {result.profile.physical_cores} |")
+        print(f"| Logical Cores | {result.profile.logical_cores} |")
+        memory_gb = result.profile.available_memory / (1024**3)
+        print(f"| Available Memory | {memory_gb:.1f} GB |")
+        print(f"| Start Method | {result.profile.multiprocessing_start_method} |")
+        print(f"| Workload Type | {result.profile.workload_type} |")
+
+
+def _prepare_structured_output(result, mode: str) -> dict:
+    """
+    Prepare structured output dictionary for JSON/YAML formats.
+
+    Args:
+        result: OptimizationResult or (results, OptimizationResult) tuple
+        mode: "optimize" or "execute"
+
+    Returns:
+        Dictionary with structured output data
+    """
     # Handle execute mode with tuple result
     if mode == "execute" and isinstance(result, tuple):
         results, opt_result = result
         output = {
             "mode": "execute",
             "results_count": len(results),
-            "sample_results": results[:10],  # First 10 for JSON
+            "sample_results": results[:10],  # First 10 for structured formats
             "optimization": {
                 "n_jobs": opt_result.n_jobs,
                 "chunksize": opt_result.chunksize,
@@ -507,6 +647,17 @@ def format_output_json(result, mode: str):
                 "warnings": opt_result.warnings
             }
         }
+        # Add profile if available
+        if opt_result.profile:
+            output["optimization"]["profile"] = {
+                "physical_cores": opt_result.profile.physical_cores,
+                "logical_cores": opt_result.profile.logical_cores,
+                "available_memory_gb": opt_result.profile.available_memory / (1024**3),
+                "start_method": opt_result.profile.multiprocessing_start_method,
+                "workload_type": opt_result.profile.workload_type,
+                "spawn_cost_ms": opt_result.profile.spawn_cost * 1000,
+                "avg_execution_time_ms": opt_result.profile.avg_execution_time * 1000,
+            }
     else:
         output = {
             "mode": "optimize",
@@ -516,8 +667,19 @@ def format_output_json(result, mode: str):
             "reason": result.reason,
             "warnings": result.warnings
         }
+        # Add profile if available
+        if result.profile:
+            output["profile"] = {
+                "physical_cores": result.profile.physical_cores,
+                "logical_cores": result.profile.logical_cores,
+                "available_memory_gb": result.profile.available_memory / (1024**3),
+                "start_method": result.profile.multiprocessing_start_method,
+                "workload_type": result.profile.workload_type,
+                "spawn_cost_ms": result.profile.spawn_cost * 1000,
+                "avg_execution_time_ms": result.profile.avg_execution_time * 1000,
+            }
 
-    print(json.dumps(output, indent=2))
+    return output
 
 
 def _set_color_mode_from_args(args: argparse.Namespace):
@@ -567,9 +729,27 @@ def cmd_optimize(args: argparse.Namespace):
     )
 
     # Format and display output
-    if args.json:
+    output_format = getattr(args, 'format', None)
+    if output_format:
+        # Use --format flag (new)
+        if output_format == 'json':
+            format_output_json(result, "optimize")
+        elif output_format == 'yaml':
+            format_output_yaml(result, "optimize")
+        elif output_format == 'table':
+            format_output_table(result, "optimize")
+        elif output_format == 'markdown':
+            format_output_markdown(result, "optimize")
+        elif output_format == 'text':
+            format_output_human(result, "optimize", args)
+        else:
+            print(f"Error: Unknown format '{output_format}'", file=sys.stderr)
+            sys.exit(1)
+    elif args.json:
+        # Backward compatibility with --json flag
         format_output_json(result, "optimize")
     else:
+        # Default to human-readable text
         format_output_human(result, "optimize", args)
 
     # Save configuration if requested
@@ -700,9 +880,27 @@ def cmd_execute(args: argparse.Namespace):
     )
 
     # Format and display output
-    if args.json:
+    output_format = getattr(args, 'format', None)
+    if output_format:
+        # Use --format flag (new)
+        if output_format == 'json':
+            format_output_json(result, "execute")
+        elif output_format == 'yaml':
+            format_output_yaml(result, "execute")
+        elif output_format == 'table':
+            format_output_table(result, "execute")
+        elif output_format == 'markdown':
+            format_output_markdown(result, "execute")
+        elif output_format == 'text':
+            format_output_human(result, "execute", args)
+        else:
+            print(f"Error: Unknown format '{output_format}'", file=sys.stderr)
+            sys.exit(1)
+    elif args.json:
+        # Backward compatibility with --json flag
         format_output_json(result, "execute")
     else:
+        # Default to human-readable text
         format_output_human(result, "execute", args)
 
 
@@ -1253,8 +1451,11 @@ Examples:
   # Quiet mode (just the recommendation)
   python -m amorsize optimize math.sqrt --data-range 1000 --quiet
 
-  # Output as JSON for scripting
-  python -m amorsize optimize math.sqrt --data-range 1000 --json
+  # Output formats
+  python -m amorsize optimize math.sqrt --data-range 1000 --format json
+  python -m amorsize optimize math.sqrt --data-range 1000 --format yaml
+  python -m amorsize optimize math.sqrt --data-range 1000 --format table
+  python -m amorsize optimize math.sqrt --data-range 1000 --format markdown
 
   # Read data from stdin
   cat data.txt | python -m amorsize execute mymodule:process --data-stdin
@@ -1331,9 +1532,16 @@ Examples:
 
     # Output options
     parent_parser.add_argument(
+        '--format',
+        type=str,
+        choices=['text', 'json', 'yaml', 'table', 'markdown'],
+        metavar='FORMAT',
+        help='Output format: text, json, yaml, table, markdown (default: text)'
+    )
+    parent_parser.add_argument(
         '--json',
         action='store_true',
-        help='Output results as JSON'
+        help='Output results as JSON (deprecated: use --format json)'
     )
     parent_parser.add_argument(
         '--verbose',
