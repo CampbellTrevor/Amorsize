@@ -93,6 +93,7 @@ try:
         track_prediction_accuracy,
         get_calibration_stats,
         load_ml_training_data,
+        get_ml_training_data_version,
         PredictionResult,
         StreamingPredictionResult,
         CalibrationData,
@@ -122,6 +123,8 @@ except ImportError:
     def get_calibration_stats(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     def load_ml_training_data(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
+    def get_ml_training_data_version(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     PredictionResult = None
     StreamingPredictionResult = None
@@ -235,6 +238,7 @@ __all__ = [
     "update_model_from_execution",
     "update_model_from_streaming_execution",
     "load_ml_training_data",
+    "get_ml_training_data_version",
     "track_prediction_accuracy",
     "get_calibration_stats",
     "PredictionResult",
