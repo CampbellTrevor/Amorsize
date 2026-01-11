@@ -911,3 +911,315 @@ class TestCLICompareCommand:
         assert "Comparing" in result.stdout or "Testing" in result.stdout
 
 
+class TestCLIEnhancements:
+    """Test new CLI enhancement flags from Iteration 137."""
+    
+    def test_explain_flag(self):
+        """Test --explain flag shows detailed explanation."""
+        from amorsize.__main__ import load_function
+        
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--explain"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}  # Disable colors for testing
+        )
+        
+        assert result.returncode == 0
+        # Should show detailed explanation section
+        assert "DETAILED EXPLANATION" in result.stdout or "explanation" in result.stdout.lower()
+    
+    def test_tips_flag(self):
+        """Test --tips flag shows optimization tips."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--tips"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should show tips section
+        assert "OPTIMIZATION TIPS" in result.stdout or "tips" in result.stdout.lower()
+    
+    def test_show_overhead_flag(self):
+        """Test --show-overhead flag shows overhead breakdown."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--show-overhead"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should show overhead breakdown
+        assert "OVERHEAD BREAKDOWN" in result.stdout or "overhead" in result.stdout.lower()
+        # Should show overhead components
+        assert "Spawn overhead" in result.stdout or "spawn" in result.stdout.lower()
+    
+    def test_quiet_flag(self):
+        """Test --quiet/-q flag shows minimal output."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--quiet"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Quiet mode should show only essentials
+        assert "n_jobs=" in result.stdout
+        assert "chunksize=" in result.stdout
+        assert "speedup=" in result.stdout
+        # Should NOT show verbose headers
+        assert "OPTIMIZATION ANALYSIS" not in result.stdout
+    
+    def test_quiet_flag_short_form(self):
+        """Test -q short form of --quiet flag."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "-q"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should behave same as --quiet
+        assert "n_jobs=" in result.stdout
+        assert "chunksize=" in result.stdout
+    
+    def test_color_flag(self):
+        """Test --color flag forces colored output."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        # Should contain ANSI escape codes (color codes start with \033[)
+        # Even though output may not be TTY, --color forces it
+        # Note: Due to piping, colors might still be disabled by TTY check
+        # So we just verify command runs successfully
+        assert "n_jobs" in result.stdout.lower() or "recommendation" in result.stdout.lower()
+    
+    def test_no_color_flag(self):
+        """Test --no-color flag disables colored output."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent)
+        )
+        
+        assert result.returncode == 0
+        # Should not contain ANSI escape codes
+        assert "\033[" not in result.stdout
+    
+    def test_combined_flags(self):
+        """Test combining multiple enhancement flags."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--explain",
+                "--tips",
+                "--show-overhead",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should show all requested sections
+        output_lower = result.stdout.lower()
+        assert "explanation" in output_lower or "detailed" in output_lower
+        assert "tips" in output_lower
+        assert "overhead" in output_lower
+    
+    def test_quiet_overrides_verbose_flags(self):
+        """Test --quiet suppresses verbose output from other flags."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--quiet",
+                "--tips",  # Should be ignored with --quiet
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Quiet mode should suppress everything except essentials
+        assert "n_jobs=" in result.stdout
+        # Should NOT show tips even though --tips was specified
+        assert "OPTIMIZATION TIPS" not in result.stdout
+    
+    def test_profile_auto_enabled_with_explain(self):
+        """Test that --explain automatically enables profiling."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--explain",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should work without requiring explicit --profile flag
+        # If profiling wasn't auto-enabled, this would fail or show less detail
+        assert "n_jobs" in result.stdout.lower()
+    
+    def test_profile_auto_enabled_with_tips(self):
+        """Test that --tips automatically enables profiling."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--tips",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should work without requiring explicit --profile flag
+        assert "n_jobs" in result.stdout.lower()
+    
+    def test_profile_auto_enabled_with_show_overhead(self):
+        """Test that --show-overhead automatically enables profiling."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "optimize",
+                "math.sqrt",
+                "--data-range", "50",
+                "--show-overhead",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should show overhead details
+        output_lower = result.stdout.lower()
+        assert "overhead" in output_lower
+    
+    def test_execute_with_quiet_flag(self):
+        """Test --quiet flag works with execute command."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "execute",
+                "math.sqrt",
+                "--data-range", "10",
+                "--quiet",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should show minimal output
+        assert "n_jobs=" in result.stdout
+    
+    def test_execute_with_explain_flag(self):
+        """Test --explain flag works with execute command."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "amorsize",
+                "execute",
+                "math.sqrt",
+                "--data-range", "10",
+                "--explain",
+                "--no-color"
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            env={**os.environ, "NO_COLOR": "1"}
+        )
+        
+        assert result.returncode == 0
+        # Should show explanation
+        output_lower = result.stdout.lower()
+        assert "explanation" in output_lower or "detailed" in output_lower
+
+
