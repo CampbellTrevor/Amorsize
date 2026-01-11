@@ -81,8 +81,8 @@ class TestWorkloadFeatures:
         )
         
         vector = features.to_vector()
-        # Enhanced to 8 features in Iteration 104 (was 5)
-        assert len(vector) == 8
+        # Enhanced to 12 features in Iteration 114 (was 8 in Iteration 104, was 5 originally)
+        assert len(vector) == 12
         assert all(isinstance(v, float) for v in vector)
         assert all(0.0 <= v <= 1.0 for v in vector)
     
@@ -490,7 +490,7 @@ class TestEnhancedFeatures:
         )
         
         vector = features.to_vector()
-        assert len(vector) == 8  # Enhanced from 5 to 8
+        assert len(vector) == 12  # Enhanced from 8 to 12 in Iteration 114
         assert all(isinstance(v, float) for v in vector)
         assert all(0.0 <= v <= 1.0 for v in vector)
     
