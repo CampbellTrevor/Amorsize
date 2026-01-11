@@ -44,6 +44,21 @@ _function_hash_cache: Dict[int, str] = {}
 _function_hash_cache_lock = threading.Lock()
 
 
+def clear_function_hash_cache() -> None:
+    """
+    Clear the function hash cache.
+    
+    This is primarily useful for testing to ensure test isolation.
+    The function hash cache uses id(func) as the key, and when Python
+    reuses object IDs, stale hashes can cause issues.
+    
+    Note: This function is safe to call in production but rarely needed,
+    as the cache is designed to be long-lived and self-managing.
+    """
+    with _function_hash_cache_lock:
+        _function_hash_cache.clear()
+
+
 def _compute_function_hash(func: Callable) -> str:
     """
     Compute a hash of the function's bytecode with caching for performance.
