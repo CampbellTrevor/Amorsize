@@ -299,6 +299,8 @@ def save_cache_entry(
     """
     Save an optimization result to the cache.
     
+    Tries distributed cache first (if configured), then falls back to local file cache.
+    
     Args:
         cache_key: Unique key for this optimization
         n_jobs: Recommended number of workers
@@ -308,6 +310,20 @@ def save_cache_entry(
         reason: Explanation of recommendation
         warnings: List of warning messages
     """
+    # Try distributed cache first
+    try:
+        from .distributed_cache import save_to_distributed_cache, is_distributed_cache_enabled
+        if is_distributed_cache_enabled():
+            if save_to_distributed_cache(cache_key, n_jobs, chunksize, executor_type, 
+                                        estimated_speedup, reason, warnings):
+                # Successfully saved to distributed cache
+                # Still save to local cache as backup
+                pass
+    except ImportError:
+        # distributed_cache module not available
+        pass
+    
+    # Save to local file cache (always, as backup or primary)
     try:
         cache_dir = get_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
@@ -349,6 +365,8 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
     """
     Load a cached optimization result.
     
+    Tries distributed cache first (if configured), then falls back to local file cache.
+    
     This function includes automatic cache pruning: with a small probability
     (default 5%), it will trigger cleanup of expired entries. This ensures
     cache directories don't grow unbounded over time without requiring
@@ -363,6 +381,20 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
         - CacheEntry if found and valid, None if invalid/missing
         - miss_reason: Empty string on success, or explanation why cache missed
     """
+    # Try distributed cache first
+    try:
+        from .distributed_cache import load_from_distributed_cache, is_distributed_cache_enabled
+        if is_distributed_cache_enabled():
+            entry, miss_reason = load_from_distributed_cache(cache_key)
+            if entry is not None:
+                # Cache hit in distributed cache
+                return entry, ""
+            # Cache miss in distributed cache, will try local cache
+    except ImportError:
+        # distributed_cache module not available
+        pass
+    
+    # Try local file cache
     try:
         cache_dir = get_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"

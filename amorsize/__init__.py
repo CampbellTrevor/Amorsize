@@ -68,6 +68,33 @@ from .cache import (
 )
 from .structured_logging import configure_logging
 
+# Distributed cache functions (optional, requires redis-py)
+try:
+    from .distributed_cache import (
+        configure_distributed_cache,
+        disable_distributed_cache,
+        is_distributed_cache_enabled,
+        clear_distributed_cache,
+        get_distributed_cache_stats,
+        prewarm_distributed_cache
+    )
+    _has_distributed_cache = True
+except ImportError:
+    _has_distributed_cache = False
+    # Create stub functions that warn when called
+    def configure_distributed_cache(*args, **kwargs):
+        raise ImportError("Distributed caching requires redis-py. Install with: pip install redis")
+    def disable_distributed_cache():
+        pass
+    def is_distributed_cache_enabled():
+        return False
+    def clear_distributed_cache(*args, **kwargs):
+        return 0
+    def get_distributed_cache_stats():
+        return {"enabled": False}
+    def prewarm_distributed_cache(*args, **kwargs):
+        raise ImportError("Distributed caching requires redis-py. Install with: pip install redis")
+
 __version__ = "0.1.0"
 __all__ = [
     "optimize",
@@ -116,6 +143,12 @@ __all__ = [
     "validate_cache_entry",
     "validate_cache",
     "repair_cache",
+    "configure_distributed_cache",
+    "disable_distributed_cache",
+    "is_distributed_cache_enabled",
+    "clear_distributed_cache",
+    "get_distributed_cache_stats",
+    "prewarm_distributed_cache",
     "OptimizationResult",
     "DiagnosticProfile",
     "StreamingOptimizationResult",
