@@ -33,6 +33,11 @@ from .error_messages import (
 )
 
 
+# Common recommendation messages for picklability issues
+_RECOMMENDATION_USE_CLOUDPICKLE = "Use cloudpickle or dill for more flexible serialization"
+_RECOMMENDATION_EXTRACT_SERIALIZABLE = "Extract only serializable data from complex objects"
+
+
 class DiagnosticProfile:
     """
     Comprehensive diagnostic information about optimization decisions.
@@ -612,6 +617,33 @@ def calculate_amdahl_speedup(
     return 1.0
 
 
+def _get_unpicklable_data_info(sampling_result) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract error type and item type from unpicklable data in sampling result.
+    
+    Args:
+        sampling_result: The SamplingResult object containing unpicklable data info
+        
+    Returns:
+        Tuple of (error_type, item_type) or (None, None) if not available
+    """
+    error_type = None
+    item_type = None
+    
+    if sampling_result.data_pickle_error:
+        error_type = type(sampling_result.data_pickle_error).__name__
+    
+    if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
+        try:
+            if sampling_result.unpicklable_data_index < len(sampling_result.sample):
+                item = sampling_result.sample[sampling_result.unpicklable_data_index]
+                item_type = type(item).__name__
+        except (IndexError, AttributeError, TypeError):
+            pass
+    
+    return error_type, item_type
+
+
 def optimize(
     func: Callable[[Any], Any],
     data: Union[List, Iterator],
@@ -1182,9 +1214,32 @@ def optimize(
     
     # Check for errors during sampling
     if sampling_result.error:
-        error_message = get_sampling_failure_message(sampling_result.error)
-        if diag:
-            diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+        # Check if the error might be related to unpicklable data
+        # If data items were detected as unpicklable, provide specific guidance
+        if not sampling_result.data_items_picklable:
+            # Get data-specific error message with pickling guidance
+            error_type, item_type = _get_unpicklable_data_info(sampling_result)
+            
+            error_message = get_data_picklability_error_message(
+                sampling_result.unpicklable_data_index or 0,
+                error_type,
+                item_type
+            )
+            if diag:
+                diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+                # Add actionable recommendations from the error message
+                diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
+                diag.recommendations.append("Pass serializable identifiers instead of unpicklable objects")
+                diag.recommendations.append(_RECOMMENDATION_EXTRACT_SERIALIZABLE)
+        else:
+            # Generic sampling failure
+            error_message = get_sampling_failure_message(sampling_result.error)
+            if diag:
+                diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+                # Add basic troubleshooting recommendations
+                diag.recommendations.append("Test your function with sample data manually")
+                diag.recommendations.append("Validate data types and handle edge cases in your function")
+        
         logger.log_rejection("sampling_failed", {"error": str(sampling_result.error)})
         _report_progress("Optimization complete", 1.0)
         if verbose:
@@ -1209,7 +1264,10 @@ def optimize(
         error_message = get_picklability_error_message(func_name)
         if diag:
             diag.rejection_reasons.append("Function is not picklable - multiprocessing requires picklable functions")
-            diag.recommendations.append("See detailed guidance in warnings")
+            # Add actionable recommendations that match the error message content
+            diag.recommendations.append("Convert lambda to regular function at module level")
+            diag.recommendations.append("Move nested functions to module level")
+            diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
         logger.log_rejection("function_not_picklable", {"executor_type": executor_type})
         _report_progress("Optimization complete", 1.0)
         if verbose:
@@ -1230,16 +1288,7 @@ def optimize(
     
     # Check if data items are picklable
     if not sampling_result.data_items_picklable:
-        error_type = type(sampling_result.data_pickle_error).__name__ if sampling_result.data_pickle_error else None
-        # Try to get the type of the unpicklable item if available
-        item_type = None
-        if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
-            try:
-                if sampling_result.unpicklable_data_index < len(sampling_result.sample):
-                    item = sampling_result.sample[sampling_result.unpicklable_data_index]
-                    item_type = type(item).__name__
-            except (IndexError, AttributeError, TypeError):
-                pass
+        error_type, item_type = _get_unpicklable_data_info(sampling_result)
         
         error_message = get_data_picklability_error_message(
             sampling_result.unpicklable_data_index or 0,
@@ -1249,7 +1298,10 @@ def optimize(
         
         if diag:
             diag.rejection_reasons.append(f"Data items are not picklable - multiprocessing requires picklable data")
-            diag.recommendations.append("See detailed guidance in warnings")
+            # Add actionable recommendations that match the error message content
+            diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
+            diag.recommendations.append("Pass file paths/connection strings instead of file handles/connections")
+            diag.recommendations.append(_RECOMMENDATION_EXTRACT_SERIALIZABLE)
         
         _report_progress("Optimization complete", 1.0)
         if verbose:
