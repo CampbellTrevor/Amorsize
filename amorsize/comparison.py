@@ -76,7 +76,7 @@ class ComparisonResult:
         execution_times: List[float],
         speedups: List[float],
         best_config_index: int,
-        recommendations: List[str] = None
+        recommendations: Optional[List[str]] = None
     ):
         self.configs = configs
         self.execution_times = execution_times

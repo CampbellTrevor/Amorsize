@@ -253,7 +253,7 @@ def _select_representative_samples(
 
     # Ensure diversity: Check inter-sample distances
     # If kept samples are too similar, replace some with diverse samples
-    diverse_kept = []
+    diverse_kept: List[int] = []
     for idx in kept_indices:
         # Check if this sample is sufficiently different from already kept samples
         is_diverse = True

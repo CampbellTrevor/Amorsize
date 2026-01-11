@@ -247,7 +247,7 @@ class OptimizationResult:
         chunksize: int,
         reason: str,
         estimated_speedup: float = 1.0,
-        warnings: List[str] = None,
+        warnings: Optional[List[str]] = None,
         data: Union[List, Iterator, None] = None,
         profile: Optional[DiagnosticProfile] = None,
         executor_type: str = "process",

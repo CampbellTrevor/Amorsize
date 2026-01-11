@@ -43,7 +43,7 @@ class BenchmarkResult:
         predicted_speedup: float,
         accuracy_percent: float,
         error_percent: float,
-        recommendations: List[str] = None,
+        recommendations: Optional[List[str]] = None,
         cache_hit: bool = False
     ):
         self.optimization = optimization

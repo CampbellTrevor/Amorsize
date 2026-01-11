@@ -12,7 +12,7 @@ import json
 import platform
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from .system_info import (
     get_available_memory,
@@ -335,7 +335,7 @@ def list_configs(directory: Union[str, Path] = ".") -> list:
         return []
 
     # Find all JSON and YAML files
-    config_files = []
+    config_files: List[Path] = []
     for ext in ['*.json', '*.yaml', '*.yml']:
         config_files.extend(directory.glob(ext))
 

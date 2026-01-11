@@ -80,6 +80,7 @@ class StructuredLogger:
         self.logger.handlers.clear()
 
         # Add handler based on output destination
+        handler: logging.Handler
         if output == "stderr":
             handler = logging.StreamHandler(sys.stderr)
         elif output == "stdout":

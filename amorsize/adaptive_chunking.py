@@ -10,7 +10,7 @@ import threading
 import time
 from collections import deque
 from multiprocessing.pool import Pool, ThreadPool
-from typing import Any, Callable, Iterable, List, Optional
+from typing import Any, Callable, Deque, Iterable, List, Optional, Union
 
 
 class AdaptiveChunkingPool:
@@ -106,12 +106,13 @@ class AdaptiveChunkingPool:
         self.window_size = window_size
 
         # Performance tracking
-        self._chunk_durations = deque(maxlen=window_size)
+        self._chunk_durations: Deque[float] = deque(maxlen=window_size)
         self._total_tasks_processed = 0
         self._adaptation_count = 0
         self._lock = threading.Lock()
 
         # Create underlying pool
+        self._pool: Union[Pool, ThreadPool]
         if use_threads:
             self._pool = ThreadPool(processes=n_jobs)
         else:
