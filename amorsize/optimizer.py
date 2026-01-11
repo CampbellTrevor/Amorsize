@@ -12,6 +12,9 @@ from .system_info import (
     get_spawn_cost,
     get_chunking_overhead,
     calculate_max_workers,
+    calculate_load_aware_workers,
+    get_current_cpu_load,
+    get_memory_pressure,
     check_start_method_mismatch,
     get_multiprocessing_start_method,
     get_available_memory,
@@ -393,7 +396,8 @@ def _validate_optimize_parameters(
     use_cache: bool,
     enable_memory_tracking: bool,
     use_ml_prediction: bool,
-    ml_confidence_threshold: float
+    ml_confidence_threshold: float,
+    adjust_for_system_load: bool
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
@@ -474,6 +478,10 @@ def _validate_optimize_parameters(
         return f"ml_confidence_threshold must be a number, got {type(ml_confidence_threshold).__name__}"
     if not (0.0 <= ml_confidence_threshold <= 1.0):
         return f"ml_confidence_threshold must be between 0.0 and 1.0, got {ml_confidence_threshold}"
+    
+    # Validate adjust_for_system_load
+    if not isinstance(adjust_for_system_load, bool):
+        return f"adjust_for_system_load must be a boolean, got {type(adjust_for_system_load).__name__}"
     
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
@@ -589,7 +597,8 @@ def optimize(
     use_cache: bool = True,
     enable_memory_tracking: bool = True,
     use_ml_prediction: bool = False,
-    ml_confidence_threshold: float = 0.7
+    ml_confidence_threshold: float = 0.7,
+    adjust_for_system_load: bool = False
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
@@ -694,6 +703,14 @@ def optimize(
                 only high-confidence predictions are used but may fall back more often.
                 Lower values (e.g., 0.5) use predictions more aggressively but with less
                 certainty. (default: 0.7). Must be a float between 0.0 and 1.0.
+        adjust_for_system_load: If True, dynamically adjust n_jobs based on current
+                system CPU and memory load in addition to hardware constraints. This is
+                useful in multi-tenant environments or when other processes are competing
+                for resources. When enabled, worker count is reduced if CPU load exceeds
+                the threshold (default: 70%) or memory pressure exceeds the threshold
+                (default: 75%). These thresholds are internal defaults in the implementation.
+                (default: False for backward compatibility). Must be a boolean. Requires
+                psutil for load detection.
     
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
@@ -736,7 +753,7 @@ def optimize(
         verbose, use_spawn_benchmark, use_chunking_benchmark, profile,
         auto_adjust_for_nested_parallelism, progress_callback, prefer_threads_for_io,
         enable_function_profiling, use_cache, enable_memory_tracking,
-        use_ml_prediction, ml_confidence_threshold
+        use_ml_prediction, ml_confidence_threshold, adjust_for_system_load
     )
     
     if validation_error:
@@ -1396,9 +1413,23 @@ def optimize(
         print(f"Optimal chunksize: {optimal_chunksize}")
     
     # Step 7: Determine number of workers
-    # Consider memory constraints
+    # Consider memory constraints and optionally system load
     estimated_job_ram = peak_memory if peak_memory > 0 else 0
-    max_workers = calculate_max_workers(physical_cores, estimated_job_ram)
+    
+    if adjust_for_system_load:
+        # Use load-aware calculation that considers current CPU and memory usage
+        max_workers = calculate_load_aware_workers(physical_cores, estimated_job_ram)
+        
+        # Report current system load if verbose
+        if verbose:
+            current_cpu = get_current_cpu_load()
+            current_memory = get_memory_pressure()
+            print(f"Current system load: CPU {current_cpu:.1f}%, Memory {current_memory:.1f}%")
+            if current_cpu >= 70.0 or current_memory >= 75.0:
+                print(f"  Load-aware adjustment applied (high system load detected)")
+    else:
+        # Use standard calculation (hardware constraints only)
+        max_workers = calculate_max_workers(physical_cores, estimated_job_ram)
     
     # Check for swap usage and warn if system is under memory pressure
     swap_percent, swap_used, swap_total = get_swap_usage()

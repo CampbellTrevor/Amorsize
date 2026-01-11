@@ -1153,6 +1153,180 @@ def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
     return adjusted_workers
 
 
+def get_current_cpu_load(interval: float = 0.1) -> float:
+    """
+    Get current system-wide CPU load as a percentage.
+    
+    Args:
+        interval: Time interval in seconds to measure CPU usage (default: 0.1s)
+                 A longer interval provides more accurate measurements but adds latency.
+    
+    Returns:
+        CPU usage percentage (0.0-100.0) averaged across all logical cores.
+        Returns 0.0 if psutil is not available or measurement fails.
+        
+    Rationale:
+        Real-time CPU load helps detect if the system is already busy.
+        When CPU load is high, spawning more workers may not improve performance
+        and could lead to contention and context switching overhead.
+        
+    Note:
+        This function is intentionally NOT cached because CPU load changes
+        rapidly and we want fresh measurements for dynamic adjustment.
+    """
+    if not HAS_PSUTIL:
+        return 0.0
+    
+    try:
+        # psutil.cpu_percent() with interval > 0 blocks and measures CPU usage
+        # over that interval, providing a more accurate snapshot than interval=0
+        cpu_percent = psutil.cpu_percent(interval=interval)
+        return float(cpu_percent)
+    except (AttributeError, OSError):
+        # AttributeError: Method not available on this platform
+        # OSError: System call failed
+        return 0.0
+
+
+def get_memory_pressure() -> float:
+    """
+    Get current memory pressure as a percentage of used memory.
+    
+    Returns:
+        Memory usage percentage (0.0-100.0).
+        Returns 0.0 if psutil is not available or measurement fails.
+        
+    Rationale:
+        Memory pressure indicates how much of the system's RAM is currently in use.
+        High memory pressure means spawning more workers may cause OOM or swapping.
+        This complements get_available_memory() by showing current usage trends.
+        
+    Note:
+        This function is intentionally NOT cached because memory usage changes
+        dynamically and we want fresh measurements for load-aware decisions.
+    """
+    if not HAS_PSUTIL:
+        return 0.0
+    
+    try:
+        vm = psutil.virtual_memory()
+        return float(vm.percent)
+    except (AttributeError, OSError):
+        # AttributeError: Method not available on this platform
+        # OSError: System call failed
+        return 0.0
+
+
+def calculate_load_aware_workers(
+    physical_cores: int,
+    estimated_job_ram: int,
+    cpu_threshold: float = 70.0,
+    memory_threshold: float = 75.0,
+    aggressive_reduction: bool = False
+) -> int:
+    """
+    Calculate optimal number of workers based on current system load.
+    
+    This function extends calculate_max_workers() by considering real-time
+    system load (CPU and memory usage) in addition to hardware constraints.
+    
+    Args:
+        physical_cores: Number of physical CPU cores
+        estimated_job_ram: Estimated RAM usage per job in bytes
+        cpu_threshold: CPU usage % above which to reduce workers (default: 70%)
+        memory_threshold: Memory usage % above which to reduce workers (default: 75%)
+        aggressive_reduction: If True, apply more aggressive reduction when system
+                            is under load (default: False for backward compatibility)
+    
+    Returns:
+        Optimal number of workers adjusted for current system load (minimum 1)
+        
+    Load-Aware Logic:
+        1. Start with base calculation (physical cores + memory + swap constraints)
+        2. Check current CPU load:
+           - If CPU < threshold: No adjustment
+           - If CPU >= threshold: Reduce workers proportionally to available capacity
+        3. Check current memory pressure:
+           - If memory < threshold: No adjustment
+           - If memory >= threshold: Reduce workers to prevent OOM
+        4. Apply the most conservative (lowest) worker count
+        
+    Examples:
+        >>> # System: 8 cores, 50% CPU load, 60% memory usage
+        >>> calculate_load_aware_workers(8, 1024*1024*1024)  # 1GB per job
+        8  # No reduction (below thresholds)
+        
+        >>> # System: 8 cores, 80% CPU load, 60% memory usage
+        >>> calculate_load_aware_workers(8, 1024*1024*1024)
+        6  # Reduced due to high CPU (only 20% capacity remains)
+        
+        >>> # System: 8 cores, 50% CPU load, 85% memory usage
+        >>> calculate_load_aware_workers(8, 1024*1024*1024)
+        6  # Reduced due to high memory pressure
+        
+    Thread Safety:
+        This function is thread-safe. It calls get_current_cpu_load() and
+        get_memory_pressure() which are not cached and always return fresh data.
+    """
+    # Step 1: Calculate base worker count with existing constraints
+    # (physical cores, memory limits, swap usage)
+    base_workers = calculate_max_workers(physical_cores, estimated_job_ram)
+    
+    # Step 2: Check real-time CPU load
+    current_cpu = get_current_cpu_load()
+    cpu_adjusted_workers = base_workers
+    
+    if current_cpu >= cpu_threshold:
+        # Prevent division by zero if cpu_threshold is 100.0
+        if cpu_threshold >= 100.0:
+            # If threshold is 100%, any load should reduce workers
+            cpu_adjusted_workers = max(1, base_workers // 2)
+        else:
+            # Calculate available CPU capacity
+            available_cpu_percent = max(0.0, 100.0 - current_cpu)
+            cpu_capacity_ratio = available_cpu_percent / (100.0 - cpu_threshold)
+            
+            if aggressive_reduction:
+                # More aggressive: scale linearly with available capacity
+                cpu_adjusted_workers = max(1, int(base_workers * cpu_capacity_ratio))
+            else:
+                # Conservative: reduce by 25% if over threshold, 50% if very high (>90%)
+                if current_cpu >= 90.0:
+                    cpu_adjusted_workers = max(1, base_workers // 2)
+                else:
+                    cpu_adjusted_workers = max(1, int(base_workers * 0.75))
+    
+    # Step 3: Check real-time memory pressure
+    current_memory = get_memory_pressure()
+    memory_adjusted_workers = base_workers
+    
+    if current_memory >= memory_threshold:
+        # Prevent division by zero if memory_threshold is 100.0
+        if memory_threshold >= 100.0:
+            # If threshold is 100%, any pressure should reduce workers
+            memory_adjusted_workers = max(1, base_workers // 2)
+        else:
+            # Calculate available memory capacity
+            available_memory_percent = max(0.0, 100.0 - current_memory)
+            memory_capacity_ratio = available_memory_percent / (100.0 - memory_threshold)
+            
+            if aggressive_reduction:
+                # More aggressive: scale linearly with available capacity
+                memory_adjusted_workers = max(1, int(base_workers * memory_capacity_ratio))
+            else:
+                # Conservative: reduce by 25% if over threshold, 50% if very high (>90%)
+                if current_memory >= 90.0:
+                    memory_adjusted_workers = max(1, base_workers // 2)
+                else:
+                    memory_adjusted_workers = max(1, int(base_workers * 0.75))
+    
+    # Step 4: Apply the most conservative worker count
+    # (take the minimum to ensure we don't overload any resource)
+    optimal_workers = min(base_workers, cpu_adjusted_workers, memory_adjusted_workers)
+    
+    return optimal_workers
+
+
 def get_system_info() -> Tuple[int, float, int]:
     """
     Get all relevant system information.
