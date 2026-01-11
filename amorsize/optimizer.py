@@ -767,7 +767,10 @@ def optimize(
         data: Any,
         profile: Optional[DiagnosticProfile],
         executor: str,
-        profiler_stats: Any
+        profiler_stats: Any,
+        pickle_size: Optional[int] = None,
+        coefficient_of_variation: Optional[float] = None,
+        function_complexity: Optional[int] = None
     ) -> OptimizationResult:
         """Create OptimizationResult and save to cache if enabled."""
         # Save to cache if enabled and we have a cache key
@@ -781,7 +784,10 @@ def optimize(
                     executor_type=executor,
                     estimated_speedup=estimated_speedup,
                     reason=reason,
-                    warnings=warnings
+                    warnings=warnings,
+                    pickle_size=pickle_size,
+                    coefficient_of_variation=coefficient_of_variation,
+                    function_complexity=function_complexity
                 )
             except Exception:
                 # Silently fail if cache save fails
@@ -974,6 +980,20 @@ def optimize(
         diag.workload_type = sampling_result.workload_type
         diag.cpu_time_ratio = sampling_result.cpu_time_ratio
     
+    # Compute ML features for cache (for ML training)
+    # These features help improve ML prediction accuracy over time
+    ml_pickle_size = sampling_result.return_size if sampling_result.return_size > 0 else None
+    ml_coefficient_of_variation = sampling_result.coefficient_of_variation if sampling_result.coefficient_of_variation > 0 else None
+    ml_function_complexity = None
+    
+    # Compute function complexity (bytecode size)
+    try:
+        if hasattr(func, '__code__'):
+            ml_function_complexity = len(func.__code__.co_code)
+    except (AttributeError, TypeError):
+        # Built-in or special functions may not have __code__
+        pass
+    
     # Get physical cores early for nested parallelism adjustment calculations
     physical_cores = get_physical_cores()
     
@@ -1157,7 +1177,10 @@ def optimize(
             data=reconstructed_data,
             profile=diag,
             executor=executor_type,  # Preserve I/O-bound threading decision
-            profiler_stats=sampling_result.function_profiler_stats
+            profiler_stats=sampling_result.function_profiler_stats,
+            pickle_size=ml_pickle_size,
+            coefficient_of_variation=ml_coefficient_of_variation,
+            function_complexity=ml_function_complexity
         )
     
     avg_time = sampling_result.avg_time
@@ -1323,7 +1346,10 @@ def optimize(
                 data=reconstructed_data,
                 profile=diag,
                 executor=executor_type,  # Preserve I/O-bound threading decision
-                profiler_stats=sampling_result.function_profiler_stats
+                profiler_stats=sampling_result.function_profiler_stats,
+                pickle_size=ml_pickle_size,
+                coefficient_of_variation=ml_coefficient_of_variation,
+                function_complexity=ml_function_complexity
             )
     
     # Step 6: Calculate optimal chunksize
@@ -1518,7 +1544,10 @@ def optimize(
             data=reconstructed_data,
             profile=diag,
             executor=executor_type,  # Preserve I/O-bound threading decision
-            profiler_stats=sampling_result.function_profiler_stats
+            profiler_stats=sampling_result.function_profiler_stats,
+            pickle_size=ml_pickle_size,
+            coefficient_of_variation=ml_coefficient_of_variation,
+            function_complexity=ml_function_complexity
         )
     
     # Success case: parallelization is beneficial
@@ -1547,5 +1576,8 @@ def optimize(
         data=reconstructed_data,
         profile=diag,
         executor=executor_type,  # Use the determined executor type
-        profiler_stats=sampling_result.function_profiler_stats
+        profiler_stats=sampling_result.function_profiler_stats,
+        pickle_size=ml_pickle_size,
+        coefficient_of_variation=ml_coefficient_of_variation,
+        function_complexity=ml_function_complexity
     )
