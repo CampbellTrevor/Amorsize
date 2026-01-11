@@ -5,7 +5,7 @@ These tests validate that Amorsize works correctly with:
 - pandas DataFrames and Series
 - numpy arrays
 - PIL/Pillow image processing
-- Standard library modules (json, csv, gzip, etc.)
+- Standard library modules (json, os, sys)
 
 Tests are designed to be skipped gracefully if optional dependencies
 are not installed, following best practices for integration testing.
@@ -13,14 +13,11 @@ are not installed, following best practices for integration testing.
 
 import sys
 import os
-import tempfile
 import json
-import csv
-import gzip
 from typing import Any, List
 import pytest
 
-from amorsize import optimize, execute
+from amorsize import optimize
 
 # Check for optional dependencies
 try:
@@ -40,6 +37,29 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
+
+
+def _execute_with_pool(func, result):
+    """
+    Helper function to execute a function with optimizer recommendations.
+    
+    Uses multiprocessing.Pool if n_jobs > 1, otherwise executes serially.
+    Reduces code duplication across test methods.
+    
+    Args:
+        func: The function to execute
+        result: OptimizationResult from optimize()
+    
+    Returns:
+        List of results from executing func on result.data
+    """
+    from multiprocessing import Pool
+    
+    if result.n_jobs == 1:
+        return [func(x) for x in result.data]
+    else:
+        with Pool(processes=result.n_jobs) as pool:
+            return pool.map(func, result.data, chunksize=result.chunksize)
 
 
 class TestNumpyIntegration:
@@ -62,13 +82,8 @@ class TestNumpyIntegration:
         assert result.n_jobs >= 1
         assert result.chunksize >= 1
         
-        # Execute with recommendations (execute() calls optimize internally)
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_array(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_array, result.data, chunksize=result.chunksize)
+        # Execute with recommendations
+        results = _execute_with_pool(process_array, result)
         
         # Verify correctness
         expected = [process_array(arr) for arr in data]
@@ -93,12 +108,7 @@ class TestNumpyIntegration:
         assert result.n_jobs >= 1
         
         # Execute and verify
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_slice(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_slice, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_slice, result)
         
         expected = [process_slice(i) for i in data]
         assert len(results) == len(expected)
@@ -118,12 +128,7 @@ class TestNumpyIntegration:
         result = optimize(process_typed_array, dtypes, verbose=False)
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_typed_array(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_typed_array, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_typed_array, result)
         
         # All should sum to 15
         assert all(r == 15.0 for r in results)
@@ -148,12 +153,7 @@ class TestPandasIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_dataframe(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_dataframe, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_dataframe, result)
         
         expected = [process_dataframe(i) for i in data]
         assert results == expected
@@ -171,12 +171,7 @@ class TestPandasIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_series(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_series, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_series, result)
         
         expected = [process_series(v) for v in data]
         assert len(results) == len(expected)
@@ -198,12 +193,7 @@ class TestPandasIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_combined(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_combined, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_combined, result)
         
         expected = [process_combined(i) for i in data]
         assert results == expected
@@ -225,12 +215,7 @@ class TestStandardLibraryIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_json_string(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_json_string, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_json_string, result)
         
         expected = [i * 2 for i in range(30)]
         assert results == expected
@@ -248,12 +233,7 @@ class TestStandardLibraryIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_file_path(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_file_path, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_file_path, result)
         
         expected = [len(f'test_file_{i}') for i in range(25)]
         assert results == expected
@@ -270,12 +250,7 @@ class TestStandardLibraryIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_text(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_text, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_text, result)
         
         expected = [process_text(t) for t in data]
         assert results == expected
@@ -297,12 +272,7 @@ class TestImageProcessingIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_image_size(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_image_size, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_image_size, result)
         
         expected = [s * s for s in sizes]
         assert results == expected
@@ -322,12 +292,7 @@ class TestImageProcessingIntegration:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [image_to_array_stats(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(image_to_array_stats, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(image_to_array_stats, result)
         
         # All should be 128 (the color value)
         assert all(r == 128 for r in results)
@@ -351,12 +316,7 @@ class TestContainerAwareEnvironment:
         assert result.n_jobs >= 1
         
         # Should not crash when memory is considered
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [memory_intensive(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(memory_intensive, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(memory_intensive, result)
         
         expected = [x * 100 for x in data]
         assert results == expected
@@ -378,12 +338,7 @@ class TestContainerAwareEnvironment:
         assert result.n_jobs <= cpu_count
         
         # Should execute successfully
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [simple_cpu_task(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(simple_cpu_task, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(simple_cpu_task, result)
         
         expected = [x ** 2 for x in data]
         assert results == expected
@@ -404,12 +359,7 @@ class TestCrossVersionCompatibility:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_basic_types(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_basic_types, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_basic_types, result)
         
         expected = [process_basic_types(item) for item in data]
         assert results == expected
@@ -425,12 +375,7 @@ class TestCrossVersionCompatibility:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_dict_list(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_dict_list, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_dict_list, result)
         
         expected = [sum(item['values']) for item in data]
         assert results == expected
@@ -451,12 +396,7 @@ class TestCrossVersionCompatibility:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [version_aware_task(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(version_aware_task, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(version_aware_task, result)
         
         expected = [x ** 2 for x in data]
         assert results == expected
@@ -484,12 +424,7 @@ class TestRealWorldUseCases:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [transform_data(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(transform_data, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(transform_data, result)
         
         # Verify structure
         assert len(results) == 50
@@ -527,12 +462,7 @@ class TestRealWorldUseCases:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [validate_record(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(validate_record, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(validate_record, result)
         
         # First 20 should be valid
         assert all(r['valid'] for r in results[:20])
@@ -561,12 +491,7 @@ class TestRealWorldUseCases:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [compute_statistics(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(compute_statistics, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(compute_statistics, result)
         
         # Verify structure
         assert len(results) == 30
@@ -597,12 +522,7 @@ class TestEdgeCasesInRealWorld:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_container(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_container, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_container, result)
         
         expected = [6, 0, 9, 0, 6]
         assert results == expected
@@ -620,12 +540,7 @@ class TestEdgeCasesInRealWorld:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_nullable(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_nullable, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_nullable, result)
         
         expected = [2, -1, 6, -1, 10, 12, -1, 16]
         assert results == expected
@@ -648,12 +563,7 @@ class TestEdgeCasesInRealWorld:
         
         assert result.n_jobs >= 1
         
-        from multiprocessing import Pool
-        if result.n_jobs == 1:
-            results = [process_mixed(x) for x in result.data]
-        else:
-            with Pool(processes=result.n_jobs) as pool:
-                results = pool.map(process_mixed, result.data, chunksize=result.chunksize)
+        results = _execute_with_pool(process_mixed, result)
         
         expected = [84, 5, 3, 198, 5]
         assert results == expected
