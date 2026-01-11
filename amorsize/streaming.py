@@ -478,6 +478,11 @@ def optimize_streaming(
             print(f"✗ Function too fast ({sampling_result.avg_time*1000:.3f}ms per item)")
             print(f"  Spawn overhead ({spawn_cost*1000:.2f}ms) dominates execution time")
             print(f"→ Serial execution recommended")
+            print(f"\n{'='*60}")
+            print("OPTIMIZATION RESULTS")
+            print(f"{'='*60}")
+            print(f"Recommended: Serial execution (n_jobs=1)")
+            print(f"Reason: Function too fast - spawn overhead dominates")
         
         if diag:
             diag.estimated_speedup = 1.0
