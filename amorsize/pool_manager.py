@@ -14,7 +14,7 @@ import threading
 import time
 from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Dict, Tuple, Any, Callable
+from typing import Optional, Dict, Tuple, Any
 from contextlib import contextmanager
 
 
@@ -335,7 +335,7 @@ def get_global_pool_manager() -> PoolManager:
     
     if _global_manager is None:
         with _global_manager_lock:
-            # Double-check after acquiring lock
+            # Double-check locking pattern to ensure thread-safe singleton creation
             if _global_manager is None:
                 _global_manager = PoolManager()
     

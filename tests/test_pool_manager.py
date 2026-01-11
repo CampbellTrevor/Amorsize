@@ -103,7 +103,7 @@ class TestPoolReuse:
             pool1 = manager.get_pool(n_jobs=2, executor_type="process")
             pool2 = manager.get_pool(n_jobs=2, executor_type="process")
             
-            # Should be the same pool instance (check by id since object is same)
+            # Should be the same pool instance
             assert id(pool1) == id(pool2)
         finally:
             manager.shutdown()
@@ -366,8 +366,7 @@ class TestThreadSafety:
     def test_concurrent_different_pools(self):
         """Test creating different pools concurrently."""
         manager = PoolManager()
-        # Use n_jobs 1-4 (not 0-3) because n_jobs=0 would fail validation in get_pool()
-        # which requires n_jobs > 0
+        # Use n_jobs 1-4 since get_pool() validates n_jobs > 0
         pools = {i: [] for i in range(1, 5)}
         errors = []
         lock = threading.Lock()

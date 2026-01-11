@@ -5,7 +5,7 @@ This example demonstrates how to use the PoolManager to reuse worker pools
 across multiple optimize() calls, amortizing the expensive process spawn cost.
 
 Benefits:
-- 1.5-5x faster optimization for repeated calls
+- 1.5-3x+ faster optimization for repeated calls
 - Reduced overhead for web services and batch processing
 - Better resource utilization by keeping workers ready
 """
