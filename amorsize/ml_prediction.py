@@ -72,6 +72,27 @@ MIN_CALIBRATION_SAMPLES = 10
 # How much to adjust threshold based on accuracy (conservative factor)
 CALIBRATION_ADJUSTMENT_FACTOR = 0.1
 
+# Cross-system learning constants (Iteration 117)
+# Filename format for system fingerprint
+SYSTEM_FINGERPRINT_FILE = "system_fingerprint.json"
+
+# Minimum similarity score to use cross-system data (0-1 scale)
+# 0.8 means systems must be at least 80% similar
+MIN_SYSTEM_SIMILARITY = 0.8
+
+# Weight factor for cross-system samples (reduces their influence)
+# Local system data gets weight 1.0, similar systems get this weight
+CROSS_SYSTEM_WEIGHT = 0.7
+
+# Normalization ranges for SystemFingerprint similarity calculation
+# These ranges reflect typical hardware configurations as of 2024
+MAX_EXPECTED_CORES = 128  # Up to 128 physical cores (high-end servers)
+MIN_CACHE_MB = 1.0  # Minimum L3 cache size (1 MB)
+MAX_CACHE_MB = 256.0  # Maximum L3 cache size (256 MB for high-end CPUs)
+MIN_BANDWIDTH_GB_S = 10.0  # Minimum memory bandwidth (10 GB/s)
+MAX_BANDWIDTH_GB_S = 1000.0  # Maximum memory bandwidth (1000 GB/s for high-end systems)
+MAX_NUMA_NODES = 8  # Maximum NUMA nodes (typical for high-end servers)
+
 
 class PredictionResult:
     """
@@ -292,6 +313,151 @@ class CalibrationData:
         return new_threshold
 
 
+class SystemFingerprint:
+    """
+    Hardware fingerprint for cross-system learning (Iteration 117).
+    
+    Captures key hardware characteristics that influence multiprocessing
+    performance, enabling model transfer across similar systems.
+    
+    Attributes:
+        physical_cores: Number of physical CPU cores
+        l3_cache_mb: L3 cache size in megabytes
+        numa_nodes: Number of NUMA nodes
+        memory_bandwidth_gb_s: Memory bandwidth in GB/s
+        start_method: Multiprocessing start method (fork/spawn/forkserver)
+        system_id: Unique identifier for this system configuration
+    """
+    
+    def __init__(
+        self,
+        physical_cores: int,
+        l3_cache_mb: float,
+        numa_nodes: int,
+        memory_bandwidth_gb_s: float,
+        start_method: str
+    ):
+        self.physical_cores = physical_cores
+        self.l3_cache_mb = l3_cache_mb
+        self.numa_nodes = numa_nodes
+        self.memory_bandwidth_gb_s = memory_bandwidth_gb_s
+        self.start_method = start_method
+        
+        # Generate unique system ID from key characteristics
+        # This helps identify identical systems vs similar systems
+        system_str = f"{physical_cores}_{l3_cache_mb:.1f}_{numa_nodes}_{memory_bandwidth_gb_s:.1f}_{start_method}"
+        self.system_id = hashlib.sha256(system_str.encode()).hexdigest()[:16]
+    
+    def similarity(self, other: 'SystemFingerprint') -> float:
+        """
+        Calculate similarity score with another system (0-1 scale).
+        
+        Uses weighted Euclidean distance in normalized feature space.
+        Systems are considered similar if they have comparable:
+        - Core count (most important)
+        - Cache size (important for data locality)
+        - NUMA topology (important for memory access patterns)
+        - Memory bandwidth (important for memory-bound workloads)
+        - Start method (affects process spawn overhead)
+        
+        Args:
+            other: Another system fingerprint to compare with
+        
+        Returns:
+            Similarity score: 1.0 = identical, 0.0 = completely different
+        """
+        # Normalize features to [0, 1] for comparison
+        # Use same ranges as WorkloadFeatures
+        norm_cores_self = min(1.0, self.physical_cores / MAX_EXPECTED_CORES)
+        norm_cores_other = min(1.0, other.physical_cores / MAX_EXPECTED_CORES)
+        
+        # Log scale for cache (MIN_CACHE_MB to MAX_CACHE_MB range)
+        norm_cache_self = self._normalize_log(self.l3_cache_mb, MIN_CACHE_MB, MAX_CACHE_MB)
+        norm_cache_other = self._normalize_log(other.l3_cache_mb, MIN_CACHE_MB, MAX_CACHE_MB)
+        
+        # Linear scale for NUMA nodes (1 to MAX_NUMA_NODES range)
+        norm_numa_self = min(1.0, self.numa_nodes / MAX_NUMA_NODES)
+        norm_numa_other = min(1.0, other.numa_nodes / MAX_NUMA_NODES)
+        
+        # Log scale for bandwidth (MIN_BANDWIDTH_GB_S to MAX_BANDWIDTH_GB_S range)
+        norm_bw_self = self._normalize_log(self.memory_bandwidth_gb_s, MIN_BANDWIDTH_GB_S, MAX_BANDWIDTH_GB_S)
+        norm_bw_other = self._normalize_log(other.memory_bandwidth_gb_s, MIN_BANDWIDTH_GB_S, MAX_BANDWIDTH_GB_S)
+        
+        # Start method: fork=0.0, spawn=1.0, forkserver=0.5
+        norm_sm_self = {'fork': 0.0, 'spawn': 1.0, 'forkserver': 0.5}.get(self.start_method, 0.5)
+        norm_sm_other = {'fork': 0.0, 'spawn': 1.0, 'forkserver': 0.5}.get(other.start_method, 0.5)
+        
+        # Calculate weighted Euclidean distance
+        # Weights reflect importance for multiprocessing performance
+        weights = {
+            'cores': 2.0,       # Most important: determines parallelism capacity
+            'cache': 1.5,       # Important: affects data locality
+            'numa': 1.5,        # Important: affects memory access patterns
+            'bandwidth': 1.0,   # Moderate: affects memory-bound workloads
+            'start_method': 1.0 # Moderate: affects spawn overhead
+        }
+        
+        squared_diff = (
+            weights['cores'] * (norm_cores_self - norm_cores_other) ** 2 +
+            weights['cache'] * (norm_cache_self - norm_cache_other) ** 2 +
+            weights['numa'] * (norm_numa_self - norm_numa_other) ** 2 +
+            weights['bandwidth'] * (norm_bw_self - norm_bw_other) ** 2 +
+            weights['start_method'] * (norm_sm_self - norm_sm_other) ** 2
+        )
+        
+        # Calculate distance
+        total_weight = sum(weights.values())
+        distance = math.sqrt(squared_diff / total_weight)
+        
+        # Convert distance to similarity (1.0 = identical, 0.0 = max distance)
+        # Max possible distance is sqrt(1) = 1.0 in normalized space
+        similarity = max(0.0, 1.0 - distance)
+        
+        return similarity
+    
+    @staticmethod
+    def _normalize_log(value: float, min_val: float, max_val: float) -> float:
+        """Normalize value to [0, 1] using log scale."""
+        if value <= 0:
+            return 0.0
+        log_val = math.log10(max(value, min_val))
+        log_min = math.log10(min_val)
+        log_max = math.log10(max_val)
+        normalized = (log_val - log_min) / (log_max - log_min)
+        return max(0.0, min(1.0, normalized))
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'physical_cores': self.physical_cores,
+            'l3_cache_mb': self.l3_cache_mb,
+            'numa_nodes': self.numa_nodes,
+            'memory_bandwidth_gb_s': self.memory_bandwidth_gb_s,
+            'start_method': self.start_method,
+            'system_id': self.system_id
+        }
+    
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> 'SystemFingerprint':
+        """Create from dictionary (JSON deserialization)."""
+        return SystemFingerprint(
+            physical_cores=data['physical_cores'],
+            l3_cache_mb=data['l3_cache_mb'],
+            numa_nodes=data['numa_nodes'],
+            memory_bandwidth_gb_s=data['memory_bandwidth_gb_s'],
+            start_method=data['start_method']
+        )
+    
+    def __repr__(self):
+        return (
+            f"SystemFingerprint(cores={self.physical_cores}, "
+            f"cache={self.l3_cache_mb:.1f}MB, "
+            f"numa={self.numa_nodes}, "
+            f"bandwidth={self.memory_bandwidth_gb_s:.1f}GB/s, "
+            f"method={self.start_method})"
+        )
+
+
 class WorkloadFeatures:
     """
     Extracted features from a workload for ML prediction.
@@ -442,6 +608,8 @@ class TrainingData:
     
     Supports both batch and streaming workloads. For streaming workloads,
     additional parameters like buffer_size and use_ordered are included.
+    
+    Enhanced in Iteration 117 with system_fingerprint for cross-system learning.
     """
     
     def __init__(
@@ -453,7 +621,9 @@ class TrainingData:
         timestamp: float,
         buffer_size: Optional[int] = None,
         use_ordered: Optional[bool] = None,
-        is_streaming: bool = False
+        is_streaming: bool = False,
+        system_fingerprint: Optional[SystemFingerprint] = None,
+        weight: float = 1.0
     ):
         self.features = features
         self.n_jobs = n_jobs
@@ -464,6 +634,10 @@ class TrainingData:
         self.buffer_size = buffer_size
         self.use_ordered = use_ordered
         self.is_streaming = is_streaming
+        
+        # Cross-system learning (Iteration 117)
+        self.system_fingerprint = system_fingerprint
+        self.weight = weight  # Allows weighting samples from similar systems
 
 
 class SimpleLinearPredictor:
@@ -630,22 +804,30 @@ class SimpleLinearPredictor:
         Calculate weighted average of neighbor predictions.
         
         Weights are inverse of distance (closer neighbors have more influence).
+        Enhanced in Iteration 117 to also consider cross-system weights.
         
         Returns:
             Tuple of (n_jobs, chunksize)
         """
         # Calculate weights (inverse distance with small epsilon to avoid division by zero)
         epsilon = 0.01
-        weights = [1.0 / (dist + epsilon) for dist, _ in neighbors]
-        total_weight = sum(weights)
+        distance_weights = [1.0 / (dist + epsilon) for dist, _ in neighbors]
+        
+        # Apply cross-system weights (Iteration 117)
+        # Combine distance-based weight with sample weight (for cross-system data)
+        combined_weights = [
+            dw * sample.weight for dw, (_, sample) in zip(distance_weights, neighbors)
+        ]
+        
+        total_weight = sum(combined_weights)
         
         # Weighted average
         n_jobs_weighted = sum(
-            w * sample.n_jobs for w, (_, sample) in zip(weights, neighbors)
+            w * sample.n_jobs for w, (_, sample) in zip(combined_weights, neighbors)
         ) / total_weight
         
         chunksize_weighted = sum(
-            w * sample.chunksize for w, (_, sample) in zip(weights, neighbors)
+            w * sample.chunksize for w, (_, sample) in zip(combined_weights, neighbors)
         ) / total_weight
         
         # Round to integers and ensure minimum values
@@ -842,6 +1024,109 @@ def _save_calibration_data(calibration: CalibrationData) -> bool:
         return True
     except Exception:
         return False
+
+
+def _get_current_system_fingerprint() -> SystemFingerprint:
+    """
+    Create fingerprint for the current system (Iteration 117).
+    
+    Captures hardware characteristics for cross-system learning:
+    - Physical core count
+    - L3 cache size
+    - NUMA topology
+    - Memory bandwidth
+    - Multiprocessing start method
+    
+    Returns:
+        SystemFingerprint for current system
+    """
+    physical_cores = get_physical_cores()
+    start_method = get_multiprocessing_start_method()
+    
+    # Get hardware topology if available
+    if _HAS_COST_MODEL:
+        try:
+            topology = detect_system_topology()
+            l3_cache_mb = topology.cache_info.l3_size / (1024 * 1024)
+            numa_nodes = topology.numa_info.numa_nodes
+            memory_bandwidth_gb_s = topology.memory_bandwidth.bandwidth_gb_per_sec
+        except Exception:
+            # Fallback to defaults if detection fails
+            l3_cache_mb = 8.0  # 8MB conservative default
+            numa_nodes = 1
+            memory_bandwidth_gb_s = 25.0  # DDR4-3200 single channel
+    else:
+        # Defaults when cost model unavailable
+        l3_cache_mb = 8.0
+        numa_nodes = 1
+        memory_bandwidth_gb_s = 25.0
+    
+    return SystemFingerprint(
+        physical_cores=physical_cores,
+        l3_cache_mb=l3_cache_mb,
+        numa_nodes=numa_nodes,
+        memory_bandwidth_gb_s=memory_bandwidth_gb_s,
+        start_method=start_method
+    )
+
+
+def _save_system_fingerprint(fingerprint: SystemFingerprint) -> bool:
+    """
+    Save system fingerprint to cache (Iteration 117).
+    
+    Stores the current system's hardware characteristics for cross-system
+    learning. This fingerprint is used to identify similar systems and
+    enable model transfer.
+    
+    Args:
+        fingerprint: SystemFingerprint object to save
+    
+    Returns:
+        True if successfully saved, False otherwise
+    """
+    cache_dir = _get_ml_cache_dir()
+    fingerprint_file = cache_dir / SYSTEM_FINGERPRINT_FILE
+    
+    try:
+        # Prepare data for JSON serialization
+        data = {
+            'fingerprint': fingerprint.to_dict(),
+            'last_updated': time.time(),
+            'version': '1.0'  # For future compatibility
+        }
+        
+        # Atomic write: write to temp file then rename
+        temp_file = fingerprint_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        # Atomic rename
+        temp_file.replace(fingerprint_file)
+        return True
+    except Exception:
+        return False
+
+
+def _load_system_fingerprint() -> Optional[SystemFingerprint]:
+    """
+    Load system fingerprint from cache (Iteration 117).
+    
+    Returns:
+        SystemFingerprint if found, None if not cached or invalid
+    """
+    cache_dir = _get_ml_cache_dir()
+    fingerprint_file = cache_dir / SYSTEM_FINGERPRINT_FILE
+    
+    try:
+        if not fingerprint_file.exists():
+            return None
+        
+        with open(fingerprint_file, 'r') as f:
+            data = json.load(f)
+        
+        return SystemFingerprint.from_dict(data['fingerprint'])
+    except Exception:
+        return None
 
 
 def _compute_function_signature(func: Callable) -> str:
@@ -1287,13 +1572,21 @@ def update_model_from_execution(
             system_topology=system_topology
         )
         
+        # Capture system fingerprint for cross-system learning (Iteration 117)
+        system_fingerprint = _get_current_system_fingerprint()
+        
+        # Save system fingerprint if not already saved
+        if _load_system_fingerprint() is None:
+            _save_system_fingerprint(system_fingerprint)
+        
         # Create training sample from execution results
         training_sample = TrainingData(
             features=features,
             n_jobs=actual_n_jobs,
             chunksize=actual_chunksize,
             speedup=actual_speedup,
-            timestamp=time.time()
+            timestamp=time.time(),
+            system_fingerprint=system_fingerprint
         )
         
         # Save to cache in ML-specific format for training
@@ -1324,7 +1617,9 @@ def update_model_from_execution(
             'chunksize': actual_chunksize,
             'speedup': actual_speedup,
             'timestamp': training_sample.timestamp,
-            'function_signature': func_hash
+            'function_signature': func_hash,
+            # Cross-system learning (Iteration 117)
+            'system_fingerprint': system_fingerprint.to_dict() if system_fingerprint else None
         }
         
         # Write to file atomically
@@ -1664,17 +1959,37 @@ def get_calibration_stats(verbose: bool = False) -> Dict[str, Any]:
         }
 
 
-def load_ml_training_data() -> List[TrainingData]:
+def load_ml_training_data(
+    enable_cross_system: bool = True,
+    min_similarity: float = MIN_SYSTEM_SIMILARITY,
+    verbose: bool = False
+) -> List[TrainingData]:
     """
     Load training data specifically saved by online learning.
     
     This loads data from ml_training_*.json files saved by
     update_model_from_execution(), which contain actual execution results.
     
+    Enhanced in Iteration 117 with cross-system learning support.
+    When enable_cross_system=True, loads training data from similar systems
+    and weights it based on hardware similarity.
+    
+    Args:
+        enable_cross_system: If True, load and weight data from similar systems
+        min_similarity: Minimum similarity score (0-1) to include cross-system data
+        verbose: If True, print diagnostic information
+    
     Returns:
-        List of TrainingData samples from online learning
+        List of TrainingData samples from online learning (local + cross-system)
     """
     training_data = []
+    
+    # Get current system fingerprint for cross-system weighting
+    current_system = None
+    if enable_cross_system:
+        current_system = _get_current_system_fingerprint()
+        if verbose:
+            print(f"Cross-System Learning: Current system: {current_system}")
     
     try:
         cache_dir = _get_ml_cache_dir()
@@ -1701,6 +2016,38 @@ def load_ml_training_data() -> List[TrainingData]:
                     system_topology=None  # Not stored in cache, use defaults
                 )
                 
+                # Load system fingerprint if available (Iteration 117)
+                sample_system = None
+                system_fingerprint_dict = data.get('system_fingerprint')
+                if system_fingerprint_dict:
+                    try:
+                        sample_system = SystemFingerprint.from_dict(system_fingerprint_dict)
+                    except (KeyError, TypeError):
+                        # Old data without fingerprint or corrupted fingerprint
+                        sample_system = None
+                
+                # Calculate sample weight based on system similarity
+                weight = 1.0  # Default weight for local system data
+                if enable_cross_system and current_system and sample_system:
+                    # Check if this is from current system or different system
+                    if sample_system.system_id != current_system.system_id:
+                        # Different system - calculate similarity
+                        similarity = current_system.similarity(sample_system)
+                        
+                        if similarity < min_similarity:
+                            # System too different, skip this sample
+                            if verbose:
+                                print(f"Cross-System Learning: Skipping sample from "
+                                      f"{sample_system} (similarity={similarity:.2f})")
+                            continue
+                        
+                        # Apply cross-system weight based on similarity
+                        weight = CROSS_SYSTEM_WEIGHT * similarity
+                        
+                        if verbose:
+                            print(f"Cross-System Learning: Including sample from similar system "
+                                  f"(similarity={similarity:.2f}, weight={weight:.2f})")
+                
                 # Create training sample (with streaming support from Iteration 115)
                 sample = TrainingData(
                     features=features,
@@ -1710,7 +2057,9 @@ def load_ml_training_data() -> List[TrainingData]:
                     timestamp=data.get('timestamp', time.time()),
                     buffer_size=data.get('buffer_size'),  # Streaming parameter
                     use_ordered=data.get('use_ordered'),  # Streaming parameter
-                    is_streaming=data.get('is_streaming', False)  # Streaming flag
+                    is_streaming=data.get('is_streaming', False),  # Streaming flag
+                    system_fingerprint=sample_system,  # Cross-system learning (Iteration 117)
+                    weight=weight  # Cross-system weight (Iteration 117)
                 )
                 
                 training_data.append(sample)
@@ -1718,6 +2067,8 @@ def load_ml_training_data() -> List[TrainingData]:
             except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
                 # Skip corrupted or invalid files
                 # Could log these in verbose mode for debugging
+                if verbose:
+                    print(f"Warning: Skipping corrupted training file: {cache_file.name}")
                 continue
             except (OSError, IOError) as e:
                 # Skip files with read errors
@@ -1727,6 +2078,14 @@ def load_ml_training_data() -> List[TrainingData]:
         # If cache directory access fails, return empty list
         # This is not a critical error - prediction will just have less data
         pass
+    
+    if verbose and enable_cross_system:
+        local_count = sum(1 for s in training_data 
+                         if s.system_fingerprint and current_system and
+                         s.system_fingerprint.system_id == current_system.system_id)
+        cross_system_count = len(training_data) - local_count
+        print(f"Cross-System Learning: Loaded {len(training_data)} total samples "
+              f"({local_count} local, {cross_system_count} cross-system)")
     
     return training_data
 
@@ -1743,10 +2102,13 @@ __all__ = [
     'PredictionResult',
     'StreamingPredictionResult',
     'CalibrationData',
+    'SystemFingerprint',
     'WorkloadFeatures',
     'TrainingData',
     'SimpleLinearPredictor',
     'MIN_TRAINING_SAMPLES',
     'DEFAULT_CONFIDENCE_THRESHOLD',
+    'MIN_SYSTEM_SIMILARITY',
+    'CROSS_SYSTEM_WEIGHT',
     '_compute_function_complexity'
 ]

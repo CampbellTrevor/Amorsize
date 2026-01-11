@@ -1,4 +1,168 @@
-# Context for Next Agent - Iteration 117
+# Context for Next Agent - Iteration 118
+
+## What Was Accomplished in Iteration 117
+
+**CROSS-SYSTEM LEARNING** - Implemented hardware-aware model transfer across similar systems, enabling faster cold-start optimization on new hardware configurations.
+
+### Implementation Completed
+
+1. **SystemFingerprint Class** (amorsize/ml_prediction.py):
+   - Captures hardware characteristics: cores, cache, NUMA, bandwidth, start method
+   - Generates unique system_id for identification
+   - implements similarity() method with weighted Euclidean distance
+   - Weights: cores (2.0), cache (1.5), NUMA (1.5), bandwidth (1.0), start method (1.0)
+   - to_dict/from_dict for JSON serialization
+   - __repr__ for debugging
+
+2. **System Fingerprint Functions** (amorsize/ml_prediction.py):
+   - `_get_current_system_fingerprint()`: Creates fingerprint for current system
+   - `_save_system_fingerprint()`: Atomically saves to ml_cache/system_fingerprint.json
+   - `_load_system_fingerprint()`: Loads cached fingerprint
+   - Auto-saves fingerprint on first execution
+
+3. **Enhanced TrainingData Class** (amorsize/ml_prediction.py):
+   - Added `system_fingerprint` field to track sample origin
+   - Added `weight` field for cross-system weighting (default 1.0)
+   - Backward compatible with old data
+
+4. **Enhanced load_ml_training_data() Function** (amorsize/ml_prediction.py):
+   - New `enable_cross_system` parameter (default: True)
+   - New `min_similarity` parameter (default: MIN_SYSTEM_SIMILARITY = 0.8)
+   - New `verbose` parameter for diagnostic output
+   - Loads system fingerprint from training files
+   - Calculates similarity between current and sample systems
+   - Filters out samples below similarity threshold
+   - Weights cross-system samples: weight = CROSS_SYSTEM_WEIGHT * similarity
+   - Reports local vs cross-system sample counts in verbose mode
+
+5. **Enhanced update_model_from_execution() Function** (amorsize/ml_prediction.py):
+   - Captures current system fingerprint
+   - Saves fingerprint to cache if not already saved
+   - Includes fingerprint in training data JSON
+   - Backward compatible with old code
+
+6. **Enhanced SimpleLinearPredictor** (amorsize/ml_prediction.py):
+   - Updated `_weighted_average()` to use sample weights
+   - Combines distance-based weight with cross-system weight
+   - Ensures local system data dominates when available
+
+7. **Constants** (amorsize/ml_prediction.py):
+   - `MIN_SYSTEM_SIMILARITY = 0.8`: Minimum similarity to include cross-system data
+   - `CROSS_SYSTEM_WEIGHT = 0.7`: Weight factor for similar systems
+   - `SYSTEM_FINGERPRINT_FILE = "system_fingerprint.json"`: Cache filename
+
+8. **Comprehensive Testing** (tests/test_cross_system_learning.py):
+   - 24 new tests covering:
+     - SystemFingerprint creation and properties (9 tests)
+     - System fingerprint persistence (3 tests)
+     - Current system fingerprint detection (2 tests)
+     - TrainingData with fingerprint support (2 tests)
+     - Cross-system data loading with filtering (5 tests)
+     - Model update with fingerprint (1 test)
+     - Cross-system weighting in predictions (1 test)
+     - Verbose output reporting (1 test)
+   - All 24 tests passing
+   - Total: 1582 tests passing (up from 1560)
+
+9. **Comprehensive Example** (examples/cross_system_learning_demo.py):
+   - 7 comprehensive demos:
+     - Demo 1: System fingerprinting
+     - Demo 2: System similarity scoring
+     - Demo 3: Building training data with fingerprints
+     - Demo 4: Cross-system data loading
+     - Demo 5: Benefits of cross-system learning
+     - Demo 6: Comparing with/without cross-system learning
+     - Demo 7: Tuning similarity threshold (advanced)
+   - Shows real-world usage patterns
+   - Demonstrates all key features
+
+10. **Updated Exports** (amorsize/__init__.py):
+    - Added `SystemFingerprint`
+    - Added `MIN_SYSTEM_SIMILARITY`
+    - Added `CROSS_SYSTEM_WEIGHT`
+    - Updated stub functions for when ML module unavailable
+
+### Key Features
+
+**How It Works:**
+1. When updating model, system fingerprint is automatically captured and saved
+2. When loading training data, similarity is calculated for each sample's system
+3. Samples from systems below MIN_SYSTEM_SIMILARITY are filtered out
+4. Remaining cross-system samples are weighted: weight = CROSS_SYSTEM_WEIGHT * similarity
+5. Local system samples always get weight = 1.0
+6. Predictions use weighted k-NN with both distance and system weights
+
+**Benefits:**
+- ✅ Faster cold-start on new systems (no dry-run needed if similar data exists)
+- ✅ Better generalization across hardware configurations
+- ✅ Intelligent filtering prevents poor predictions from dissimilar hardware
+- ✅ Weighted predictions ensure local data dominates
+- ✅ Zero configuration required (automatic fingerprinting)
+- ✅ Backward compatible with old training data
+- ✅ No breaking changes to API
+
+**Architecture:**
+```
+update_model_from_execution()
+    ├─→ _get_current_system_fingerprint()
+    │   ├─→ Detect cores, cache, NUMA, bandwidth, start method
+    │   └─→ Generate system_id
+    ├─→ Save fingerprint if not cached
+    └─→ Save training data with fingerprint
+
+load_ml_training_data(enable_cross_system=True)
+    ├─→ _get_current_system_fingerprint()
+    ├─→ Load training files from cache
+    ├─→ For each sample:
+    │   ├─→ Load sample's fingerprint
+    │   ├─→ Calculate similarity to current system
+    │   ├─→ Filter if similarity < MIN_SYSTEM_SIMILARITY
+    │   └─→ Weight = CROSS_SYSTEM_WEIGHT * similarity
+    └─→ Return weighted samples
+
+SimpleLinearPredictor.predict()
+    ├─→ Find k nearest neighbors
+    └─→ _weighted_average()
+        ├─→ distance_weight = 1.0 / (distance + epsilon)
+        ├─→ combined_weight = distance_weight * sample.weight
+        └─→ weighted average using combined_weight
+```
+
+### Testing Results
+
+**All Tests Passing:**
+- 24/24 new cross-system learning tests ✅
+- 36/36 ML prediction tests ✅
+- 27/27 confidence calibration tests ✅
+- 19/19 batch online learning tests ✅
+- 17/17 streaming online learning tests ✅
+- 19/19 ML streaming prediction tests ✅
+- Total: 1582/1582 tests passing ✅
+
+**Test Coverage:**
+- SystemFingerprint class functionality
+- Similarity scoring algorithm
+- Fingerprint persistence
+- Cross-system data loading and filtering
+- Weight calculation and application
+- Integration with existing ML system
+- Backward compatibility
+- Verbose diagnostic output
+
+### Security Summary
+
+**No security vulnerabilities expected** - changes follow same patterns as Iterations 114-116.
+
+**Code Review:** Pending
+
+**Architecture Notes:**
+- Uses atomic file writes for fingerprint persistence
+- Similarity scoring uses normalized features (0-1 range)
+- Conservative MIN_SYSTEM_SIMILARITY (0.8) ensures quality
+- CROSS_SYSTEM_WEIGHT (0.7) reduces cross-system influence
+- Local system data always prioritized (weight 1.0)
+
+## What Was Accomplished in Iteration 116
 
 ## What Was Accomplished in Iteration 116
 
@@ -709,30 +873,34 @@ Fixed streaming optimization verbose output formatting:
 
 ## Recommended Focus for Next Agent
 
-**Option 1: Cross-System Learning (🔥 RECOMMENDED)**
-- Implement model transfer across different hardware configurations
-- Use system fingerprinting (from hardware features) to identify similar environments
-- Enable faster cold-start on new systems by leveraging similar system data
-- Benefits: Better generalization, reduced dry-run needs on new hardware
-- Prerequisites: Hardware-aware ML (Iteration 114) + Confidence calibration (Iteration 116)
-
-**Option 2: Feature Importance Analysis**
+**Option 1: Feature Importance Analysis (🔥 RECOMMENDED)**
 - Implement feature importance scoring to identify which features matter most
 - Use variance-based or correlation-based importance metrics
 - Benefits: Better understanding of model, potential feature reduction, improved interpretability
-- Prerequisites: Hardware-aware ML (Iteration 114) with 12 features
+- Prerequisites: Hardware-aware ML (Iteration 114) with 12 features + Cross-system learning (Iteration 117)
+- Implementation: Add analyze_feature_importance() method to SimpleLinearPredictor (already stubbed)
+- Use case: Help users understand which workload characteristics drive optimization decisions
 
-**Option 3: Adaptive Chunking Integration with ML**
+**Option 2: Adaptive Chunking Integration with ML**
 - Integrate adaptive chunking parameters into ML predictions
 - Learn optimal adaptation rates and bounds for different workload types
 - Benefits: Better heterogeneous workload handling out of the box
 - Prerequisites: Adaptive chunking (Iteration 107) + ML prediction + Confidence calibration (Iteration 116)
+- Implementation: Add adaptive chunking parameters to TrainingData and WorkloadFeatures
 
-**Option 4: Workload Clustering & Classification**
+**Option 3: Workload Clustering & Classification**
 - Implement workload clustering to group similar workloads
 - Classify new workloads into clusters for better predictions
 - Benefits: More targeted predictions, better handling of diverse workload types
-- Prerequisites: ML prediction + Confidence calibration (Iteration 116)
+- Prerequisites: ML prediction + Cross-system learning (Iteration 117)
+- Implementation: Use k-means or hierarchical clustering on WorkloadFeatures
+
+**Option 4: ML Model Versioning & Migration**
+- Implement versioning for ML training data format
+- Add migration utilities for old data to new formats
+- Benefits: Smoother upgrades when ML features change
+- Prerequisites: Existing ML system with multiple iterations of enhancements
+- Implementation: Add version field to training files, migration functions
 
 ## Progress
 - ✅ Distributed Caching (Iteration 102)
@@ -750,5 +918,7 @@ Fixed streaming optimization verbose output formatting:
 - ✅ Advanced Cost Model + ML Integration (Iteration 114)
 - ✅ Online Learning for Streaming (Iteration 115)
 - ✅ Prediction Confidence Calibration (Iteration 116)
-- ⏳ Cross-System Learning or Feature Importance Analysis (Next - Recommended)
+- ✅ Cross-System Learning (Iteration 117)
+- ⏳ Feature Importance Analysis (Next - Recommended)
+
 
