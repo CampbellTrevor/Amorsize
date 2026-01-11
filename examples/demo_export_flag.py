@@ -21,7 +21,8 @@ def demo_basic_json_export():
     print("=" * 70)
     print()
     
-    export_file = "/tmp/amorsize_export_basic.json"
+    # Use tempfile for cross-platform compatibility
+    export_file = os.path.join(tempfile.gettempdir(), "amorsize_export_basic.json")
     
     print(f"Running: amorsize optimize math.sqrt --data-range 1000 --export {export_file}\n")
     
@@ -60,7 +61,8 @@ def demo_profile_json_export():
     print("=" * 70)
     print()
     
-    export_file = "/tmp/amorsize_export_profile.json"
+    # Use tempfile for cross-platform compatibility
+    export_file = os.path.join(tempfile.gettempdir(), "amorsize_export_profile.json")
     
     print(f"Running: amorsize optimize math.factorial --data-range 5000 --profile --export {export_file}\n")
     
@@ -107,7 +109,8 @@ def demo_yaml_export():
     print("=" * 70)
     print()
     
-    export_file = "/tmp/amorsize_export.yaml"
+    # Use tempfile for cross-platform compatibility
+    export_file = os.path.join(tempfile.gettempdir(), "amorsize_export.yaml")
     
     print(f"Running: amorsize optimize math.sqrt --data-range 2000 --export {export_file}\n")
     
@@ -146,7 +149,8 @@ def demo_execute_with_export():
     print("=" * 70)
     print()
     
-    export_file = "/tmp/amorsize_execute_export.json"
+    # Use tempfile for cross-platform compatibility
+    export_file = os.path.join(tempfile.gettempdir(), "amorsize_execute_export.json")
     
     print(f"Running: amorsize execute math.sqrt --data-range 500 --export {export_file}\n")
     
@@ -183,7 +187,8 @@ def demo_verbose_export():
     print("=" * 70)
     print()
     
-    export_file = "/tmp/amorsize_export_verbose.json"
+    # Use tempfile for cross-platform compatibility
+    export_file = os.path.join(tempfile.gettempdir(), "amorsize_export_verbose.json")
     
     print(f"Running: amorsize optimize math.sqrt --data-range 1000 --export {export_file} --verbose\n")
     
@@ -215,8 +220,9 @@ def demo_explicit_format():
     print("=" * 70)
     print()
     
+    # Use tempfile for cross-platform compatibility
     # Export YAML to .txt file using explicit format flag
-    export_file = "/tmp/amorsize_export.txt"
+    export_file = os.path.join(tempfile.gettempdir(), "amorsize_export.txt")
     
     print(f"Running: amorsize optimize math.factorial --data-range 1000")
     print(f"         --export {export_file} --export-format yaml\n")

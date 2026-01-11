@@ -89,13 +89,12 @@ class TestExportFunctionality:
             assert data['mode'] == 'optimize'
             assert 'profile' in data
             
-            # Verify profile contains expected fields
             profile = data['profile']
             assert 'physical_cores' in profile
             assert 'logical_cores' in profile
-            assert 'spawn_cost_ms' in profile  # Changed from spawn_cost
-            assert 'available_memory_gb' in profile  # Changed from available_memory
-            assert 'avg_execution_time_ms' in profile  # Changed from avg_execution_time
+            assert 'spawn_cost_ms' in profile
+            assert 'available_memory_gb' in profile
+            assert 'avg_execution_time_ms' in profile
 
         finally:
             if os.path.exists(export_path):

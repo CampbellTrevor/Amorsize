@@ -524,7 +524,8 @@ def _export_diagnostics(result, export_path: str, export_format: str = "json", v
                 except ImportError:
                     # Fall back to JSON if YAML not available
                     if verbose:
-                        print(f"Warning: PyYAML not installed. Exporting as JSON instead.", file=sys.stderr)
+                        import sys
+                        print(colorize("Warning: PyYAML not installed. Exporting as JSON instead.", Colors.YELLOW), file=sys.stderr)
                     json.dump(output, f, indent=2)
             else:
                 # Default to JSON
