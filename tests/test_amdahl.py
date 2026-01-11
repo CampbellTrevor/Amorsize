@@ -192,3 +192,118 @@ def test_calculate_amdahl_speedup_chunking_overhead():
     
     # Lower chunking overhead should give better speedup
     assert speedup_low_chunking > speedup_high_chunking
+
+
+def test_calculate_amdahl_speedup_ipc_overlap():
+    """Test that IPC overlap factor improves speedup estimates."""
+    # With the overlap factor of 0.5, IPC overhead should be halved
+    # This test verifies the overlap provides better speedup than pure serial IPC
+    
+    # Scenario: High IPC overhead relative to compute time
+    speedup = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.005,  # 5ms per item (significant overhead)
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
+        n_jobs=4,
+        chunksize=25,
+        total_items=100,
+        data_pickle_overhead_per_item=0.003  # 3ms per item for data
+    )
+    
+    # With overlap factor:
+    # - Serial time: 10.0s
+    # - Spawn: 0.04s (4 * 0.01)
+    # - Compute: 2.5s (10.0 / 4)
+    # - Result IPC: 0.25s (0.005 * 100 * 0.5)
+    # - Data IPC: 0.15s (0.003 * 100 * 0.5)
+    # - Chunking: 0.002s (0.0005 * 4)
+    # - Total parallel: 2.942s
+    # - Speedup: 10.0 / 2.942 ≈ 3.40x
+    
+    assert speedup > 3.0, f"Expected speedup > 3.0 with overlap, got {speedup}"
+    assert speedup <= 4.0, f"Speedup cannot exceed n_jobs (4), got {speedup}"
+    
+    # Without overlap (hypothetical), parallel time would be:
+    # 0.04 + 2.5 + 0.5 + 0.3 + 0.002 = 3.342s → speedup ≈ 2.99x
+    # With 0.5 overlap: 0.04 + 2.5 + 0.25 + 0.15 + 0.002 = 2.942s → speedup ≈ 3.40x
+
+
+def test_calculate_amdahl_speedup_overlap_factor_value():
+    """Test that overlap factor is applied correctly to IPC overhead."""
+    # Create two scenarios: one with no IPC, one with significant IPC
+    # The difference should reflect the overlap factor
+    
+    speedup_no_ipc = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.0,
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
+        n_jobs=2,
+        chunksize=50,
+        total_items=100,
+        data_pickle_overhead_per_item=0.0
+    )
+    
+    speedup_with_ipc = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.01,  # 1s total without overlap, 0.5s with
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
+        n_jobs=2,
+        chunksize=50,
+        total_items=100,
+        data_pickle_overhead_per_item=0.01  # 1s total without overlap, 0.5s with
+    )
+    
+    # No IPC: parallel_time = 0.02 + 5.0 + 0.001 = 5.021s, speedup ≈ 1.99x
+    # With IPC: parallel_time = 0.02 + 5.0 + 0.5 + 0.5 + 0.001 = 6.021s, speedup ≈ 1.66x
+    # The IPC overhead (with 0.5 factor) should reduce speedup
+    assert speedup_with_ipc < speedup_no_ipc
+    assert speedup_with_ipc > 1.5  # Still beneficial despite overhead
+
+
+def test_calculate_amdahl_speedup_data_and_result_ipc():
+    """Test that both data and result IPC overhead are accounted for with overlap."""
+    # Test with only data IPC
+    speedup_data_only = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.0,
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
+        n_jobs=4,
+        chunksize=25,
+        total_items=100,
+        data_pickle_overhead_per_item=0.005
+    )
+    
+    # Test with only result IPC
+    speedup_result_only = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.005,
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
+        n_jobs=4,
+        chunksize=25,
+        total_items=100,
+        data_pickle_overhead_per_item=0.0
+    )
+    
+    # Test with both data and result IPC
+    speedup_both = calculate_amdahl_speedup(
+        total_compute_time=10.0,
+        pickle_overhead_per_item=0.005,
+        spawn_cost_per_worker=0.01,
+        chunking_overhead_per_chunk=0.0005,
+        n_jobs=4,
+        chunksize=25,
+        total_items=100,
+        data_pickle_overhead_per_item=0.005
+    )
+    
+    # With equal data and result overhead, both should give similar speedup
+    assert abs(speedup_data_only - speedup_result_only) < 0.01
+    
+    # Combined overhead should give lower speedup than individual
+    assert speedup_both < speedup_data_only
+    assert speedup_both < speedup_result_only

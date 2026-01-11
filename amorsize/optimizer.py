@@ -513,11 +513,12 @@ def calculate_amdahl_speedup(
     2. Input data pickle overhead (per-item serialization cost for data → workers)
     3. Output result pickle overhead (per-item serialization cost for results → main)
     4. Chunking overhead (per-chunk communication cost)
+    5. IPC overlap factor (pipelining in Pool.map reduces effective IPC overhead)
     
     The formula breaks execution into:
-    - Serial portion: spawn costs + data distribution overhead
+    - Serial portion: spawn costs + partial IPC overhead
     - Parallel portion: actual computation time divided across workers
-    - IPC overhead: pickle time for both input data and output results (happens per item)
+    - IPC overhead: pickle time with overlap factor accounting for pipelining
     
     Args:
         total_compute_time: Total serial computation time (seconds)
@@ -535,20 +536,32 @@ def calculate_amdahl_speedup(
     Mathematical Model:
         Serial Time = T_compute
         
-        Parallel Time = T_spawn + T_parallel_compute + T_data_ipc + T_result_ipc + T_chunking
+        Parallel Time = T_spawn + T_parallel_compute + T_data_ipc_effective + T_result_ipc_effective + T_chunking
         where:
             T_spawn = spawn_cost * n_jobs (one-time startup)
             T_parallel_compute = T_compute / n_jobs (ideal parallelization)
-            T_data_ipc = data_pickle_overhead * total_items (input serialization)
-            T_result_ipc = pickle_overhead * total_items (output serialization)
+            T_data_ipc_effective = data_pickle_overhead * total_items * overlap_factor
+            T_result_ipc_effective = pickle_overhead * total_items * overlap_factor
             T_chunking = chunking_overhead * num_chunks (task distribution)
+            overlap_factor = 0.5 (conservative estimate of IPC/compute overlap)
         
-        Both IPC overheads are unavoidable and happen regardless of parallelization,
-        representing the "serial fraction" in Amdahl's Law because data must be
-        distributed to workers and results collected sequentially.
+        The overlap factor accounts for pipelining in Pool.map() where:
+        - Initial data distribution happens before any computation (serial)
+        - Middle chunks: data pickling overlaps with worker computation
+        - Final result collection happens after all computation (serial)
+        - Conservative factor of 0.5 means we assume ~50% effective overlap
+        
+        This provides a more accurate model than treating all IPC as purely serial,
+        while remaining conservative enough to avoid over-optimistic predictions.
     """
     if n_jobs <= 0 or total_compute_time <= 0:
         return 1.0
+    
+    # IPC overlap factor: accounts for pipelining in Pool.map()
+    # Conservative estimate: 50% of IPC overhead can overlap with computation
+    # This reflects that initial data distribution and final result collection
+    # are serial, but middle chunks can overlap with ongoing computation
+    IPC_OVERLAP_FACTOR = 0.5
     
     # Serial execution time (baseline)
     serial_time = total_compute_time
@@ -561,12 +574,16 @@ def calculate_amdahl_speedup(
     parallel_compute_time = total_compute_time / n_jobs
     
     # 3. Input data IPC overhead (pickle data items to send to workers)
-    # This is per-item and largely serial (data distributed sequentially)
-    data_ipc_overhead = data_pickle_overhead_per_item * total_items
+    # Apply overlap factor: not all data pickling is purely serial
+    # Initial chunks must be sent before work begins (serial)
+    # But subsequent chunks can be pickled while workers compute (overlapped)
+    data_ipc_overhead = data_pickle_overhead_per_item * total_items * IPC_OVERLAP_FACTOR
     
     # 4. Output result IPC overhead (pickle/unpickle for inter-process communication)
-    # This is per-item and largely serial (results collected sequentially)
-    result_ipc_overhead = pickle_overhead_per_item * total_items
+    # Apply overlap factor: not all result unpickling is purely serial
+    # Early results can be unpickled while workers are still computing (overlapped)
+    # But final results must be collected after all work completes (serial)
+    result_ipc_overhead = pickle_overhead_per_item * total_items * IPC_OVERLAP_FACTOR
     
     # 5. Chunking overhead (additional cost per chunk for task distribution)
     # Each chunk requires queue operations, context switches, etc.
