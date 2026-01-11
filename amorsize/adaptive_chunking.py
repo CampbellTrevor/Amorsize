@@ -10,7 +10,7 @@ import threading
 import time
 from collections import deque
 from multiprocessing.pool import Pool, ThreadPool
-from typing import Any, Callable, Deque, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Deque, Iterable, List, Optional, Union
 
 
 class AdaptiveChunkingPool:
