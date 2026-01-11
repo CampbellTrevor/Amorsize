@@ -131,7 +131,11 @@ class WorkloadFeatures:
         self.norm_pickle_size = self._normalize_log(max(1, pickle_size or 1), 10, 1e7)
         
         # Linear scale for CV (typical range: 0 to 2.0, higher means more heterogeneous)
-        # CV > 1.0 is rare but possible for highly variable workloads
+        # CV values are typically:
+        #   - CV < 0.3: homogeneous (consistent execution times)
+        #   - CV 0.3-0.7: moderately heterogeneous
+        #   - CV > 0.7: highly heterogeneous (significant variance)
+        # CV > 2.0 is rare but theoretically possible for extremely variable workloads
         self.norm_cv = min(1.0, (coefficient_of_variation or 0.0) / 2.0)
         
         # Log scale for function complexity (bytecode size, typical: 100 to 10000 bytes)

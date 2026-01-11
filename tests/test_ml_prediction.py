@@ -81,7 +81,8 @@ class TestWorkloadFeatures:
         )
         
         vector = features.to_vector()
-        assert len(vector) == 5
+        # Enhanced to 8 features in Iteration 104 (was 5)
+        assert len(vector) == 8
         assert all(isinstance(v, float) for v in vector)
         assert all(0.0 <= v <= 1.0 for v in vector)
     
@@ -392,3 +393,375 @@ class TestMLPredictionConstants:
         """Test DEFAULT_CONFIDENCE_THRESHOLD constant."""
         assert 0.0 <= DEFAULT_CONFIDENCE_THRESHOLD <= 1.0
         assert isinstance(DEFAULT_CONFIDENCE_THRESHOLD, float)
+
+
+# ============================================================================
+# Enhanced Features Tests (Iteration 104)
+# ============================================================================
+
+class TestEnhancedFeatures:
+    """Test suite for enhanced ML features added in Iteration 104."""
+    
+    def test_enhanced_feature_creation(self):
+        """Test creating workload features with enhanced parameters."""
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork',
+            pickle_size=1024,
+            coefficient_of_variation=0.3,
+            function_complexity=500
+        )
+        
+        assert features.pickle_size == 1024
+        assert features.coefficient_of_variation == 0.3
+        assert features.function_complexity == 500
+    
+    def test_enhanced_feature_defaults(self):
+        """Test that enhanced features default to sensible values."""
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork'
+        )
+        
+        # Default values should be used when not provided
+        assert features.pickle_size == 0
+        assert features.coefficient_of_variation == 0.0
+        assert features.function_complexity == 0
+    
+    def test_enhanced_feature_normalization(self):
+        """Test that enhanced features are normalized correctly."""
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork',
+            pickle_size=10000,
+            coefficient_of_variation=0.5,
+            function_complexity=1000
+        )
+        
+        # All normalized values should be in [0, 1]
+        assert 0.0 <= features.norm_pickle_size <= 1.0
+        assert 0.0 <= features.norm_cv <= 1.0
+        assert 0.0 <= features.norm_complexity <= 1.0
+    
+    def test_enhanced_feature_vector_size(self):
+        """Test that feature vector now has 8 elements (was 5)."""
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork',
+            pickle_size=1024,
+            coefficient_of_variation=0.3,
+            function_complexity=500
+        )
+        
+        vector = features.to_vector()
+        assert len(vector) == 8  # Enhanced from 5 to 8
+        assert all(isinstance(v, float) for v in vector)
+        assert all(0.0 <= v <= 1.0 for v in vector)
+    
+    def test_enhanced_feature_distance(self):
+        """Test distance calculation with 8 features."""
+        features1 = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork',
+            pickle_size=1000,
+            coefficient_of_variation=0.2,
+            function_complexity=500
+        )
+        
+        features2 = WorkloadFeatures(
+            data_size=2000,
+            estimated_item_time=0.02,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork',
+            pickle_size=2000,
+            coefficient_of_variation=0.4,
+            function_complexity=800
+        )
+        
+        distance = features1.distance(features2)
+        # Distance should be positive for different features
+        assert distance > 0.0
+        # Maximum distance with 8 features is sqrt(8)
+        import math
+        assert distance <= math.sqrt(8)
+
+
+class TestFunctionComplexity:
+    """Test suite for function complexity calculation."""
+    
+    def test_simple_function_complexity(self):
+        """Test complexity calculation for simple function."""
+        from amorsize.ml_prediction import _compute_function_complexity
+        
+        def simple_func(x):
+            return x * 2
+        
+        complexity = _compute_function_complexity(simple_func)
+        assert isinstance(complexity, int)
+        assert complexity > 0  # Should have some bytecode
+    
+    def test_complex_function_complexity(self):
+        """Test that complex functions have higher complexity scores."""
+        from amorsize.ml_prediction import _compute_function_complexity
+        
+        def simple_func(x):
+            return x * 2
+        
+        def complex_func(x):
+            result = 0
+            for i in range(100):
+                if i % 2 == 0:
+                    result += x ** 2
+                else:
+                    result -= x
+            return result
+        
+        simple_complexity = _compute_function_complexity(simple_func)
+        complex_complexity = _compute_function_complexity(complex_func)
+        
+        # Complex function should have more bytecode
+        assert complex_complexity > simple_complexity
+    
+    def test_builtin_function_complexity(self):
+        """Test complexity calculation for built-in function."""
+        from amorsize.ml_prediction import _compute_function_complexity
+        
+        # Built-in functions don't have __code__, should return 0
+        complexity = _compute_function_complexity(len)
+        assert complexity == 0
+
+
+class TestFeatureImportance:
+    """Test suite for feature importance analysis."""
+    
+    def test_feature_importance_with_training_data(self):
+        """Test feature importance calculation with training data."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Add training samples with varying features
+        for i in range(10):
+            features = WorkloadFeatures(
+                data_size=1000 * (i + 1),
+                estimated_item_time=0.01 * (i + 1),
+                physical_cores=4 + i % 4,
+                available_memory=8 * 1024**3 * (i + 1),
+                start_method='fork' if i % 2 == 0 else 'spawn',
+                pickle_size=1000 * (i + 1),
+                coefficient_of_variation=0.1 * i,
+                function_complexity=500 + i * 100
+            )
+            sample = TrainingData(
+                features=features,
+                n_jobs=4 + i % 4,
+                chunksize=100 + i * 10,
+                speedup=1.5 + i * 0.1,
+                timestamp=time.time()
+            )
+            predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance()
+        
+        # Should have importance scores for all 8 features
+        assert len(importance) == 8
+        assert 'data_size' in importance
+        assert 'execution_time' in importance
+        assert 'pickle_size' in importance
+        assert 'coefficient_of_variation' in importance
+        assert 'function_complexity' in importance
+        
+        # All importance scores should be in [0, 1]
+        for score in importance.values():
+            assert 0.0 <= score <= 1.0
+    
+    def test_feature_importance_insufficient_samples(self):
+        """Test feature importance with insufficient samples."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Add only 1 sample (need at least 2 for variance calculation)
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork'
+        )
+        sample = TrainingData(
+            features=features,
+            n_jobs=4,
+            chunksize=100,
+            speedup=1.5,
+            timestamp=time.time()
+        )
+        predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance()
+        
+        # Should return empty dict with insufficient samples
+        assert importance == {}
+    
+    def test_feature_importance_zero_variance(self):
+        """Test feature importance when all samples have identical features."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Add samples with identical features
+        for i in range(5):
+            features = WorkloadFeatures(
+                data_size=1000,
+                estimated_item_time=0.01,
+                physical_cores=8,
+                available_memory=16 * 1024**3,
+                start_method='fork'
+            )
+            sample = TrainingData(
+                features=features,
+                n_jobs=4,
+                chunksize=100,
+                speedup=1.5,
+                timestamp=time.time()
+            )
+            predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance()
+        
+        # All features should have 0 importance (no variance)
+        assert all(score == 0.0 for score in importance.values())
+
+
+class TestPredictionPerformanceTracking:
+    """Test suite for prediction performance tracking."""
+    
+    def test_perfect_prediction(self):
+        """Test performance tracking with perfect prediction."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork'
+        )
+        
+        metrics = predictor.track_prediction_performance(
+            features=features,
+            predicted_n_jobs=4,
+            predicted_chunksize=100,
+            actual_n_jobs=4,
+            actual_chunksize=100
+        )
+        
+        # Perfect prediction should have zero error
+        assert metrics['n_jobs_error'] == 0
+        assert metrics['chunksize_error'] == 0
+        assert metrics['n_jobs_relative_error'] == 0.0
+        assert metrics['chunksize_relative_error'] == 0.0
+        assert metrics['overall_accuracy'] == 1.0
+    
+    def test_imperfect_prediction(self):
+        """Test performance tracking with imperfect prediction."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork'
+        )
+        
+        metrics = predictor.track_prediction_performance(
+            features=features,
+            predicted_n_jobs=4,
+            predicted_chunksize=100,
+            actual_n_jobs=6,
+            actual_chunksize=80
+        )
+        
+        # Should have non-zero errors
+        assert metrics['n_jobs_error'] == 2
+        assert metrics['chunksize_error'] == 20
+        assert metrics['n_jobs_relative_error'] > 0.0
+        assert metrics['chunksize_relative_error'] > 0.0
+        assert 0.0 < metrics['overall_accuracy'] < 1.0
+    
+    def test_completely_wrong_prediction(self):
+        """Test performance tracking with very wrong prediction."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork'
+        )
+        
+        metrics = predictor.track_prediction_performance(
+            features=features,
+            predicted_n_jobs=1,
+            predicted_chunksize=10,
+            actual_n_jobs=8,
+            actual_chunksize=500
+        )
+        
+        # Should have large errors and low accuracy
+        assert metrics['n_jobs_error'] == 7
+        assert metrics['chunksize_error'] == 490
+        # With such large relative errors, overall accuracy should be poor
+        # n_jobs relative error: 7/8 = 0.875
+        # chunksize relative error: 490/500 = 0.98
+        # overall_accuracy = 1 - (0.875 + 0.98) / 2 = 0.07 (7%)
+        assert metrics['overall_accuracy'] < 0.5  # Less than 50% accurate
+
+
+class TestPredictParametersEnhanced:
+    """Test suite for enhanced predict_parameters function."""
+    
+    def test_predict_with_enhanced_features(self):
+        """Test prediction with enhanced features."""
+        # This test will fall back to None due to insufficient cache
+        # but it validates the API accepts the new parameters
+        result = predict_parameters(
+            func=simple_function,
+            data_size=1000,
+            estimated_item_time=0.001,
+            confidence_threshold=0.9,
+            verbose=False,
+            pickle_size=512,
+            coefficient_of_variation=0.2
+        )
+        
+        # Will likely be None due to insufficient training data
+        # but the call should succeed without errors
+        assert result is None or isinstance(result.n_jobs, int)
+    
+    def test_predict_without_enhanced_features(self):
+        """Test that prediction still works without enhanced features."""
+        # Enhanced features are optional, old API still works
+        result = predict_parameters(
+            func=simple_function,
+            data_size=1000,
+            estimated_item_time=0.001,
+            confidence_threshold=0.9,
+            verbose=False
+        )
+        
+        # Will likely be None due to insufficient training data
+        # but the call should succeed without errors
+        assert result is None or isinstance(result.n_jobs, int)
