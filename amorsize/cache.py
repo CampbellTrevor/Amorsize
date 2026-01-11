@@ -107,6 +107,9 @@ class CacheEntry:
         timestamp: When this entry was created
         system_info: System configuration at cache time
         cache_version: Version of cache format
+        pickle_size: Size of pickled return object in bytes (for ML)
+        coefficient_of_variation: Workload heterogeneity metric (for ML)
+        function_complexity: Function bytecode size (for ML)
     """
     
     def __init__(
@@ -119,7 +122,10 @@ class CacheEntry:
         warnings: list,
         timestamp: float,
         system_info: Dict[str, Any],
-        cache_version: int = CACHE_VERSION
+        cache_version: int = CACHE_VERSION,
+        pickle_size: Optional[int] = None,
+        coefficient_of_variation: Optional[float] = None,
+        function_complexity: Optional[int] = None
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -130,10 +136,13 @@ class CacheEntry:
         self.timestamp = timestamp
         self.system_info = system_info
         self.cache_version = cache_version
+        self.pickle_size = pickle_size
+        self.coefficient_of_variation = coefficient_of_variation
+        self.function_complexity = function_complexity
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "n_jobs": self.n_jobs,
             "chunksize": self.chunksize,
             "executor_type": self.executor_type,
@@ -144,6 +153,14 @@ class CacheEntry:
             "system_info": self.system_info,
             "cache_version": self.cache_version
         }
+        # Add ML features if available (for backward compatibility)
+        if self.pickle_size is not None:
+            result["pickle_size"] = self.pickle_size
+        if self.coefficient_of_variation is not None:
+            result["coefficient_of_variation"] = self.coefficient_of_variation
+        if self.function_complexity is not None:
+            result["function_complexity"] = self.function_complexity
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CacheEntry":
@@ -157,7 +174,10 @@ class CacheEntry:
             warnings=data["warnings"],
             timestamp=data["timestamp"],
             system_info=data["system_info"],
-            cache_version=data.get("cache_version", 1)
+            cache_version=data.get("cache_version", 1),
+            pickle_size=data.get("pickle_size"),
+            coefficient_of_variation=data.get("coefficient_of_variation"),
+            function_complexity=data.get("function_complexity")
         )
     
     def is_expired(self, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
@@ -294,7 +314,10 @@ def save_cache_entry(
     executor_type: str,
     estimated_speedup: float,
     reason: str,
-    warnings: list
+    warnings: list,
+    pickle_size: Optional[int] = None,
+    coefficient_of_variation: Optional[float] = None,
+    function_complexity: Optional[int] = None
 ) -> None:
     """
     Save an optimization result to the cache.
@@ -309,6 +332,9 @@ def save_cache_entry(
         estimated_speedup: Expected speedup
         reason: Explanation of recommendation
         warnings: List of warning messages
+        pickle_size: Size of pickled return object (for ML training)
+        coefficient_of_variation: Workload heterogeneity metric (for ML training)
+        function_complexity: Function bytecode size (for ML training)
     """
     # Try distributed cache first
     try:
@@ -337,7 +363,7 @@ def save_cache_entry(
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}"
         }
         
-        # Create cache entry
+        # Create cache entry with ML features
         entry = CacheEntry(
             n_jobs=n_jobs,
             chunksize=chunksize,
@@ -346,7 +372,10 @@ def save_cache_entry(
             reason=reason,
             warnings=warnings,
             timestamp=time.time(),
-            system_info=system_info
+            system_info=system_info,
+            pickle_size=pickle_size,
+            coefficient_of_variation=coefficient_of_variation,
+            function_complexity=function_complexity
         )
         
         # Write to file atomically
