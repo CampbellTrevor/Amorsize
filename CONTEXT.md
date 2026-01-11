@@ -1,4 +1,114 @@
-# Context for Next Agent - Iteration 136
+# Context for Next Agent - Iteration 137
+
+## What Was Accomplished in Iteration 136
+
+**PERFORMANCE TUNING GUIDE** - Successfully created a comprehensive performance tuning guide that teaches users how to extract maximum performance from Amorsize through deep understanding and precise tuning.
+
+### Implementation Completed
+
+1. **New Performance Tuning Guide** (`docs/PERFORMANCE_TUNING.md`):
+   - Comprehensive 1074-line guide with deep technical insights ✅
+   - 9 major sections covering all aspects of performance optimization
+   - 50+ code examples with practical tuning strategies
+   - Complete cost model explanation with formulas
+   - Hardware-specific optimization strategies
+   - Real performance troubleshooting scenarios
+   - Extreme performance patterns for edge cases
+
+2. **Content Coverage**:
+   - ✅ Understanding the Cost Model (5 overhead components explained)
+   - ✅ Tuning target_chunk_duration (trade-offs, when to increase/decrease)
+   - ✅ Hardware-Specific Optimization (laptops, workstations, HPC, cloud, GPU)
+   - ✅ Workload Analysis and Profiling (4-step process with examples)
+   - ✅ Advanced Configuration Options (memory, load-aware, caching, executor)
+   - ✅ Benchmarking and Validation (validation patterns and A/B testing)
+   - ✅ System-Specific Optimizations (Linux, Windows, macOS, Docker)
+   - ✅ Performance Troubleshooting (5 common issues with solutions)
+   - ✅ Extreme Performance Scenarios (5 advanced patterns)
+
+3. **Technical Depth**:
+   - ✅ Complete Amdahl's Law formula with IPC overlap
+   - ✅ Spawn cost measurement and OS-specific values
+   - ✅ IPC overhead breakdown and optimization
+   - ✅ Cache effects (L1/L2/L3, coherency, false sharing)
+   - ✅ Memory bandwidth saturation model
+   - ✅ NUMA architecture considerations
+   - ✅ Coefficient of variation for heterogeneity analysis
+
+4. **Integration**:
+   - ✅ Updated README.md with Performance Tuning section
+   - ✅ Added section between "Best Practices" and "Troubleshooting"
+   - ✅ Clear navigation from main documentation
+   - ✅ Cross-references to Best Practices and Troubleshooting guides
+
+### Code Quality
+
+- **Documentation**: ✅ EXCELLENT - Technical, precise, actionable
+- **Organization**: ✅ EXCELLENT - Logical flow from theory to practice
+- **Examples**: ✅ COMPREHENSIVE - 50+ code examples covering all scenarios
+- **Coverage**: ✅ COMPLETE - Cost model, tuning, profiling, optimization
+- **User Experience**: ✅ SIGNIFICANTLY IMPROVED - Advanced users can optimize deeply
+- **Integration**: ✅ SEAMLESS - Linked from main README
+- **Technical Accuracy**: ✅ HIGH - Based on actual implementation details
+
+### Strategic Priorities for Next Iteration
+
+Following the decision matrix from the problem statement:
+
+1. **INFRASTRUCTURE** - ✅ Complete
+   - Physical core detection: ✅ Robust (psutil + /proc/cpuinfo + lscpu)
+   - Memory limit detection: ✅ cgroup/Docker aware
+
+2. **SAFETY & ACCURACY** - ✅ Complete
+   - Generator safety: ✅ Complete (using itertools.chain)
+   - OS spawning overhead: ✅ Measured and verified (Iteration 132)
+   - ML pruning safety: ✅ Fixed in Iteration 129
+
+3. **CORE LOGIC** - ✅ Complete
+   - Amdahl's Law: ✅ Includes IPC overlap factor (Iteration 130)
+   - Chunksize calculation: ✅ Verified correct implementation (Iteration 131)
+   - Spawn cost measurement: ✅ Verified accurate and reliable (Iteration 132)
+
+4. **UX & ROBUSTNESS** - ✅ Complete (Iterations 133-136)
+   - Error messages: ✅ Enhanced with actionable guidance (Iteration 133)
+   - Troubleshooting guide: ✅ Comprehensive guide with 12 issue categories (Iteration 134)
+   - Best practices guide: ✅ Comprehensive guide with patterns and case studies (Iteration 135)
+   - Performance tuning guide: ✅ Comprehensive guide with cost model deep-dive (Iteration 136)
+   - API cleanliness: ✓ `from amorsize import optimize`
+   - Edge case handling: ✓ Good (pickling errors, zero-length data)
+   - Documentation: ✅ EXCELLENT - Three comprehensive guides completed
+   - CLI experience: ⚠️ Could add more features (--explain, --tips flags)
+
+### Recommendation for Iteration 137
+
+**CLI Experience Enhancement** (Priority #4 from decision matrix - Final UX Polish):
+
+With comprehensive documentation now complete (error messages, troubleshooting, best practices, performance tuning), the next iteration should focus on CLI enhancements:
+
+1. **Enhanced CLI Flags**:
+   - Add `--explain` flag for detailed diagnostics output
+   - Add `--tips` flag for optimization suggestions
+   - Add `--profile` flag for diagnostic profiling output
+   - Add `--show-overhead` flag for overhead breakdown
+   - Improve help text with more examples
+
+2. **Interactive Optimization Mode**:
+   - Add `--interactive` mode with step-by-step guidance
+   - Show real-time optimization decisions
+   - Offer tuning suggestions based on workload
+
+3. **Output Formatting Options**:
+   - Add `--format` option (text, json, yaml, table)
+   - Add `--color` / `--no-color` options
+   - Add `--quiet` for minimal output
+   - Add `--summary` for executive summary
+
+Choose CLI enhancements that complement the comprehensive documentation and make the tool even more user-friendly.
+
+## Files Modified in Iteration 136
+
+- `docs/PERFORMANCE_TUNING.md` - NEW: Comprehensive performance tuning guide (1074 lines)
+- `README.md` - Added performance tuning section with link to guide
 
 ## What Was Accomplished in Iteration 135
 

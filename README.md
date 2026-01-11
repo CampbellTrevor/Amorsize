@@ -348,6 +348,21 @@ New to parallelization or want to optimize your usage? Check the [Best Practices
 
 Learn proven patterns for getting the most out of multiprocessing in Python.
 
+## Performance Tuning
+
+Want to squeeze every bit of performance from your parallelization? Check the [Performance Tuning Guide](docs/PERFORMANCE_TUNING.md):
+
+- 🔍 **Cost Model Deep-Dive:** Understand spawn, IPC, chunking, and cache overhead
+- ⚙️ **target_chunk_duration Tuning:** When and how to adjust the key parameter
+- 🖥️ **Hardware-Specific Optimization:** Laptops, workstations, HPC, cloud instances
+- 📊 **Workload Profiling:** Classify and optimize CPU-bound vs I/O-bound tasks
+- 🎛️ **Advanced Configuration:** Memory safety, load-aware workers, caching strategies
+- ✅ **Benchmarking & Validation:** Verify predictions match reality
+- 🐧 **System-Specific Optimizations:** Linux, Windows, macOS, Docker, NUMA systems
+- 🚀 **Extreme Performance Scenarios:** Millions of tasks, NUMA awareness, streaming
+
+Master the internals to achieve optimal parallelization for your specific workload and hardware.
+
 ## Troubleshooting
 
 Having issues? Check the comprehensive [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for solutions to common problems:
