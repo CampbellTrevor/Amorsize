@@ -323,10 +323,14 @@ Different hardware requires different optimization strategies.
 
 ```python
 # Conservative n_jobs to avoid throttling
+# On 2-4 core laptops, use 2 workers to leave headroom for:
+# - OS background tasks
+# - Thermal management (reduce heat generation)
+# - Battery life (less aggressive parallelism)
 result = optimize(
     my_func,
     data,
-    max_workers=2,  # Leave headroom for OS
+    max_workers=2,  # Use only 2 of 4 cores to avoid thermal issues
     target_chunk_duration=0.3  # Larger chunks for efficiency
 )
 ```
@@ -643,7 +647,12 @@ result = optimize(
 Adjust workers based on current system load:
 
 ```python
-from amorsize.system_info import calculate_load_aware_workers, get_physical_cores
+from amorsize.system_info import (
+    calculate_load_aware_workers,
+    get_physical_cores,
+    get_current_cpu_load,
+    get_memory_pressure
+)
 
 # Check current system load
 cpu_load = get_current_cpu_load()
