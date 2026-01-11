@@ -428,13 +428,11 @@ def replay_failed_items(
     if clear_on_success:
         dlq.clear()
         for entry in still_failed:
-            # Reconstruct the error for proper add() call
-            try:
-                # Create a generic exception with the stored message
-                error = Exception(entry.error_message)
-                error.__class__.__name__ = entry.error_type
-            except Exception:
-                error = Exception(entry.error_message)
+            # Reconstruct error for proper add() call
+            # We can't perfectly recreate the original exception, but we can
+            # create a generic Exception with the stored information
+            error_message = f"{entry.error_type}: {entry.error_message}"
+            error = Exception(error_message)
             
             dlq.add(
                 entry.item,
