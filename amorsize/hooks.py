@@ -15,6 +15,7 @@ Design principles:
 - Composable: Multiple hooks can be registered for same event
 """
 
+import dataclasses
 import sys
 import threading
 import time
@@ -241,7 +242,6 @@ class HookManager:
             # Update context's event to match (in case it's different)
             if hook_context.event != event:
                 # Create a new context with corrected event to avoid mutation
-                import dataclasses
                 hook_context = dataclasses.replace(hook_context, event=event)
         else:
             raise TypeError(

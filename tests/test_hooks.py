@@ -2,6 +2,7 @@
 Tests for execution hooks module.
 """
 
+import threading
 import time
 import pytest
 from amorsize.hooks import (
@@ -441,7 +442,6 @@ class TestThreadSafety:
     
     def test_concurrent_registration(self):
         """Test that concurrent registration is thread-safe."""
-        import threading
         
         manager = HookManager()
         
@@ -470,7 +470,6 @@ class TestThreadSafety:
     
     def test_concurrent_triggering(self):
         """Test that concurrent triggering is thread-safe."""
-        import threading
         
         manager = HookManager()
         call_count = [0]
@@ -621,7 +620,6 @@ class TestTriggerAPIConventions:
     
     def test_trigger_legacy_style_in_thread_safety(self):
         """Test that legacy calling style is thread-safe."""
-        import threading
         
         manager = HookManager()
         call_count = [0]
