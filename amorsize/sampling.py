@@ -172,8 +172,8 @@ def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bo
         - measurements: List of (pickle_time, data_size) tuples for each item
     """
     # Performance optimization: Pre-allocate measurements list
-    count = len(data_items)
-    measurements = [(0.0, 0)] * count
+    items_count = len(data_items)
+    measurements = [(0.0, 0)] * items_count
     
     for idx, item in enumerate(data_items):
         try:
