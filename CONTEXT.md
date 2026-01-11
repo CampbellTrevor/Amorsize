@@ -1,44 +1,53 @@
-# Context for Next Agent - Iteration 153
+# Context for Next Agent - Iteration 154
 
-## What Was Accomplished in Iteration 152
+## What Was Accomplished in Iteration 153
 
-**FEATURE COMPLETE** - Successfully implemented parallel execution hooks system, enabling real-time monitoring, custom metrics collection, and integration with external monitoring systems (Prometheus, Datadog, etc.).
+**FEATURE COMPLETE** - Successfully implemented built-in monitoring system integrations, enabling seamless integration with Prometheus, StatsD, and custom webhooks for production-grade observability.
 
 ### Implementation Summary
 
-1. **Hooks Core Module** - `amorsize/hooks.py` (420 lines)
-   - HookEvent enum (7 event types: PRE_EXECUTE, POST_EXECUTE, ON_PROGRESS, etc.)
-   - HookContext dataclass (20+ fields of execution information)
-   - HookManager class (thread-safe registration and triggering)
-   - Helper functions (create_progress_hook, create_timing_hook, etc.)
-   - Error isolation (hook failures don't crash execution)
+1. **Monitoring Core Module** - `amorsize/monitoring.py` (710 lines)
+   - PrometheusMetrics class with HTTP server (Prometheus text format)
+   - StatsDClient class for UDP metrics (Datadog/Graphite compatible)
+   - create_prometheus_hook() - One-line Prometheus integration
+   - create_statsd_hook() - One-line StatsD integration
+   - create_webhook_hook() - Generic HTTP webhook for custom systems
+   - create_multi_monitoring_hook() - Enable multiple systems simultaneously
+   - Zero extra dependencies (no prometheus_client or statsd libs)
+   - Lazy initialization (servers start on first use)
    - Thread-safe concurrent operation
+   - Error isolation (failures don't crash execution)
 
-2. **Executor Integration** - `amorsize/executor.py` (+40 lines)
-   - Added `hooks` parameter to execute() function
-   - PRE_EXECUTE and POST_EXECUTE hook triggers
-   - Comprehensive metadata passed to hooks
-   - Full backward compatibility
+2. **Test Suite** - `tests/test_monitoring.py` (588 lines, 38 tests, 100% passing)
+   - Prometheus metrics tests (11 tests)
+   - StatsD client tests (9 tests)
+   - Webhook integration tests (11 tests)
+   - Multi-system coordination tests (6 tests)
+   - Edge cases and error handling (1 test)
+   - Thread safety validation
+   - Error isolation validation
 
-3. **Tests** - `tests/` (840 lines, 37 tests, 100% passing)
-   - test_hooks.py: 24 tests for core module
-   - test_executor_hooks.py: 13 tests for integration
-   - Thread safety validated
-   - Error isolation validated
+3. **Demo Examples** - `examples/monitoring_demo.py` (425 lines, 6 demos)
+   - Prometheus integration with configuration
+   - StatsD integration patterns
+   - Webhook integrations (Slack, Teams, Discord)
+   - Multi-system monitoring setup
+   - Production monitoring patterns
+   - Custom API integration examples
 
-4. **Documentation** - `examples/hooks_demo.py` (420 lines, 7 demos)
-   - Basic progress monitoring
-   - Performance metrics collection
-   - Monitoring system integration patterns
-   - Error handling
-   - Complete dashboard pattern
+4. **Integration** - `amorsize/__init__.py` updated
+   - Exported monitoring functions and classes
+   - Lazy import pattern (no extra dependencies)
+   - Clean API integration
 
 ### Code Quality
-- ✅ All 37 tests passing
-- ✅ Code review feedback addressed (all 5 comments)
+
+- ✅ All 38 tests passing
+- ✅ Code review feedback addressed (5 comments fixed)
 - ✅ 0 security vulnerabilities (CodeQL)
-- ✅ Thread-safe implementation
-- ✅ Clean API with backward compatibility
+- ✅ Thread-safe implementation validated
+- ✅ Error isolation thoroughly tested
+- ✅ Demo script runs successfully
 
 ### Strategic Priorities Status
 
@@ -47,9 +56,9 @@
 1. ✅ **INFRASTRUCTURE** - Physical cores, cgroup memory detection
 2. ✅ **SAFETY & ACCURACY** - Generator safety, spawn cost measurement
 3. ✅ **CORE LOGIC** - Amdahl's Law, chunksize calculation
-4. ✅ **UX & ROBUSTNESS** - Progress bars, watch mode, hooks for monitoring
+4. ✅ **UX & ROBUSTNESS** - Progress bars, watch mode, hooks, monitoring integrations
 
-### Recommendation for Iteration 153
+### Recommendation for Iteration 154
 
 Consider these high-value enhancements:
 
@@ -57,63 +66,76 @@ Consider these high-value enhancements:
    - ON_CHUNK_COMPLETE for per-chunk monitoring
    - ON_WORKER_START/END for worker lifecycle tracking
    - Real-time progress hooks during execution (not just PRE/POST)
-   - Integration with Pool.map internals
+   - Integration with Pool.map internals for finer-grained metrics
 
-2. **Built-in monitoring integrations** (High value)
-   - Pre-built Prometheus hook with metric types
-   - Datadog integration with proper tagging
-   - CloudWatch metrics integration
-   - StatsD integration
-   - Generic HTTP webhook hook
+2. **Advanced monitoring features** (High value)
+   - CloudWatch metrics integration (AWS native)
+   - Azure Monitor integration (Azure native)
+   - Google Cloud Monitoring integration (GCP native)
+   - Datadog APM tracing integration
+   - OpenTelemetry spans for distributed tracing
 
 3. **Performance regression detection** (Medium-High value)
    - Compare against historical baselines
    - Alert when performance degrades
    - Trend analysis over time
    - Integration with watch mode
+   - Automatic performance profiling
 
-4. **Advanced hook features** (Medium value)
-   - Async hook support (async callback functions)
-   - Hook chaining (ordered execution)
-   - Conditional hooks (only fire on certain conditions)
-   - Persistent hook configurations
+4. **Monitoring dashboards** (Medium value)
+   - Pre-built Grafana dashboards
+   - Prometheus alert rules templates
+   - Datadog dashboard templates
+   - Example Kibana visualizations
 
 ## Quick Reference
 
-### Hooks Usage
+### Monitoring Usage
+
 ```python
-from amorsize import execute, HookManager, HookEvent, create_progress_hook
+from amorsize import execute
+from amorsize.monitoring import create_prometheus_hook, create_statsd_hook, create_webhook_hook
 
-# Create hook manager
-hooks = HookManager()
+# Prometheus metrics
+hooks = create_prometheus_hook(port=8000)
+results = execute(my_function, data, hooks=hooks)
+# Metrics available at http://localhost:8000/metrics
 
-# Register hooks
-def show_progress(percent, completed, total):
-    print(f"Progress: {percent:.1f}%")
+# StatsD metrics (Datadog, Graphite)
+hooks = create_statsd_hook(host='localhost', port=8125)
+results = execute(my_function, data, hooks=hooks)
 
-hook = create_progress_hook(show_progress)
-hooks.register(HookEvent.POST_EXECUTE, hook)
+# Webhook notifications (Slack, Teams, etc.)
+hooks = create_webhook_hook(url='https://hooks.slack.com/...')
+results = execute(my_function, data, hooks=hooks)
 
-# Execute with hooks
+# Multi-system monitoring
+from amorsize.monitoring import create_multi_monitoring_hook
+from amorsize.hooks import HookEvent
+
+hooks = create_multi_monitoring_hook(
+    prometheus_port=8000,
+    statsd_host='localhost',
+    webhook_url='https://hooks.slack.com/...',
+    webhook_events=[HookEvent.POST_EXECUTE, HookEvent.ON_ERROR],
+)
 results = execute(my_function, data, hooks=hooks)
 ```
 
-### Monitoring Integration Pattern
-```python
-# Custom monitoring system
-monitoring = PrometheusIntegration()
+### Prometheus Configuration
 
-def send_metrics(ctx):
-    monitoring.record_metric("execution.duration", ctx.elapsed_time)
-    monitoring.record_metric("execution.throughput", ctx.throughput_items_per_sec)
-
-hooks.register(HookEvent.POST_EXECUTE, send_metrics)
+```yaml
+scrape_configs:
+  - job_name: 'amorsize'
+    static_configs:
+      - targets: ['localhost:8000']
 ```
 
 ### Files Changed
-- NEW: `amorsize/hooks.py`, `tests/test_hooks.py`, `tests/test_executor_hooks.py`, `examples/hooks_demo.py`
-- MODIFIED: `amorsize/__init__.py`, `amorsize/executor.py`
+
+- NEW: `amorsize/monitoring.py`, `tests/test_monitoring.py`, `examples/monitoring_demo.py`
+- MODIFIED: `amorsize/__init__.py`
 
 ---
 
-**Next Agent:** Consider implementing built-in monitoring integrations (Prometheus, Datadog, CloudWatch) or enhanced hook points for finer-grained monitoring.
+**Next Agent:** Consider implementing cloud-native monitoring integrations (CloudWatch, Azure Monitor, Google Cloud Monitoring) or enhanced hook points for finer-grained execution monitoring.
