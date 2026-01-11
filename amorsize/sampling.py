@@ -766,11 +766,12 @@ def perform_dry_run(
             # Performance optimization (Iteration 92): Single-expression CV calculation
             # CV = std_dev / mean = sqrt(variance) / mean = sqrt(M2 / count) / mean
             # Optimized: sqrt(M2) / (mean * sqrt(count))
+            # Using math.sqrt for better performance than ** 0.5
             # This eliminates intermediate variable assignments and improves numerical stability
             # CV < 0.3: homogeneous (consistent times)
             # CV 0.3-0.7: moderately heterogeneous
             # CV > 0.7: highly heterogeneous (varying times)
-            coefficient_of_variation = (welford_m2 ** 0.5) / (avg_time * (welford_count ** 0.5))
+            coefficient_of_variation = math.sqrt(welford_m2) / (avg_time * math.sqrt(welford_count))
         
         # Process profiler stats if profiling was enabled
         profiler_stats = None
