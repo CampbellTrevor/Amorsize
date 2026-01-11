@@ -93,6 +93,15 @@ MIN_BANDWIDTH_GB_S = 10.0  # Minimum memory bandwidth (10 GB/s)
 MAX_BANDWIDTH_GB_S = 1000.0  # Maximum memory bandwidth (1000 GB/s for high-end systems)
 MAX_NUMA_NODES = 8  # Maximum NUMA nodes (typical for high-end servers)
 
+# Adaptive chunking ML constants (Iteration 119)
+# Coefficient of variation threshold for recommending adaptive chunking
+# Below this threshold, workload is considered homogeneous (no benefit from adaptation)
+ADAPTIVE_CHUNKING_CV_THRESHOLD = 0.3
+
+# Epsilon for inverse distance weighting in k-NN predictions
+# Prevents division by zero for exact matches
+KNN_DISTANCE_EPSILON = 0.01
+
 
 class PredictionResult:
     """
@@ -841,9 +850,8 @@ class SimpleLinearPredictor:
         Returns:
             Tuple of (n_jobs, chunksize)
         """
-        # Calculate weights (inverse distance with small epsilon to avoid division by zero)
-        epsilon = 0.01
-        distance_weights = [1.0 / (dist + epsilon) for dist, _ in neighbors]
+        # Calculate weights (inverse distance with KNN_DISTANCE_EPSILON to avoid division by zero)
+        distance_weights = [1.0 / (dist + KNN_DISTANCE_EPSILON) for dist, _ in neighbors]
         
         # Apply cross-system weights (Iteration 117)
         # Combine distance-based weight with sample weight (for cross-system data)
@@ -877,7 +885,7 @@ class SimpleLinearPredictor:
         Predict adaptive chunking parameters based on neighbors.
         
         Adaptive chunking is recommended when:
-        1. Workload has high coefficient of variation (CV > 0.3)
+        1. Workload has high coefficient of variation (CV > ADAPTIVE_CHUNKING_CV_THRESHOLD)
         2. Similar historical workloads benefited from adaptive chunking
         
         Args:
@@ -893,7 +901,7 @@ class SimpleLinearPredictor:
         """
         # Check if workload is heterogeneous (high CV)
         cv = features.coefficient_of_variation
-        is_heterogeneous = cv > 0.3
+        is_heterogeneous = cv > ADAPTIVE_CHUNKING_CV_THRESHOLD
         
         # Check if neighbors used adaptive chunking successfully
         neighbors_with_adaptive = [
@@ -919,8 +927,7 @@ class SimpleLinearPredictor:
         if neighbors_with_adaptive:
             # Learn from similar workloads that used adaptive chunking
             # Calculate weighted average of their parameters
-            epsilon = 0.01
-            distance_weights = [1.0 / (dist + epsilon) for dist, _ in neighbors_with_adaptive]
+            distance_weights = [1.0 / (dist + KNN_DISTANCE_EPSILON) for dist, _ in neighbors_with_adaptive]
             combined_weights = [
                 dw * sample.weight for dw, (_, sample) in zip(distance_weights, neighbors_with_adaptive)
             ]
