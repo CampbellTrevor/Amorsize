@@ -1,0 +1,38 @@
+[
+  {
+    "item": 0,
+    "error_type": "ValueError",
+    "error_message": "Item 0 is divisible by 3",
+    "timestamp": 1768163825.0422666,
+    "traceback": "Traceback (most recent call last):\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 43, in demo_1_basic_usage\n    result = risky_process(item)\n             ^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 35, in risky_process\n    raise ValueError(f\"Item {item} is divisible by 3\")\nValueError: Item 0 is divisible by 3\n",
+    "retry_count": 0,
+    "metadata": {}
+  },
+  {
+    "item": 3,
+    "error_type": "ValueError",
+    "error_message": "Item 3 is divisible by 3",
+    "timestamp": 1768163825.042706,
+    "traceback": "Traceback (most recent call last):\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 43, in demo_1_basic_usage\n    result = risky_process(item)\n             ^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 35, in risky_process\n    raise ValueError(f\"Item {item} is divisible by 3\")\nValueError: Item 3 is divisible by 3\n",
+    "retry_count": 0,
+    "metadata": {}
+  },
+  {
+    "item": 6,
+    "error_type": "ValueError",
+    "error_message": "Item 6 is divisible by 3",
+    "timestamp": 1768163825.043033,
+    "traceback": "Traceback (most recent call last):\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 43, in demo_1_basic_usage\n    result = risky_process(item)\n             ^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 35, in risky_process\n    raise ValueError(f\"Item {item} is divisible by 3\")\nValueError: Item 6 is divisible by 3\n",
+    "retry_count": 0,
+    "metadata": {}
+  },
+  {
+    "item": 9,
+    "error_type": "ValueError",
+    "error_message": "Item 9 is divisible by 3",
+    "timestamp": 1768163825.0433671,
+    "traceback": "Traceback (most recent call last):\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 43, in demo_1_basic_usage\n    result = risky_process(item)\n             ^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/Amorsize/Amorsize/examples/dead_letter_queue_demo.py\", line 35, in risky_process\n    raise ValueError(f\"Item {item} is divisible by 3\")\nValueError: Item 9 is divisible by 3\n",
+    "retry_count": 0,
+    "metadata": {}
+  }
+]

@@ -29,6 +29,7 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 - 🔁 **Retry Logic**: Exponential backoff for handling transient failures (network, rate limits)
 - 🔴 **Circuit Breaker**: Prevent cascade failures with automatic failure detection and recovery
 - 💾 **Checkpoint/Resume**: Save progress and resume from failures for long-running workloads
+- 📮 **Dead Letter Queue**: Collect permanently failed items for inspection, replay, and auditing
 - 📦 **Batch Processing**: Memory-safe processing for workloads with large return objects
 - 🌊 **Streaming Optimization**: imap/imap_unordered helper for continuous data streams
 
@@ -482,6 +483,106 @@ if checkpoint_state:
 - **Pickle**: Binary format, supports all Python objects, faster and more compact
 
 See [Checkpoint Guide](examples/checkpoint_demo.py) for complete examples.
+
+---
+
+### Option 11: Dead Letter Queue for Failed Item Management
+
+When items fail permanently even after retries, use a Dead Letter Queue to collect, inspect, and potentially replay them:
+
+```python
+from amorsize import DeadLetterQueue, DLQPolicy, DLQFormat, replay_failed_items
+
+# Configure DLQ
+policy = DLQPolicy(
+    directory="./.dlq",           # Storage directory
+    format=DLQFormat.JSON,        # or DLQFormat.PICKLE
+    max_entries=10000,            # Size limit (0 = unlimited)
+    include_traceback=True,       # Full stack traces
+    auto_persist=True             # Auto-save to disk
+)
+
+dlq = DeadLetterQueue(policy)
+
+def process_with_dlq(items, max_retries=3):
+    """Process items with retry logic and DLQ for permanent failures."""
+    results = []
+    
+    for item in items:
+        for attempt in range(max_retries):
+            try:
+                result = risky_operation(item)
+                results.append(result)
+                break  # Success
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    # Final retry failed - add to DLQ
+                    dlq.add(
+                        item=item,
+                        error=e,
+                        retry_count=max_retries,
+                        metadata={"source": "process_batch", "item_id": item.id}
+                    )
+                    print(f"Item {item} added to DLQ after {max_retries} retries")
+                else:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+    
+    return results
+
+# Process items
+items = get_data()
+results = process_with_dlq(items)
+
+# Inspect failures
+summary = dlq.get_summary()
+print(f"Failed items: {summary['total_entries']}")
+print(f"Error types: {summary['error_types']}")
+print(f"Avg retries: {summary['avg_retry_count']}")
+
+# Examine individual failures
+for entry in dlq.get_entries():
+    print(f"Item: {entry.item}")
+    print(f"Error: {entry.error_type} - {entry.error_message}")
+    print(f"Timestamp: {entry.timestamp}")
+    if entry.traceback:
+        print(f"Traceback:\n{entry.traceback}")
+
+# After fixing the issue, replay failed items
+print("Replaying failed items...")
+recovered_results, still_failed = replay_failed_items(dlq, risky_operation)
+print(f"Recovered: {len(recovered_results)}, Still failing: {len(still_failed)}")
+
+# DLQ is automatically persisted to disk (if auto_persist=True)
+# Load in a new session:
+dlq2 = DeadLetterQueue(policy)
+dlq2.load()  # Loads from disk
+print(f"Loaded {dlq2.size()} failures from previous session")
+```
+
+**Key features:**
+- ✅ Collect permanently failed items with full error context
+- ✅ Inspect failures for debugging and monitoring
+- ✅ Replay items after fixing issues
+- ✅ Persist to disk for auditing across sessions
+- ✅ Automatic size limiting to prevent unbounded growth
+- ✅ Thread-safe concurrent access
+- ✅ JSON (readable) or Pickle (efficient) formats
+- ✅ Integration with retry and circuit breaker patterns
+
+**Use cases:**
+- API processing with occasional permanent failures
+- ETL pipelines where some records are malformed
+- Batch jobs with transient vs permanent errors
+- Monitoring and alerting on failure patterns
+- Audit trails for compliance and debugging
+
+**DLQ complements existing fault tolerance:**
+- **Retry**: Handles transient failures (network glitches, timeouts)
+- **Circuit Breaker**: Prevents cascade failures (service outages)
+- **Checkpoint**: Recovers from process crashes (resume from last save)
+- **DLQ**: Manages permanent failures (bad data, validation errors)
+
+See [DLQ Guide](examples/dead_letter_queue_demo.py) for complete examples.
 
 ## How It Works
 
