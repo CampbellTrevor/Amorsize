@@ -440,9 +440,10 @@ def visualize_comparison_result(
         plot_types = plots
 
     # Prepare output directory
+    output_dir_path: Optional[Path] = None
     if output_dir is not None:
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir_path = Path(output_dir)
+        output_dir_path.mkdir(parents=True, exist_ok=True)
 
     # Extract data from comparison result
     config_names = [config.name for config in comparison_result.configs]
@@ -453,8 +454,8 @@ def visualize_comparison_result(
     result_paths = {}
 
     if 'times' in plot_types:
-        if output_dir is not None:
-            times_path = str(output_dir / "comparison_times.png")
+        if output_dir_path is not None:
+            times_path = str(output_dir_path / "comparison_times.png")
         else:
             times_path = "comparison_times.png"
 
@@ -465,8 +466,8 @@ def visualize_comparison_result(
         )
 
     if 'speedups' in plot_types:
-        if output_dir is not None:
-            speedups_path = str(output_dir / "speedup_comparison.png")
+        if output_dir_path is not None:
+            speedups_path = str(output_dir_path / "speedup_comparison.png")
         else:
             speedups_path = "speedup_comparison.png"
 

@@ -150,7 +150,7 @@ def validate_spawn_cost_measurement(verbose: bool = False) -> Tuple[bool, Dict[s
     if verbose:
         print("Validating spawn cost measurement...")
 
-    details = {}
+    details: Dict[str, Any] = {}
 
     try:
         # Measure spawn cost
@@ -217,7 +217,7 @@ def validate_chunking_overhead_measurement(verbose: bool = False) -> Tuple[bool,
     if verbose:
         print("Validating chunking overhead measurement...")
 
-    details = {}
+    details: Dict[str, Any] = {}
 
     try:
         # Measure chunking overhead
@@ -266,7 +266,7 @@ def validate_pickle_overhead_measurement(verbose: bool = False) -> Tuple[bool, D
     if verbose:
         print("Validating pickle overhead measurement...")
 
-    details = {}
+    details: Dict[str, Any] = {}
     passed = True
 
     # Test various data types
@@ -326,7 +326,7 @@ def validate_system_resources(verbose: bool = False) -> Tuple[bool, Dict[str, An
     if verbose:
         print("Validating system resource detection...")
 
-    details = {}
+    details: Dict[str, Any] = {}
     passed = True
 
     try:
@@ -382,7 +382,7 @@ def validate_multiprocessing_basic(verbose: bool = False) -> Tuple[bool, Dict[st
     if verbose:
         print("Validating multiprocessing functionality...")
 
-    details = {}
+    details: Dict[str, Any] = {}
 
     try:
         # Test with 2 workers
