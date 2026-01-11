@@ -18,6 +18,18 @@ from amorsize.cost_model import (
     calculate_advanced_amdahl_speedup,
 )
 
+# Expected ranges for cache sizes (in bytes)
+MIN_L1_SIZE = 8 * 1024  # 8KB
+MAX_L1_SIZE = 128 * 1024  # 128KB
+MIN_L2_SIZE = 64 * 1024  # 64KB
+MAX_L2_SIZE = 8 * 1024 * 1024  # 8MB
+MIN_L3_SIZE = 1 * 1024 * 1024  # 1MB
+MAX_L3_SIZE = 128 * 1024 * 1024  # 128MB
+
+# Expected ranges for memory bandwidth (in GB/s)
+MIN_MEMORY_BANDWIDTH = 10.0
+MAX_MEMORY_BANDWIDTH = 500.0
+
 
 class TestCacheDetection:
     """Tests for cache detection functionality."""
@@ -49,15 +61,15 @@ class TestCacheDetection:
         cache_info = detect_cache_info()
         
         # L1: typically 16KB-64KB
-        assert 8 * 1024 <= cache_info.l1_size <= 128 * 1024
+        assert MIN_L1_SIZE <= cache_info.l1_size <= MAX_L1_SIZE
         
         # L2: typically 128KB-4MB (if detected)
         if cache_info.l2_size > 0:
-            assert 64 * 1024 <= cache_info.l2_size <= 8 * 1024 * 1024
+            assert MIN_L2_SIZE <= cache_info.l2_size <= MAX_L2_SIZE
         
         # L3: typically 2MB-64MB (if detected)
         if cache_info.l3_size > 0:
-            assert 1 * 1024 * 1024 <= cache_info.l3_size <= 128 * 1024 * 1024
+            assert MIN_L3_SIZE <= cache_info.l3_size <= MAX_L3_SIZE
 
 
 class TestNUMADetection:
@@ -118,7 +130,7 @@ class TestMemoryBandwidthEstimation:
         # Modern systems: 20-200 GB/s typical
         # Consumer DDR4: 20-50 GB/s
         # Server DDR4/DDR5: 50-200 GB/s
-        assert 10.0 <= bandwidth_info.bandwidth_gb_per_sec <= 500.0
+        assert MIN_MEMORY_BANDWIDTH <= bandwidth_info.bandwidth_gb_per_sec <= MAX_MEMORY_BANDWIDTH
 
 
 class TestSystemTopologyDetection:

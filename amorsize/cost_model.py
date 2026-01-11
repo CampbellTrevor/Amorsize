@@ -51,6 +51,35 @@ class SystemTopology:
     physical_cores: int
     
 
+def _parse_size_string(size_str: str) -> int:
+    """
+    Parse a size string like '256K', '8M', '2.5G' into bytes.
+    
+    Args:
+        size_str: Size string with K/M/G suffix
+    
+    Returns:
+        Size in bytes
+    """
+    import re
+    # Match number (with optional decimal) and unit
+    match = re.match(r'^\s*([\d.]+)\s*([KMG])?', size_str.upper())
+    if not match:
+        return 0
+    
+    value = float(match.group(1))
+    unit = match.group(2)
+    
+    if unit == 'K':
+        return int(value * 1024)
+    elif unit == 'M':
+        return int(value * 1024 * 1024)
+    elif unit == 'G':
+        return int(value * 1024 * 1024 * 1024)
+    else:
+        return int(value)
+
+
 def _parse_lscpu_cache() -> Optional[CacheInfo]:
     """
     Parse cache information from lscpu on Linux systems.
@@ -86,12 +115,8 @@ def _parse_lscpu_cache() -> Optional[CacheInfo]:
                 level = parts[5]
                 all_size_str = parts[2]
                 
-                # Parse size (e.g., "256K", "8M")
-                size_bytes = 0
-                if 'K' in all_size_str:
-                    size_bytes = int(all_size_str.replace('K', '')) * 1024
-                elif 'M' in all_size_str:
-                    size_bytes = int(all_size_str.replace('M', '')) * 1024 * 1024
+                # Parse size using helper function
+                size_bytes = _parse_size_string(all_size_str)
                 
                 if level == '1':
                     l1_size = size_bytes
@@ -153,12 +178,8 @@ def _parse_sysfs_cache() -> Optional[CacheInfo]:
             with open(size_path, 'r') as f:
                 size_str = f.read().strip()
             
-            # Parse size (e.g., "32K", "256K", "8M")
-            size_bytes = 0
-            if 'K' in size_str:
-                size_bytes = int(size_str.replace('K', '')) * 1024
-            elif 'M' in size_str:
-                size_bytes = int(size_str.replace('M', '')) * 1024 * 1024
+            # Parse size using helper function
+            size_bytes = _parse_size_string(size_str)
             
             # Read coherency_line_size if available
             coherency_path = os.path.join(index_path, "coherency_line_size")

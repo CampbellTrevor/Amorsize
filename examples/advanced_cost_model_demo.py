@@ -39,7 +39,8 @@ def cpu_intensive_large_data(x):
     when running on many cores.
     """
     # Create a large array that exceeds typical L3 cache (8-32MB)
-    large_array = np.random.rand(1024 * 1024)  # 8MB array
+    # 1M float64 elements = 8MB
+    large_array = np.random.rand(1024 * 1024)  # 1M elements = 8MB array
     return np.sum(large_array * x)
 
 
