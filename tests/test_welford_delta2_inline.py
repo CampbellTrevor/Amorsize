@@ -4,7 +4,7 @@ Tests for Welford's algorithm delta2 inline optimization (Iteration 97).
 This test module validates the correctness and performance characteristics
 of the delta2 inline calculation optimization in Welford's variance algorithm.
 The optimization eliminates a temporary variable assignment, improving performance
-by ~8ns per iteration without sacrificing numerical accuracy or readability.
+by ~6ns per iteration without sacrificing numerical accuracy or readability.
 """
 
 import time

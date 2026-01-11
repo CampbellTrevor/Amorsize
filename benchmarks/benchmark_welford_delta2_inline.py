@@ -36,7 +36,7 @@ def benchmark_welford_delta2():
     print(f"Iterations: {iterations:,}")
     print()
     
-    # Method 1: Original (with delta2 variable)
+    # Method 1: Original (with delta2 variable - old approach)
     start = time.perf_counter()
     for _ in range(iterations):
         welford_count = 0
@@ -46,11 +46,11 @@ def benchmark_welford_delta2():
             welford_count += 1
             delta = exec_time - welford_mean
             welford_mean += delta / welford_count
-            delta2 = exec_time - welford_mean  # Temporary variable
+            delta2 = exec_time - welford_mean  # Old approach: temporary variable
             welford_m2 += delta * delta2
     method1_time = time.perf_counter() - start
     
-    # Method 2: Optimized (inline delta2)
+    # Method 2: Optimized (inline delta2 - new approach)
     start = time.perf_counter()
     for _ in range(iterations):
         welford_count = 0
@@ -60,7 +60,7 @@ def benchmark_welford_delta2():
             welford_count += 1
             delta = exec_time - welford_mean
             welford_mean += delta / welford_count
-            welford_m2 += delta * (exec_time - welford_mean)  # Inline calculation
+            welford_m2 += delta * (exec_time - welford_mean)  # New approach: inline calculation
     method2_time = time.perf_counter() - start
     
     # Calculate speedup
