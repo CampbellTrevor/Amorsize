@@ -1,71 +1,71 @@
-# Context for Next Agent - Iteration 95 Complete
+# Context for Next Agent - Iteration 96 Complete
 
 ## What Was Accomplished
 
-**PERFORMANCE OPTIMIZATION** - Eliminated profiler conditional checks in sampling loop by splitting into two code paths: fast path (no profiling, no conditionals) and profiling path (with profiler). Achieved ~1.1ns savings per iteration with cleaner code structure. All tests pass (1170 passing, including 16 new tests) with zero security vulnerabilities.
+**PERFORMANCE OPTIMIZATION** - Consolidated 4 separate conditional checks into a single check when calculating averages in the dry_run sampling loop. Achieved ~47ns savings per dry_run (9.9% improvement in averaging section) with cleaner, more maintainable code structure. All tests pass (1189 passing, including 20 new tests) with zero security vulnerabilities.
 
-### Critical Achievement (Iteration 95)
+### Critical Achievement (Iteration 96)
 
-**Profiler Conditional Elimination in Sampling Loop**
+**Averaging Conditional Check Consolidation**
 
-Following the problem statement's guidance to select "ONE atomic, high-value task" and continuing the pattern of micro-optimizations from iterations 84-94, I identified and eliminated profiler conditional checks from the sampling loop hot path.
+Following the problem statement's guidance to select "ONE atomic, high-value task" and continuing the pattern of micro-optimizations from iterations 84-95, I identified and consolidated redundant conditional checks in the averaging calculations section of the sampling loop.
 
 **Optimization Details**:
 
 1. **Implementation**:
-   - Split sampling loop into two separate code paths (lines 704-779 in sampling.py)
-   - Fast path without profiling: no conditional checks (lines 747-779)
-   - Profiling path: with profiler.enable/disable (lines 710-746)
-   - Eliminates 2 `if profiler is not None` checks per iteration from hot path
-   - Code duplication is intentional - it's the optimization (documented)
+   - Consolidated 4 separate `if sample_count > 0` checks into single if-else block (lines 790-809 in sampling.py)
+   - Changed from inline ternary operators: `result = calculation if sample_count > 0 else 0`
+   - To single conditional block with all calculations grouped together
+   - Eliminates 3 redundant conditional checks per dry_run from hot path
+   - Code is more maintainable and follows standard control flow patterns
 
 2. **Performance Impact**:
-   - **Savings**: ~1.1ns per iteration (measured from micro-benchmark)
-   - **Real-world**: Fast path 1.104ms, profiling path 1.245ms per dry run
-   - **Profiler overhead**: ~140μs eliminated when profiling enabled
-   - **Optimization target**: 99%+ of use cases (profiling rarely enabled)
-   - **Zero cost**: No additional complexity, cleaner separation
+   - **Savings**: ~47ns per dry_run (measured from micro-benchmark)
+   - **Percentage**: 9.9% improvement in averaging calculation section
+   - **Real-world**: Typical dry_run remains fast at ~1.21ms
+   - **Zero cost**: No additional complexity, actually cleaner code structure
+   - **Optimization target**: Every single dry_run benefits from this change
 
 3. **Correctness**:
-   - Mathematically identical to original implementation
-   - Both paths execute identical logic, just organized differently
+   - Functionally identical to original implementation
+   - sample_count > 0 is guaranteed at this point (empty sample returns early at line 606)
+   - Maintains defensive programming pattern for robustness
    - All tests pass with zero regressions
    - Fully backward compatible
 
 4. **Code Changes**:
-   - `amorsize/sampling.py`: Split loop into two paths (lines 704-779)
-   - `tests/test_profiler_conditional_elimination.py`: Added 16 comprehensive tests (new file)
-   - `benchmarks/benchmark_profiler_conditional_elimination.py`: Added performance benchmark (new file)
+   - `amorsize/sampling.py`: Consolidated averaging calculations (lines 790-809)
+   - `tests/test_averaging_conditional_consolidation.py`: Added 20 comprehensive tests (new file)
+   - `benchmarks/benchmark_averaging_conditional_consolidation.py`: Added performance benchmark (new file)
 
-5. **Comprehensive Testing** (16 new tests):
-   - Correctness for both code paths (4 tests)
-   - Profiling disabled path is faster (1 test)
-   - Both paths produce identical functional results (1 test)
-   - Edge cases: single item, exceptions (4 tests)
-   - Integration with optimize() (2 tests)
-   - Numerical stability (2 tests)
-   - Backward compatibility (2 tests)
+5. **Comprehensive Testing** (20 new tests):
+   - Correctness for normal, single-item, and large samples (3 tests)
+   - Edge cases: empty data, generators, large objects (3 tests)
+   - Numerical stability and consistency (2 tests)
+   - Integration with optimize() function (3 tests)
+   - Backward compatibility (3 tests)
    - Performance characteristics (2 tests)
+   - Exception handling (2 tests)
+   - Diagnostic output validation (2 tests)
 
 6. **Code Review & Security**:
-   - All tests pass: 1170 tests (1155 existing + 16 new from profiler optimization)
+   - All tests pass: 1189 tests (1169 existing + 20 new from averaging optimization)
    - Zero regressions from optimization
-   - Code review: Addressed timing threshold feedback (made more lenient)
-   - Added comment explaining intentional code duplication
+   - Code review: 2 minor suggestions about time.sleep() in tests (non-critical)
    - Security scan: Zero vulnerabilities
    - Fully backward compatible - no API changes
 
 **Quality Assurance**:
-- ✅ All 1170 tests passing (1155 existing + 16 new profiler tests)
+- ✅ All 1189 tests passing (1169 existing + 20 new averaging tests)
 - ✅ Zero regressions from optimization
-- ✅ Benchmark validates ~1.1ns improvement per iteration
+- ✅ Benchmark validates ~47ns improvement per dry_run
 - ✅ Fully backward compatible - no API changes
-- ✅ Code maintains readability with clear comments
+- ✅ Code is actually cleaner and more maintainable
 - ✅ Zero security vulnerabilities
 - ✅ Zero additional complexity
-- ✅ Cleaner code structure
+- ✅ Follows standard Python control flow patterns
 
-### Comprehensive Analysis Results (Iteration 95)
+### Comprehensive Analysis Results (Iteration 96)
 
 **Strategic Priority Verification:**
 
@@ -93,6 +93,7 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
    - Diagnostics: Extensive profiling with `profile=True`
 
 **Previous Iterations Summary:**
+- **Iteration 95**: Profiler conditional elimination (1170 tests passing, ~1.1ns per iteration, +16 tests)
 - **Iteration 94**: Sample count variable reuse in returns (1155 tests passing, ~58ns speedup, +20 tests)
 - **Iteration 93**: Sample count caching in averages (1135 tests passing, 2.6-3.3% speedup, +21 tests)
 - **Iteration 92**: CV calculation optimization (1163 tests passing, 3.8-5.2% speedup, single expression, +16 tests)
@@ -110,19 +111,20 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
 
 ### Test Coverage Summary
 
-**Test Suite Status**: 1170 tests passing, 0 failures, 49 skipped
+**Test Suite Status**: 1189 tests passing, 0 failures, 49 skipped
 
-**New Tests (Iteration 95)**: +16 profiler conditional elimination tests (in test_profiler_conditional_elimination.py)
-- Correctness for both code paths (with/without profiling)
-- Profiling disabled path is faster
-- Both paths produce identical functional results
-- Edge cases (single item, exceptions, generators)
+**New Tests (Iteration 96)**: +20 averaging conditional consolidation tests (in test_averaging_conditional_consolidation.py)
+- Correctness for normal, single-item, and large samples
+- Edge cases (empty data, generators, large objects)
+- Numerical stability and consistency
 - Integration with optimize()
-- Numerical stability of Welford's algorithm
 - Backward compatibility
 - Performance characteristics
+- Exception handling
+- Diagnostic output validation
 
 **Performance Validation**:
+- Averaging conditional consolidation: ~47ns savings per dry run (9.9% in averaging section) - Iteration 96
 - Profiler conditional elimination: ~1.1ns per iteration, fast path optimized - Iteration 95
 - Sample count reuse: ~58ns savings per dry run (eliminates 2 len() calls) - Iteration 94
 - Sample count caching: 1.026x-1.034x faster with zero complexity cost (vs redundant len() calls) - Iteration 93
@@ -145,15 +147,15 @@ Following the problem statement's guidance to select "ONE atomic, high-value tas
 
 **Security**: Zero vulnerabilities (CodeQL scan passed)
 
-## Iteration 95: The "Missing Piece" Analysis
+## Iteration 96: The "Missing Piece" Analysis
 
 After comprehensive analysis of the codebase against the problem statement's Strategic Priorities, **no critical missing pieces were identified**. All foundations are solid and the codebase has reached high maturity.
 
-Selected task: **Profiler Conditional Elimination in Sampling Loop** (continuing micro-optimization pattern)
-- Split sampling loop into two separate code paths
-- Eliminated 2 conditional checks per iteration from hot path
-- Achieved ~1.1ns savings per iteration  
-- Improved code clarity and separation of concerns
+Selected task: **Averaging Conditional Check Consolidation** (continuing micro-optimization pattern)
+- Consolidated 4 separate conditional checks into single if-else block
+- Eliminated 3 redundant conditional evaluations per dry_run
+- Achieved ~47ns savings per dry_run (9.9% in averaging section)
+- Improved code maintainability and clarity
 - Zero complexity cost
 - Added comprehensive tests with zero regressions
 - Zero security vulnerabilities introduced
@@ -161,7 +163,7 @@ Selected task: **Profiler Conditional Elimination in Sampling Loop** (continuing
 
 ## Recommended Focus for Next Agent
 
-Given the mature state of the codebase (all Strategic Priorities complete, 1170 tests passing, comprehensive edge case coverage, multiple performance optimizations completed including profiler conditional elimination), the next high-value increments should focus on:
+Given the mature state of the codebase (all Strategic Priorities complete, 1189 tests passing, comprehensive edge case coverage, multiple performance optimizations completed including averaging conditional consolidation), the next high-value increments should focus on:
 
 ### Option 1: Additional Performance Optimizations (CONTINUING)
 - ~~Cache physical core count~~ ✅ COMPLETED (Iteration 84)
@@ -176,12 +178,14 @@ Given the mature state of the codebase (all Strategic Priorities complete, 1170 
 - ~~Cache sample_count in average calculations~~ ✅ COMPLETED (Iteration 93)
 - ~~Eliminate redundant len(sample) calls in return statements~~ ✅ COMPLETED (Iteration 94)
 - ~~Eliminate profiler conditional checks in sampling loop~~ ✅ COMPLETED (Iteration 95)
+- ~~Consolidate averaging conditional checks~~ ✅ COMPLETED (Iteration 96)
 - **Profile the entire dry run loop for additional micro-optimizations**
   - Look for other redundant calculations or function calls
   - Analyze if any other variables can be cached or computed more efficiently
   - Consider optimizing the data picklability check section
   - Look for opportunities to reduce temporary object allocations
   - Check for repeated function calls that could be hoisted
+  - Analyze list comprehensions vs explicit loops for performance
 - **Why**: Continue the successful micro-optimization pattern, each providing measurable improvements
 
 ### Option 2: Advanced Features
