@@ -30,6 +30,9 @@ def welford_variance(values):
     if count < 2:
         return mean, 0.0
     
+    # Use population variance (divide by n) to match implementation in sampling.py
+    # Population variance is used because we're measuring the actual variance
+    # of the sampled execution times, not estimating population variance from a sample
     variance = m2 / count
     return mean, variance
 
