@@ -1,50 +1,65 @@
-# Context for Next Agent - Iteration 106
+# Context for Next Agent - Iteration 107
 
-## What Was Accomplished in Iteration 105
+## What Was Accomplished in Iteration 106
 
-**CACHE ENHANCEMENT FOR ML FEATURES** - Cache now stores enhanced ML features for better training data.
+**REAL-TIME SYSTEM LOAD ADJUSTMENT** - Dynamic n_jobs adjustment based on current CPU and memory load.
 
 ### Changes Made
-1. **CacheEntry class updated**: Added optional fields for `pickle_size`, `coefficient_of_variation`, and `function_complexity`
-2. **save_cache_entry() enhanced**: Updated signature to accept and store ML features
-3. **optimizer.py updated**: Computes ML features from sampling results and passes to cache
-4. **Backward compatible**: Old cache entries without ML features still load correctly
+1. **New functions in system_info.py**:
+   - `get_current_cpu_load()`: Measures real-time CPU usage percentage
+   - `get_memory_pressure()`: Measures real-time memory usage percentage
+   - `calculate_load_aware_workers()`: Calculates optimal workers considering system load
+
+2. **Enhanced optimizer.py**:
+   - Added `adjust_for_system_load` parameter to `optimize()` function
+   - Integrated load-aware worker calculation when enabled
+   - Reports current system load in verbose mode
+
+3. **Comprehensive testing**:
+   - Created 21 new tests in test_load_aware_workers.py
+   - Tests cover CPU/memory monitoring, worker adjustment, and integration
+   - All existing tests continue to pass (55 tests)
+
+4. **Documentation and examples**:
+   - Created examples/load_aware_demo.py with 4 practical examples
+   - Demonstrates use cases and performance comparisons
 
 ### Implementation Details
-- ML features computed after dry-run sampling:
-  - `pickle_size`: From `sampling_result.return_size`
-  - `coefficient_of_variation`: From `sampling_result.coefficient_of_variation`
-  - `function_complexity`: From `func.__code__.co_code` bytecode length
-- All features optional (None if unavailable)
-- Added to all four return paths in optimizer
-- Cache serialization uses conditional inclusion (only if not None)
+- **Load Detection**: Uses psutil to measure current CPU and memory usage
+- **Conservative Default**: Feature disabled by default (backward compatible)
+- **Configurable Thresholds**: CPU threshold=70%, Memory threshold=75%
+- **Reduction Strategies**: Conservative (25-50% reduction) and aggressive modes
+- **Graceful Degradation**: Falls back to 0% load if psutil unavailable
+- **Minimal Overhead**: Load detection adds <5ms to optimization
 
 ### Benefits
-- ML model now has access to enhanced features for training
-- Better discrimination between workload types
-- Improved prediction accuracy over time
-- Historical cache entries remain valid
+- Better multi-tenant behavior in shared environments
+- Prevents resource contention and oversubscription
+- Maintains optimal performance without overloading system
+- Useful for cloud deployments, CI/CD, and batch processing
 
 ## Recommended Focus for Next Agent
 
-**Option 1: Real-Time System Load Adjustment (🔥 RECOMMENDED)**
-- Dynamic n_jobs adjustment based on current CPU/memory load
-- Monitor system resources and scale workers up/down
-- Benefits: Better multi-tenant behavior, optimal resource utilization
+**Option 1: Adaptive Chunk Size Tuning (🔥 RECOMMENDED)**
+- Dynamically adjust chunk size during execution based on runtime feedback
+- Monitor actual task completion times and adjust chunksize adaptively
+- Benefits: Better handling of heterogeneous workloads, self-tuning performance
 
-**Option 2: Advanced ML Features**
-- Add more features: function call graph depth, import count, historical speedup
-- Experiment with feature combinations
-- Benefits: Further accuracy improvements, better predictions
+**Option 2: Worker Pool Warm-up Strategy**
+- Pre-spawn worker pool and keep it warm for multiple optimization calls
+- Amortize spawn costs across multiple optimize() invocations
+- Benefits: Reduced overhead for repeated optimizations, faster overall throughput
 
-**Option 3: Streaming Memory Optimization**
-- Optimize memory usage for streaming operations (imap/imap_unordered)
-- Better chunk size calculation for memory-constrained streams
-- Benefits: Handle larger streaming workloads safely
+**Option 3: Advanced Cost Modeling**
+- Improve Amdahl's Law calculation with more accurate overhead modeling
+- Account for cache effects, NUMA architecture, memory bandwidth
+- Benefits: More accurate speedup predictions, better optimization decisions
 
 ## Progress
 - ✅ Distributed Caching (Iteration 102)
 - ✅ ML-Based Prediction (Iteration 103)
 - ✅ Enhanced ML Features (Iteration 104)
 - ✅ Cache Enhancement for ML Features (Iteration 105)
-- ⏳ Real-Time System Load Adjustment (Next - Recommended)
+- ✅ Real-Time System Load Adjustment (Iteration 106)
+- ⏳ Adaptive Chunk Size Tuning (Next - Recommended)
+
