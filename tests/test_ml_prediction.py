@@ -495,7 +495,7 @@ class TestEnhancedFeatures:
         assert all(0.0 <= v <= 1.0 for v in vector)
     
     def test_enhanced_feature_distance(self):
-        """Test distance calculation with 8 features."""
+        """Test distance calculation with 12 features (enhanced in Iteration 114)."""
         features1 = WorkloadFeatures(
             data_size=1000,
             estimated_item_time=0.01,
@@ -521,9 +521,9 @@ class TestEnhancedFeatures:
         distance = features1.distance(features2)
         # Distance should be positive for different features
         assert distance > 0.0
-        # Maximum distance with 8 features is sqrt(8)
+        # Maximum distance with 12 features is sqrt(12) - updated in Iteration 114
         import math
-        assert distance <= math.sqrt(8)
+        assert distance <= math.sqrt(12)
 
 
 class TestFunctionComplexity:
