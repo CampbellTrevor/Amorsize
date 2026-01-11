@@ -5,9 +5,11 @@ This module provides convenience functions that combine optimization
 and execution in a single call, making it easier to use Amorsize.
 """
 
+import time
 from multiprocessing import Pool
 from typing import Any, Callable, Iterator, List, Optional, Union
 
+from .hooks import HookContext, HookEvent, HookManager
 from .optimizer import optimize
 
 # Default estimated item time when not available from optimization result
@@ -27,7 +29,8 @@ def execute(
     progress_callback: Optional[Callable[[str, float], None]] = None,
     return_optimization_result: bool = False,
     prefer_threads_for_io: bool = True,
-    enable_online_learning: bool = False
+    enable_online_learning: bool = False,
+    hooks: Optional[HookManager] = None
 ) -> Union[List[Any], tuple]:
     """
     Optimize and execute a function on data in parallel.
@@ -66,6 +69,9 @@ def execute(
         enable_online_learning: If True, update ML model with actual execution results
                 to improve future predictions. This helps the model learn from real
                 workload behavior over time (default: False).
+        hooks: Optional HookManager for execution callbacks. If None, no hooks are triggered.
+                Use this to monitor progress, collect metrics, or integrate with monitoring
+                systems (default: None).
 
     Returns:
         List of results from applying func to each item in data.
@@ -107,6 +113,9 @@ def execute(
         a Pool across multiple calls, use optimize() directly and manage
         the Pool yourself.
     """
+    # Track execution start time
+    start_time = time.time()
+    
     # Step 1: Optimize to get parameters
     opt_result = optimize(
         func=func,
@@ -125,6 +134,28 @@ def execute(
     if verbose:
         print(f"\nExecuting with n_jobs={opt_result.n_jobs}, chunksize={opt_result.chunksize}, executor={opt_result.executor_type}")
         print(f"Estimated speedup: {opt_result.estimated_speedup}")
+
+    # Trigger PRE_EXECUTE hook
+    if hooks is not None and hooks.has_hooks(HookEvent.PRE_EXECUTE):
+        # Calculate total items safely
+        total_items = None
+        if hasattr(opt_result, 'data'):
+            if hasattr(opt_result.data, '__len__'):
+                try:
+                    total_items = len(opt_result.data)
+                except (TypeError, AttributeError):
+                    pass
+        
+        hooks.trigger(HookContext(
+            event=HookEvent.PRE_EXECUTE,
+            n_jobs=opt_result.n_jobs,
+            chunksize=opt_result.chunksize,
+            total_items=total_items,
+            metadata={
+                "executor_type": opt_result.executor_type,
+                "estimated_speedup": opt_result.estimated_speedup
+            }
+        ))
 
     # Step 2: Execute with optimal parameters
     if opt_result.n_jobs == 1:
@@ -147,8 +178,29 @@ def execute(
         with Pool(opt_result.n_jobs) as pool:
             results = pool.map(func, opt_result.data, chunksize=opt_result.chunksize)
 
+    # Calculate execution time
+    execution_time = time.time() - start_time
+    
     if verbose:
-        print(f"Execution complete: processed {len(results)} items")
+        print(f"Execution complete: processed {len(results)} items in {execution_time:.2f}s")
+
+    # Trigger POST_EXECUTE hook
+    if hooks is not None and hooks.has_hooks(HookEvent.POST_EXECUTE):
+        hooks.trigger(HookContext(
+            event=HookEvent.POST_EXECUTE,
+            n_jobs=opt_result.n_jobs,
+            chunksize=opt_result.chunksize,
+            total_items=len(results),
+            items_completed=len(results),
+            percent_complete=100.0,
+            elapsed_time=execution_time,
+            results_count=len(results),
+            throughput_items_per_sec=len(results) / execution_time if execution_time > 0 else 0.0,
+            metadata={
+                "executor_type": opt_result.executor_type,
+                "estimated_speedup": opt_result.estimated_speedup
+            }
+        ))
 
     # Step 3: Update ML model with actual results if online learning is enabled
     if enable_online_learning:

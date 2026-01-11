@@ -55,6 +55,15 @@ from .history import (
     load_result,
     save_result,
 )
+from .hooks import (
+    HookContext,
+    HookEvent,
+    HookManager,
+    create_error_hook,
+    create_progress_hook,
+    create_throughput_hook,
+    create_timing_hook,
+)
 from .optimizer import DiagnosticProfile, OptimizationResult, optimize
 from .performance import (
     PerformanceResult,
@@ -317,5 +326,12 @@ __all__ = [
     "SystemTopology",
     "watch",
     "WatchMonitor",
-    "WatchSnapshot"
+    "WatchSnapshot",
+    "HookManager",
+    "HookEvent",
+    "HookContext",
+    "create_progress_hook",
+    "create_timing_hook",
+    "create_throughput_hook",
+    "create_error_hook",
 ]
