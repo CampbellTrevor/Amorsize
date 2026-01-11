@@ -14,8 +14,22 @@ from .system_info import (
     get_chunking_overhead,
     check_start_method_mismatch,
     get_multiprocessing_start_method,
-    get_available_memory
+    get_available_memory,
+    get_memory_pressure
 )
+
+# Streaming optimization constants
+# Buffer size calculation: buffer = n_jobs * BUFFER_SIZE_MULTIPLIER
+# This allows prefetching for good throughput without excessive memory use
+BUFFER_SIZE_MULTIPLIER = 3
+
+# Maximum chunksize growth for adaptive chunking
+# Limits how large chunks can grow to prevent load imbalance
+MAX_CHUNKSIZE_GROWTH_FACTOR = 4
+
+# Memory budget for result buffering (fraction of available memory)
+# Conservative 10% allocation prevents memory exhaustion
+RESULT_BUFFER_MEMORY_FRACTION = 0.1
 
 
 class StreamingOptimizationResult:
@@ -35,7 +49,11 @@ class StreamingOptimizationResult:
         estimated_speedup: float,
         warnings: List[str] = None,
         data: Union[List, Iterator] = None,
-        profile: Optional[DiagnosticProfile] = None
+        profile: Optional[DiagnosticProfile] = None,
+        use_adaptive_chunking: bool = False,
+        adaptive_chunking_params: Optional[dict] = None,
+        buffer_size: Optional[int] = None,
+        memory_backpressure_enabled: bool = False
     ):
         self.n_jobs = n_jobs
         self.chunksize = chunksize
@@ -45,6 +63,10 @@ class StreamingOptimizationResult:
         self.warnings = warnings or []
         self.data = data
         self.profile = profile
+        self.use_adaptive_chunking = use_adaptive_chunking
+        self.adaptive_chunking_params = adaptive_chunking_params or {}
+        self.buffer_size = buffer_size
+        self.memory_backpressure_enabled = memory_backpressure_enabled
     
     def __repr__(self):
         method = "imap" if self.use_ordered else "imap_unordered"
@@ -78,7 +100,12 @@ def _validate_streaming_parameters(
     sample_size: int,
     target_chunk_duration: float,
     prefer_ordered: Optional[bool],
-    buffer_size: Optional[int]
+    buffer_size: Optional[int],
+    enable_adaptive_chunking: bool,
+    adaptation_rate: float,
+    pool_manager: Any,
+    enable_memory_backpressure: bool,
+    memory_threshold: float
 ) -> None:
     """
     Validate parameters for optimize_streaming().
@@ -114,6 +141,28 @@ def _validate_streaming_parameters(
             raise ValueError(f"Invalid buffer_size: must be int or None, got {type(buffer_size).__name__}")
         if buffer_size < 1:
             raise ValueError(f"Invalid buffer_size: must be >= 1 or None, got {buffer_size}")
+    
+    if not isinstance(enable_adaptive_chunking, bool):
+        raise ValueError(f"Invalid enable_adaptive_chunking: must be bool, got {type(enable_adaptive_chunking).__name__}")
+    
+    if not isinstance(adaptation_rate, (int, float)):
+        raise ValueError(f"Invalid adaptation_rate: must be numeric, got {type(adaptation_rate).__name__}")
+    if not (0.0 <= adaptation_rate <= 1.0):
+        raise ValueError(f"Invalid adaptation_rate: must be 0.0-1.0, got {adaptation_rate}")
+    
+    if not isinstance(enable_memory_backpressure, bool):
+        raise ValueError(f"Invalid enable_memory_backpressure: must be bool, got {type(enable_memory_backpressure).__name__}")
+    
+    if not isinstance(memory_threshold, (int, float)):
+        raise ValueError(f"Invalid memory_threshold: must be numeric, got {type(memory_threshold).__name__}")
+    if not (0.0 <= memory_threshold <= 1.0):
+        raise ValueError(f"Invalid memory_threshold: must be 0.0-1.0, got {memory_threshold}")
+    
+    # pool_manager validation (if provided)
+    if pool_manager is not None:
+        # Check if it has the required methods
+        if not hasattr(pool_manager, 'get_pool'):
+            raise ValueError("Invalid pool_manager: must have 'get_pool' method")
 
 
 def optimize_streaming(
@@ -126,7 +175,12 @@ def optimize_streaming(
     verbose: bool = False,
     use_spawn_benchmark: bool = True,
     use_chunking_benchmark: bool = True,
-    profile: bool = False
+    profile: bool = False,
+    enable_adaptive_chunking: bool = False,
+    adaptation_rate: float = 0.3,
+    pool_manager: Optional[Any] = None,
+    enable_memory_backpressure: bool = False,
+    memory_threshold: float = 0.8
 ) -> StreamingOptimizationResult:
     """
     Optimize parameters for streaming workloads using imap/imap_unordered.
@@ -155,6 +209,19 @@ def optimize_streaming(
         use_spawn_benchmark: Measure actual spawn cost vs estimate (default: True)
         use_chunking_benchmark: Measure actual chunking overhead vs estimate (default: True)
         profile: Enable diagnostic profiling for detailed analysis (default: False)
+        enable_adaptive_chunking: Enable runtime adaptive chunk size adjustment for
+                                 heterogeneous workloads (default: False)
+        adaptation_rate: How aggressively to adapt chunk sizes (0.0-1.0, default: 0.3).
+                        Only used when enable_adaptive_chunking=True.
+        pool_manager: Optional PoolManager instance for pool reuse across multiple
+                     optimize_streaming calls (default: None = create new pools).
+                     Use get_global_pool_manager() for application-wide reuse.
+        enable_memory_backpressure: Enable memory-aware backpressure handling
+                                   (default: False). Pauses consumption when memory
+                                   pressure is high.
+        memory_threshold: Memory usage threshold (0.0-1.0) to trigger backpressure
+                         (default: 0.8 = 80%). Only used when 
+                         enable_memory_backpressure=True.
     
     Returns:
         StreamingOptimizationResult with optimal parameters for streaming:
@@ -166,6 +233,10 @@ def optimize_streaming(
         - warnings: List of potential issues or constraints
         - data: Reconstructed data (for generators)
         - profile: Diagnostic profile (if enabled)
+        - use_adaptive_chunking: Whether adaptive chunking is enabled
+        - adaptive_chunking_params: Parameters for adaptive chunking
+        - buffer_size: Recommended buffer size
+        - memory_backpressure_enabled: Whether memory backpressure is enabled
     
     Usage Example:
         >>> from amorsize import optimize_streaming
@@ -208,7 +279,9 @@ def optimize_streaming(
     # Validate all parameters
     _validate_streaming_parameters(
         func, data, sample_size, target_chunk_duration,
-        prefer_ordered, buffer_size
+        prefer_ordered, buffer_size, enable_adaptive_chunking, 
+        adaptation_rate, pool_manager, enable_memory_backpressure, 
+        memory_threshold
     )
     
     # Initialize diagnostic profile if requested
@@ -271,7 +344,10 @@ def optimize_streaming(
             estimated_speedup=1.0,
             warnings=[f"Sampling failed: {sampling_result.error}"],
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            use_adaptive_chunking=False,
+            buffer_size=1,
+            memory_backpressure_enabled=False
         )
     
     # Populate sampling results in diagnostic profile
@@ -308,7 +384,10 @@ def optimize_streaming(
             estimated_speedup=1.0,
             warnings=["Function is not picklable. Consider using dill or cloudpickle."],
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            use_adaptive_chunking=False,
+            buffer_size=1,
+            memory_backpressure_enabled=False
         )
     
     # Check if data items are picklable
@@ -332,7 +411,10 @@ def optimize_streaming(
                 f"Ensure data items don't contain thread locks, file handles, or other unpicklable objects."
             ],
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            use_adaptive_chunking=False,
+            buffer_size=1,
+            memory_backpressure_enabled=False
         )
     
     # Fast-fail checks for streaming optimization
@@ -412,7 +494,10 @@ def optimize_streaming(
             estimated_speedup=1.0,
             warnings=warnings,
             data=reconstructed_data,
-            profile=diag
+            profile=diag,
+            use_adaptive_chunking=False,
+            buffer_size=buffer_size if buffer_size is not None else 1,
+            memory_backpressure_enabled=enable_memory_backpressure
         )
     
     # Calculate max workers based on CPU
@@ -510,7 +595,10 @@ def optimize_streaming(
                 estimated_speedup=1.0,
                 warnings=warnings,
                 data=reconstructed_data,
-                profile=diag
+                profile=diag,
+                use_adaptive_chunking=False,
+                buffer_size=buffer_size if buffer_size is not None else 1,
+                memory_backpressure_enabled=enable_memory_backpressure
             )
     else:
         # Unknown dataset size or duration - use heuristic
@@ -580,6 +668,56 @@ def optimize_streaming(
                 "Using imap_unordered() for better performance (results may arrive out of order)"
             )
     
+    # Calculate adaptive chunking parameters if enabled
+    adaptive_chunking_params = {}
+    if enable_adaptive_chunking and sampling_result.coefficient_of_variation > 0.3:
+        # Only enable adaptive chunking for heterogeneous workloads
+        adaptive_chunking_params = {
+            'initial_chunksize': optimal_chunksize,
+            'target_chunk_duration': target_chunk_duration,
+            'adaptation_rate': adaptation_rate,
+            'min_chunksize': 1,
+            'max_chunksize': optimal_chunksize * MAX_CHUNKSIZE_GROWTH_FACTOR,
+            'enable_adaptation': True
+        }
+        if verbose:
+            print(f"ℹ Adaptive chunking enabled (CV={sampling_result.coefficient_of_variation:.2f})")
+            print(f"  Initial chunksize: {optimal_chunksize}, adaptation rate: {adaptation_rate}")
+    elif enable_adaptive_chunking:
+        # Homogeneous workload - adaptive chunking not beneficial
+        if verbose:
+            print(f"ℹ Adaptive chunking disabled (workload is homogeneous, CV={sampling_result.coefficient_of_variation:.2f})")
+        enable_adaptive_chunking = False
+    
+    # Calculate buffer size if not provided
+    calculated_buffer_size = buffer_size
+    if calculated_buffer_size is None:
+        # Auto-calculate buffer size based on memory and parallelism
+        # Buffer should be large enough for good parallelism but not waste memory
+        calculated_buffer_size = optimal_n_jobs * BUFFER_SIZE_MULTIPLIER
+        
+        # Adjust for memory constraints if backpressure is enabled
+        if enable_memory_backpressure:
+            # Estimate memory per result item
+            memory_per_result = sampling_result.return_size
+            if memory_per_result > 0:
+                # Calculate how many results fit in memory budget
+                max_results_in_memory = int(available_memory * RESULT_BUFFER_MEMORY_FRACTION / memory_per_result)
+                max_results_in_memory = int(available_memory * 0.1 / memory_per_result)
+                # Limit buffer size to prevent memory issues
+                calculated_buffer_size = min(calculated_buffer_size, max(optimal_n_jobs, max_results_in_memory))
+                if verbose and calculated_buffer_size < optimal_n_jobs * 3:
+                    print(f"ℹ Buffer size limited to {calculated_buffer_size} due to memory constraints")
+    
+    # Add memory backpressure information to recommendations
+    if enable_memory_backpressure and diag:
+        diag.recommendations.append(
+            f"Memory backpressure enabled (threshold: {memory_threshold*100:.0f}%)"
+        )
+        diag.recommendations.append(
+            f"Buffer size: {calculated_buffer_size} items"
+        )
+    
     return StreamingOptimizationResult(
         n_jobs=optimal_n_jobs,
         chunksize=optimal_chunksize,
@@ -588,5 +726,9 @@ def optimize_streaming(
         estimated_speedup=best_speedup,
         warnings=warnings,
         data=reconstructed_data,
-        profile=diag
+        profile=diag,
+        use_adaptive_chunking=enable_adaptive_chunking,
+        adaptive_chunking_params=adaptive_chunking_params,
+        buffer_size=calculated_buffer_size,
+        memory_backpressure_enabled=enable_memory_backpressure
     )
