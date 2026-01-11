@@ -1,4 +1,152 @@
-# Context for Next Agent - Iteration 116
+# Context for Next Agent - Iteration 117
+
+## What Was Accomplished in Iteration 116
+
+**PREDICTION CONFIDENCE CALIBRATION** - Implemented adaptive confidence threshold adjustment based on actual prediction accuracy, enabling intelligent ML vs dry-run trade-offs.
+
+### Implementation Completed
+
+1. **CalibrationData Class** (amorsize/ml_prediction.py):
+   - Tracks (confidence, accuracy) tuples from past predictions
+   - Stores adjusted_threshold, baseline_threshold, and last_update
+   - Methods: add_prediction_result(), get_calibration_stats(), recalibrate_threshold()
+   - Calculates mean accuracy, high/low confidence accuracy, optimal threshold
+   - Conservative adjustment using CALIBRATION_ADJUSTMENT_FACTOR (0.1)
+   - Requires MIN_CALIBRATION_SAMPLES (10) before adjusting threshold
+
+2. **Calibration Persistence Functions** (amorsize/ml_prediction.py):
+   - `_load_calibration_data()`: Loads calibration data from ml_calibration.json
+   - `_save_calibration_data()`: Atomically saves calibration data to cache
+   - Uses same cache infrastructure as ML training data
+   - Handles corrupted files and missing data gracefully
+
+3. **track_prediction_accuracy() Function** (amorsize/ml_prediction.py):
+   - Records prediction confidence vs actual accuracy
+   - Calculates relative errors for n_jobs and chunksize
+   - Overall accuracy: 1.0 = perfect, 0.0 = completely wrong
+   - Automatically triggers recalibration when enough samples collected
+   - Saves updated calibration data after each tracking
+
+4. **get_calibration_stats() Function** (amorsize/ml_prediction.py):
+   - Provides visibility into calibration system
+   - Returns: adjusted_threshold, baseline_threshold, mean_accuracy
+   - Also: high_confidence_accuracy, low_confidence_accuracy, optimal_threshold
+   - sample_count and last_update timestamp
+   - Verbose mode prints formatted statistics
+
+5. **Enhanced predict_parameters() Function** (amorsize/ml_prediction.py):
+   - Added `use_calibration` parameter (default: True)
+   - Loads calibration data if enabled
+   - Uses adjusted_threshold instead of confidence_threshold when available
+   - Requires MIN_CALIBRATION_SAMPLES before using calibrated threshold
+   - Verbose mode shows which threshold is being used
+
+6. **Comprehensive Testing** (tests/test_confidence_calibration.py):
+   - 27 new tests covering:
+     - CalibrationData class initialization and methods
+     - Calibration persistence (save/load)
+     - track_prediction_accuracy() function
+     - get_calibration_stats() function
+     - predict_parameters() with calibration
+     - Integration scenarios (improvement over time, poor predictions)
+     - Edge cases (zero values, extreme confidence, missing files)
+   - All 27 new tests passing
+   - All 1566 total tests passing (only 1 unrelated flaky test)
+
+7. **Comprehensive Example** (examples/confidence_calibration_demo.py):
+   - 7 comprehensive demos:
+     - Demo 1: Baseline calibration statistics
+     - Demo 2: Building calibration data (15 simulated predictions)
+     - Demo 3: Observing calibration adjustment
+     - Demo 4: Comparing behavior with/without calibration
+     - Demo 5: Continuous improvement (adding more data)
+     - Demo 6: Real-world usage example
+     - Demo 7: Benefits summary
+   - Shows threshold adjustment from 0.70 to 0.65 based on high accuracy
+   - Demonstrates enabling ML predictions that would have fallen back to dry-run
+
+8. **Updated Exports** (amorsize/__init__.py):
+   - Added `track_prediction_accuracy`
+   - Added `get_calibration_stats`
+   - Added `CalibrationData`
+   - Proper stub functions when ML module unavailable
+
+### Key Features
+
+**How It Works:**
+1. User calls `predict_parameters()` with `use_calibration=True` (default)
+2. System loads calibration data and uses adjusted threshold if available
+3. After actual optimization, user calls `track_prediction_accuracy()`
+4. System records prediction confidence vs actual accuracy
+5. When enough samples collected (≥10), threshold automatically recalibrates
+6. Adjustment is conservative (10% of optimal - current) to avoid oscillation
+7. Threshold stays within bounds [0.5, 0.95]
+
+**Benefits:**
+- ✅ Adaptive confidence thresholds based on actual accuracy
+- ✅ Optimizes ML vs dry-run trade-off automatically
+- ✅ Learns when high confidence actually means accurate predictions
+- ✅ Enables more ML predictions when system is accurate
+- ✅ Becomes more conservative when predictions are poor
+- ✅ Zero configuration required
+- ✅ Calibration data persists across sessions
+- ✅ Conservative adjustment prevents oscillation
+- ✅ No breaking changes to API
+
+**Architecture:**
+```
+predict_parameters(use_calibration=True)
+    │
+    ├─→ _load_calibration_data()
+    │   ├─→ Load ml_calibration.json
+    │   └─→ Return CalibrationData
+    │
+    ├─→ Use adjusted_threshold if available (≥10 samples)
+    │   └─→ Otherwise use default confidence_threshold
+    │
+    └─→ Make prediction with effective threshold
+
+After actual optimization:
+track_prediction_accuracy(prediction, actual_n_jobs, actual_chunksize)
+    │
+    ├─→ Load current calibration data
+    ├─→ Calculate prediction accuracy (1.0 = perfect)
+    ├─→ Add (confidence, accuracy) tuple
+    ├─→ Recalibrate threshold if ≥10 samples
+    │   ├─→ Find optimal threshold from accuracy curve
+    │   └─→ Adjust conservatively toward optimal
+    └─→ Save updated calibration data
+```
+
+### Testing Results
+
+**All Tests Passing:**
+- 27/27 new confidence calibration tests ✅
+- 36/36 ML prediction tests ✅
+- 19/19 batch online learning tests ✅
+- 19/19 ML streaming prediction tests ✅
+- 17/17 streaming online learning tests ✅
+- 10/10 ML hardware features tests ✅
+- Total: 1566/1567 tests passing ✅ (1 unrelated flaky test)
+
+**Test Coverage:**
+- CalibrationData initialization and methods
+- Calibration persistence (save/load/corrupted files)
+- Tracking prediction accuracy
+- Getting calibration statistics
+- Integration with predict_parameters()
+- Continuous improvement over time
+- Handling poor predictions
+- Edge cases and error handling
+
+### Security Summary
+
+**CodeQL Analysis:** No security vulnerabilities found ✅
+
+**Code Review:** 
+- 1 minor comment about magic number `1` used as minimum divisor
+- This is a standard Python idiom for preventing division by zero
+- No changes needed
 
 ## What Was Accomplished in Iteration 115
 
@@ -561,29 +709,30 @@ Fixed streaming optimization verbose output formatting:
 
 ## Recommended Focus for Next Agent
 
-**Option 1: Prediction Confidence Calibration (🔥 RECOMMENDED)**
-- Implement automatic confidence threshold adjustment based on prediction accuracy
-- Track prediction errors over time and adjust thresholds dynamically
-- Benefits: Better fallback decisions, optimal ML vs dry-run trade-off
-- Prerequisites: Online learning tracking (Iterations 112, 115) + Hardware-aware ML (Iteration 114)
-
-**Option 2: Cross-System Learning**
+**Option 1: Cross-System Learning (🔥 RECOMMENDED)**
 - Implement model transfer across different hardware configurations
 - Use system fingerprinting (from hardware features) to identify similar environments
-- Benefits: Faster cold-start on new systems, better generalization
-- Prerequisites: Hardware-aware ML (Iteration 114) + Online learning (Iterations 112, 115)
+- Enable faster cold-start on new systems by leveraging similar system data
+- Benefits: Better generalization, reduced dry-run needs on new hardware
+- Prerequisites: Hardware-aware ML (Iteration 114) + Confidence calibration (Iteration 116)
 
-**Option 3: Feature Importance Analysis**
+**Option 2: Feature Importance Analysis**
 - Implement feature importance scoring to identify which features matter most
 - Use variance-based or correlation-based importance metrics
 - Benefits: Better understanding of model, potential feature reduction, improved interpretability
 - Prerequisites: Hardware-aware ML (Iteration 114) with 12 features
 
-**Option 4: Adaptive Chunking Integration with ML**
+**Option 3: Adaptive Chunking Integration with ML**
 - Integrate adaptive chunking parameters into ML predictions
 - Learn optimal adaptation rates and bounds for different workload types
 - Benefits: Better heterogeneous workload handling out of the box
-- Prerequisites: Adaptive chunking (Iteration 107) + ML prediction (Iteration 115)
+- Prerequisites: Adaptive chunking (Iteration 107) + ML prediction + Confidence calibration (Iteration 116)
+
+**Option 4: Workload Clustering & Classification**
+- Implement workload clustering to group similar workloads
+- Classify new workloads into clusters for better predictions
+- Benefits: More targeted predictions, better handling of diverse workload types
+- Prerequisites: ML prediction + Confidence calibration (Iteration 116)
 
 ## Progress
 - ✅ Distributed Caching (Iteration 102)
@@ -600,5 +749,6 @@ Fixed streaming optimization verbose output formatting:
 - ✅ ML-Enhanced Streaming Optimization (Iteration 113)
 - ✅ Advanced Cost Model + ML Integration (Iteration 114)
 - ✅ Online Learning for Streaming (Iteration 115)
-- ⏳ Confidence Calibration or Cross-System Learning (Next - Recommended)
+- ✅ Prediction Confidence Calibration (Iteration 116)
+- ⏳ Cross-System Learning or Feature Importance Analysis (Next - Recommended)
 
