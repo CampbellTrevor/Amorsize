@@ -130,6 +130,9 @@ def create_progress_callback(verbose: bool = False):
         if not sys.stdout.isatty():
             return
 
+        # Clamp progress to valid range [0.0, 1.0] to handle edge cases
+        progress = max(0.0, min(1.0, progress))
+
         # Calculate bar width (40 chars for the bar itself)
         bar_width = 40
         filled = int(bar_width * progress)

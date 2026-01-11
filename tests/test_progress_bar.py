@@ -162,17 +162,43 @@ def test_progress_callback_bounds():
     """Test progress callback handles edge cases for progress values."""
     callback = create_progress_callback(verbose=False)
     
+    outputs = []
+    
+    def capture_write(text):
+        """Capture written text."""
+        outputs.append(text)
+    
     with patch('sys.stdout.isatty', return_value=True):
-        with patch('sys.stdout.write'):
+        with patch('sys.stdout.write', side_effect=capture_write):
             with patch('sys.stdout.flush'):
                 # Should handle values at boundaries
                 callback("Minimum", 0.0)
                 callback("Maximum", 1.0)
                 
-                # Should handle values slightly outside bounds (shouldn't crash)
-                # Note: In real usage, values should be 0.0-1.0, but we test robustness
-                callback("Below minimum", -0.1)  # Should not crash
-                callback("Above maximum", 1.1)   # Should not crash
+                # Clear outputs for next test
+                outputs.clear()
+                
+                # Should handle values slightly outside bounds (shouldn't crash).
+                # Note: In real usage, values should be 0.0-1.0, but we test robustness.
+                # The implementation clamps these values to the valid range.
+                callback("Below minimum", -0.1)  # Should be clamped to 0.0
+                
+                # Find the progress bar output (not newline)
+                below_outputs = [o for o in outputs if '░' in o or '█' in o]
+                assert len(below_outputs) > 0
+                below_output = below_outputs[0]
+                # Should show 0% not negative
+                assert '  0%' in below_output or '0%' in below_output
+                
+                outputs.clear()
+                
+                callback("Above maximum", 1.1)   # Should be clamped to 1.0
+                # Find the progress bar output (not newline)
+                above_outputs = [o for o in outputs if '░' in o or '█' in o]
+                assert len(above_outputs) > 0
+                above_output = above_outputs[0]
+                # Should show 100% not more
+                assert '100%' in above_output
 
 
 if __name__ == "__main__":
