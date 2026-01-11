@@ -305,12 +305,15 @@ def get_cloudwatch_alarms(
     
     alarms = []
     
-    # Alarm 1: High error rate
+    # Alarm 1: High error count
     alarm_actions = [sns_topic_arn] if sns_topic_arn else []
     
+    # Note: This is a simple count-based alarm. For a true percentage-based alarm,
+    # you would need to use CloudWatch Math expressions to compute
+    # (ErrorsTotal / ExecutionsTotal * 100)
     alarms.append({
-        "AlarmName": f"Amorsize-HighErrorRate-{region}",
-        "AlarmDescription": "Amorsize error rate exceeds 5% of total executions",
+        "AlarmName": f"Amorsize-HighErrorCount-{region}",
+        "AlarmDescription": "Amorsize error count exceeds 5 errors in 5 minutes",
         "ActionsEnabled": True,
         "AlarmActions": alarm_actions,
         "MetricName": "ErrorsTotal",
@@ -319,7 +322,7 @@ def get_cloudwatch_alarms(
         "Dimensions": dim_list,
         "Period": 300,  # 5 minutes
         "EvaluationPeriods": 2,
-        "Threshold": 0.05,  # 5% error rate
+        "Threshold": 5.0,  # 5 errors
         "ComparisonOperator": "GreaterThanThreshold",
         "TreatMissingData": "notBreaching"
     })
@@ -332,7 +335,7 @@ def get_cloudwatch_alarms(
         "AlarmActions": alarm_actions,
         "MetricName": "ExecutionDuration",
         "Namespace": namespace,
-        "ExtendedStatistic": "p99",
+        "ExtendedStatistic": "p99",  # Use ExtendedStatistic for percentiles, not Statistic
         "Dimensions": dim_list,
         "Period": 300,
         "EvaluationPeriods": 2,

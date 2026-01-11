@@ -147,8 +147,8 @@ class TestCloudWatchAlarms:
         # Check alarm names
         alarm_names = [alarm['AlarmName'] for alarm in alarms]
         
-        # Verify expected alarm types
-        assert any('HighErrorRate' in name for name in alarm_names)
+        # Verify expected alarm types (updated to reflect actual alarm names)
+        assert any('HighErrorCount' in name for name in alarm_names)
         assert any('SlowExecution' in name for name in alarm_names)
         assert any('LowThroughput' in name for name in alarm_names)
         assert any('NoExecutions' in name for name in alarm_names)

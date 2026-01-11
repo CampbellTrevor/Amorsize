@@ -12,7 +12,15 @@ The example covers:
 """
 
 import json
+import os
+import tempfile
 import time
+
+
+# Helper to get cross-platform temp directory
+def get_output_path(filename):
+    """Get cross-platform path for output files."""
+    return os.path.join(tempfile.gettempdir(), filename)
 
 
 def example_1_cloudwatch_dashboard():
@@ -64,7 +72,7 @@ def example_1_cloudwatch_dashboard():
     print("    --dashboard-body file://dashboard.json")
     
     # Save to file for manual deployment
-    with open('/tmp/cloudwatch_dashboard.json', 'w') as f:
+    with open(get_output_path('cloudwatch_dashboard.json'), 'w') as f:
         f.write(dashboard_json)
     print("\n✓ Dashboard template saved to: /tmp/cloudwatch_dashboard.json")
 
@@ -120,7 +128,7 @@ def example_2_cloudwatch_alarms():
     print("      cw.put_metric_alarm(**alarm)")
     
     # Save to file for reference
-    with open('/tmp/cloudwatch_alarms.json', 'w') as f:
+    with open(get_output_path('cloudwatch_alarms.json'), 'w') as f:
         json.dump(alarms, f, indent=2, default=str)
     print("\n✓ Alarm configurations saved to: /tmp/cloudwatch_alarms.json")
 
@@ -170,7 +178,7 @@ def example_3_grafana_dashboard():
     print("  )")
     
     # Save to file
-    with open('/tmp/grafana_dashboard.json', 'w') as f:
+    with open(get_output_path('grafana_dashboard.json'), 'w') as f:
         json.dump(dashboard, f, indent=2)
     print("\n✓ Dashboard saved to: /tmp/grafana_dashboard.json")
 
@@ -215,7 +223,7 @@ def example_4_azure_workbook():
     print("    --serialized-data '$(cat workbook.json)'")
     
     # Save to file
-    with open('/tmp/azure_workbook.json', 'w') as f:
+    with open(get_output_path('azure_workbook.json'), 'w') as f:
         json.dump(workbook, f, indent=2)
     print("\n✓ Workbook template saved to: /tmp/azure_workbook.json")
 
@@ -265,7 +273,7 @@ def example_5_gcp_dashboard():
     print("    --config-from-file=dashboard.json")
     
     # Save to file
-    with open('/tmp/gcp_dashboard.json', 'w') as f:
+    with open(get_output_path('gcp_dashboard.json'), 'w') as f:
         json.dump(dashboard, f, indent=2)
     print("\n✓ Dashboard saved to: /tmp/gcp_dashboard.json")
 
@@ -370,7 +378,7 @@ def example_7_multi_cloud_dashboards():
         namespace="MultiCloud/Amorsize",
         region="us-east-1"
     )
-    with open('/tmp/aws_dashboard.json', 'w') as f:
+    with open(get_output_path('aws_dashboard.json'), 'w') as f:
         f.write(aws_dashboard)
     print("   ✓ Generated: /tmp/aws_dashboard.json")
     
@@ -379,13 +387,13 @@ def example_7_multi_cloud_dashboards():
         datasource_uid="PROM123",
         job_label="amorsize"
     )
-    with open('/tmp/grafana_dashboard.json', 'w') as f:
+    with open(get_output_path('grafana_dashboard.json'), 'w') as f:
         json.dump(grafana_dashboard, f, indent=2)
     print("   ✓ Generated: /tmp/grafana_dashboard.json")
     
     print("\n3. Azure Monitor Workbook...")
     azure_workbook = get_azure_monitor_workbook()
-    with open('/tmp/azure_workbook.json', 'w') as f:
+    with open(get_output_path('azure_workbook.json'), 'w') as f:
         json.dump(azure_workbook, f, indent=2)
     print("   ✓ Generated: /tmp/azure_workbook.json")
     
@@ -394,7 +402,7 @@ def example_7_multi_cloud_dashboards():
         project_id="my-project-123",
         metric_prefix="custom.googleapis.com/amorsize"
     )
-    with open('/tmp/gcp_dashboard.json', 'w') as f:
+    with open(get_output_path('gcp_dashboard.json'), 'w') as f:
         json.dump(gcp_dashboard, f, indent=2)
     print("   ✓ Generated: /tmp/gcp_dashboard.json")
     
