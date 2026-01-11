@@ -14,6 +14,7 @@ Key Features:
 - Supports both batch (optimize) and streaming (optimize_streaming) workloads
 """
 
+import copy
 import json
 import math
 import os
@@ -53,6 +54,10 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 #   1 - Initial version (Iterations 115-121)
 #   2 - Added versioning and migration support (Iteration 122)
 ML_TRAINING_DATA_VERSION = 2
+
+# Default version to assume if no version field is present in data
+# This handles old v1 format data that predates versioning
+DEFAULT_VERSION_IF_MISSING = 1
 
 # Filename format for ML training data
 ML_TRAINING_FILE_FORMAT = "ml_training_{func_hash}_{timestamp}.json"
@@ -2952,8 +2957,8 @@ def _migrate_training_data_v1_to_v2(data: Dict[str, Any]) -> Dict[str, Any]:
         - Added 'version' field set to 2
         - No other schema changes (version 2 is backward compatible)
     """
-    # Add version field
-    migrated = data.copy()
+    # Use deepcopy to ensure complete isolation from input data
+    migrated = copy.deepcopy(data)
     migrated['version'] = 2
     return migrated
 
@@ -2984,8 +2989,8 @@ def _migrate_training_data(data: Dict[str, Any], verbose: bool = False) -> Dict[
         >>> data = _migrate_training_data(data, verbose=True)
         >>> # data is now in current version format
     """
-    # Detect current version
-    current_version = data.get('version', 1)  # Default to v1 if no version field
+    # Detect current version (use constant for default if no version field)
+    current_version = data.get('version', DEFAULT_VERSION_IF_MISSING)
     
     if current_version == ML_TRAINING_DATA_VERSION:
         # Already at current version

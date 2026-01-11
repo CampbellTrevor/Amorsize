@@ -5,6 +5,7 @@ This module tests version detection, migration utilities, and backward
 compatibility of ML training data as the format evolves across iterations.
 """
 
+import copy
 import json
 import os
 import tempfile
@@ -120,7 +121,7 @@ class TestMigrationV1ToV2:
             'chunksize': 50,
             'speedup': 3.2
         }
-        v1_data_copy = v1_data.copy()
+        v1_data_copy = copy.deepcopy(v1_data)
         
         # Migrate to v2
         _migrate_training_data_v1_to_v2(v1_data)
