@@ -68,6 +68,24 @@ from .cache import (
 )
 from .structured_logging import configure_logging
 
+# ML prediction functions (optional feature)
+try:
+    from .ml_prediction import (
+        predict_parameters,
+        PredictionResult,
+        MIN_TRAINING_SAMPLES,
+        DEFAULT_CONFIDENCE_THRESHOLD
+    )
+    _has_ml_prediction = True
+except ImportError:
+    _has_ml_prediction = False
+    # Stubs for when ML module is not available
+    def predict_parameters(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
+    PredictionResult = None
+    MIN_TRAINING_SAMPLES = 3
+    DEFAULT_CONFIDENCE_THRESHOLD = 0.7
+
 # Distributed cache functions (optional, requires redis-py)
 try:
     from .distributed_cache import (
@@ -162,5 +180,9 @@ __all__ = [
     "WorkloadSpec",
     "PerformanceResult",
     "CacheValidationResult",
-    "configure_logging"
+    "configure_logging",
+    "predict_parameters",
+    "PredictionResult",
+    "MIN_TRAINING_SAMPLES",
+    "DEFAULT_CONFIDENCE_THRESHOLD"
 ]
