@@ -348,8 +348,24 @@ def optimize_streaming(
                     final_buffer_size = buffer_size if buffer_size is not None else ml_result.buffer_size
                     
                     # Determine adaptive chunking parameters
+                    # Use ML recommendations if available, otherwise user settings
                     adaptive_params = {}
-                    if enable_adaptive_chunking:
+                    use_adaptive = enable_adaptive_chunking
+                    
+                    # ML can recommend adaptive chunking for heterogeneous workloads
+                    if ml_result.adaptive_chunking_enabled:
+                        use_adaptive = True
+                        adaptive_params = {
+                            'initial_chunksize': ml_result.chunksize,
+                            'target_chunk_duration': target_chunk_duration,
+                            'adaptation_rate': ml_result.adaptation_rate or adaptation_rate,
+                            'min_chunksize': ml_result.min_chunksize or max(1, ml_result.chunksize // 4),
+                            'max_chunksize': ml_result.max_chunksize or (ml_result.chunksize * 4)
+                        }
+                        if verbose:
+                            print(f"  → ML recommends adaptive chunking (rate={adaptive_params['adaptation_rate']:.2f})")
+                    elif enable_adaptive_chunking:
+                        # User explicitly enabled, use their settings
                         adaptive_params = {
                             'initial_chunksize': ml_result.chunksize,
                             'target_chunk_duration': target_chunk_duration,
@@ -368,7 +384,7 @@ def optimize_streaming(
                         warnings=[],
                         data=data,
                         profile=None,  # No profile available from ML prediction
-                        use_adaptive_chunking=enable_adaptive_chunking,
+                        use_adaptive_chunking=use_adaptive,
                         adaptive_chunking_params=adaptive_params,
                         buffer_size=final_buffer_size,
                         memory_backpressure_enabled=enable_memory_backpressure,
