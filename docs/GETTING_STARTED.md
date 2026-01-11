@@ -449,7 +449,8 @@ results = execute(func, data, chunksize=500)  # Larger chunks = less overhead
 - **Web Services Integration** - Django, Flask, FastAPI patterns with production examples
   - See `docs/USE_CASE_WEB_SERVICES.md`
 
-- **Data Processing** - Pandas, CSV, database batch operations (Coming soon)
+- **Data Processing** - Pandas, CSV, database batch operations with ETL patterns
+  - See `docs/USE_CASE_DATA_PROCESSING.md`
 
 - **ML Pipelines** - PyTorch, TensorFlow, feature engineering (Coming soon)
 
