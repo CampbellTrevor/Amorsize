@@ -419,7 +419,9 @@ def _show_user_friendly_explanation(result) -> None:
     """
     profile = result.profile
     if not profile:
-        print("Profiling not enabled. Note: --explain automatically enables profiling when needed.")
+        # This should not happen when --explain is used due to automatic profiling,
+        # but provide a helpful message just in case
+        print("Note: Profiling data not available. This feature requires profiling to be enabled.")
         return
     
     # Explain the decision

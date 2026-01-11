@@ -14,6 +14,7 @@ Run this script to see examples of all new features.
 
 import subprocess
 import time
+import shlex
 
 
 def print_section(title):
@@ -28,8 +29,8 @@ def run_command(description, command):
     print(f"{description}")
     print(f"Command: {command}")
     print()
-    # Split command for safer execution (no shell=True)
-    cmd_parts = command.split()
+    # Use shlex.split for proper shell argument parsing
+    cmd_parts = shlex.split(command)
     result = subprocess.run(cmd_parts, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
