@@ -1,4 +1,164 @@
-# Context for Next Agent - Iteration 146
+# Context for Next Agent - Iteration 147
+
+## What Was Accomplished in Iteration 146
+
+**FEATURE IMPLEMENTATION** - Successfully added comprehensive output format options to the CLI, significantly improving developer experience for different use cases (CI/CD, documentation, interactive use).
+
+### Implementation Completed
+
+1. **New Output Formats Implemented** (5 formats total):
+   - ✅ `--format text` - Default human-readable format with colors (existing)
+   - ✅ `--format json` - Machine-readable JSON for CI/CD and scripts
+   - ✅ `--format yaml` - Human-readable structured YAML format
+   - ✅ `--format table` - ASCII table with box-drawing characters
+   - ✅ `--format markdown` - Markdown format for documentation
+
+2. **Code Architecture** (`amorsize/__main__.py`):
+   - ✅ Created `_prepare_structured_output()` helper function to share logic
+   - ✅ Refactored `format_output_json()` to use shared helper
+   - ✅ Implemented `format_output_yaml()` with graceful PyYAML fallback
+   - ✅ Implemented `format_output_table()` with box-drawing characters
+   - ✅ Implemented `format_output_markdown()` for documentation
+   - ✅ Updated `cmd_optimize()` to support --format flag
+   - ✅ Updated `cmd_execute()` to support --format flag
+   - ✅ Added `--format` argument to parent parser (text, json, yaml, table, markdown)
+   - ✅ Maintained backward compatibility with `--json` flag
+
+3. **Features**:
+   - ✅ All formats support both `optimize` and `execute` commands
+   - ✅ All formats include profile data when `--profile` flag used
+   - ✅ YAML format gracefully falls back to JSON if PyYAML not installed
+   - ✅ Table format shows system information when profiling enabled
+   - ✅ Markdown format produces GitHub-compatible markdown
+   - ✅ JSON/YAML include detailed profile data (physical cores, memory, etc.)
+
+4. **Documentation & Examples**:
+   - ✅ Created `examples/demo_format_options.py` - comprehensive demo script
+   - ✅ Updated CLI help text with format examples
+   - ✅ Added 4 format examples to CLI epilog
+
+5. **Testing** (`tests/test_format_options.py`):
+   - ✅ 17 comprehensive tests covering all formats and edge cases
+   - ✅ Test class: `TestFormatOption` (8 tests)
+   - ✅ Test class: `TestFormatWithExecute` (3 tests)
+   - ✅ Test class: `TestFormatWithProfiling` (3 tests)
+   - ✅ Test class: `TestFormatEdgeCases` (3 tests)
+   - ✅ Tests verify structure, parsing, edge cases, consistency
+   - ✅ All 17 tests pass consistently
+
+6. **Verification**:
+   - ✅ Manual testing: All 5 formats work correctly
+   - ✅ Full test suite: 1861 tests pass, 0 failures
+   - ✅ Code review: 2 issues found and fixed
+   - ✅ CodeQL security scan: 0 alerts
+   - ✅ No regressions introduced
+
+### Technical Details
+
+**Format Features Matrix:**
+
+| Format   | Use Case              | Parsing | Colors | Box Drawing | Profile Data |
+|----------|----------------------|---------|--------|-------------|--------------|
+| text     | Interactive CLI      | ✗       | ✅     | ✗           | ✅           |
+| json     | CI/CD, Scripts       | ✅      | ✗      | ✗           | ✅           |
+| yaml     | Config, Readable     | ✅      | ✗      | ✗           | ✅           |
+| table    | Reports, Structure   | ✗       | ✗      | ✅          | ✅           |
+| markdown | Documentation        | ✗       | ✗      | ✗           | ✅           |
+
+**Code Changes:**
+- `amorsize/__main__.py`: +179 lines, -7 lines
+  - Added `format_output_yaml()` (15 lines)
+  - Added `format_output_table()` (47 lines)
+  - Added `format_output_markdown()` (46 lines)
+  - Added `_prepare_structured_output()` (54 lines)
+  - Updated `cmd_optimize()` (+17 lines)
+  - Updated `cmd_execute()` (+17 lines)
+  - Updated help text (+4 format examples)
+  - Added `--format` argument to parser
+- `examples/demo_format_options.py`: NEW (140 lines) - comprehensive demo
+- `tests/test_format_options.py`: NEW (369 lines) - 17 comprehensive tests
+
+**Backward Compatibility:**
+- `--json` flag still works (equivalent to `--format json`)
+- No breaking changes to existing functionality
+- All existing tests pass
+
+### Strategic Priorities for Next Iteration
+
+Following the decision matrix from the problem statement:
+
+1. **INFRASTRUCTURE** - ✅ Complete
+   - Physical core detection: ✅ Robust (psutil + /proc/cpuinfo + lscpu)
+   - Memory limit detection: ✅ cgroup/Docker aware
+
+2. **SAFETY & ACCURACY** - ✅ Complete
+   - Generator safety: ✅ Complete (using itertools.chain)
+   - OS spawning overhead: ✅ Measured and verified (Iteration 132)
+   - ML pruning safety: ✅ Fixed in Iteration 129
+   - Test isolation: ✅ Fixed in Iteration 139
+   - Picklability error recommendations: ✅ Fixed in Iteration 140
+   - Test reliability: ✅ Fixed in Iterations 141, 144, 145
+   - Error handling: ✅ Improved in Iteration 142 (no bare excepts)
+   - **Streaming order preference**: ✅ Fixed in Iteration 144
+
+3. **CORE LOGIC** - ✅ Complete
+   - Amdahl's Law: ✅ Includes IPC overlap factor (Iteration 130)
+   - Chunksize calculation: ✅ Verified correct implementation (Iteration 131)
+   - Spawn cost measurement: ✅ Verified accurate and reliable (Iteration 132)
+
+4. **UX & ROBUSTNESS** - ✅ COMPLETE (Iterations 133-146)
+   - Error messages: ✅ Enhanced with actionable guidance (Iteration 133)
+   - Troubleshooting guide: ✅ Comprehensive guide with 12 issue categories (Iteration 134)
+   - Best practices guide: ✅ Comprehensive guide with patterns and case studies (Iteration 135)
+   - Performance tuning guide: ✅ Comprehensive guide with cost model deep-dive (Iteration 136)
+   - CLI experience: ✅ Enhanced with 5 new flags and colored output (Iteration 137)
+   - CLI testing: ✅ Comprehensive test coverage for CLI enhancements (Iteration 138)
+   - Test reliability: ✅ Fixed test isolation (Iteration 139, 141, 145)
+   - Profile recommendations: ✅ Fixed in Iteration 140
+   - Code quality: ✅ Static analysis and cleanup (Iteration 142)
+   - Type safety: ✅ Type hints enhancement (Iteration 143)
+   - **Bug fixes**: ✅ Streaming order preference (Iteration 144), spawn cost test (Iteration 145)
+   - **Output formats**: ✅ Multiple format options (Iteration 146)
+   - API cleanliness: ✓ `from amorsize import optimize`
+   - Edge case handling: ✓ Good (pickling errors, zero-length data)
+   - Documentation: ✅ EXCELLENT - Comprehensive guides and examples
+
+### Recommendation for Iteration 147
+
+**ALL STRATEGIC PRIORITIES COMPLETE!** 🎉
+
+With output format options now implemented (Iteration 146), all critical priorities are complete. The test suite is 100% passing (1861 tests). Consider:
+
+1. **Advanced Features** (High value for users):
+   - Add `--export` flag to save diagnostics to file
+   - Add `--watch` mode for continuous optimization monitoring
+   - Add progress bars for long-running optimizations
+   - Add `--compare-with` flag to compare with previous runs
+
+2. **Complete Type Coverage** (Medium value for maintainability):
+   - Fix remaining 69 type errors from mypy
+   - Add type stubs for external dependencies
+   - Enable --strict mode in mypy
+   - Run mypy in CI/CD pipeline
+
+3. **Performance Monitoring** (Medium value):
+   - Add real-time performance monitoring during execution
+   - Add live CPU/memory usage tracking
+   - Add performance regression detection
+
+4. **Integration Features** (Medium value):
+   - Add Jupyter notebook widgets for interactive optimization
+   - Add integration with common profilers (cProfile, line_profiler)
+   - Add integration with monitoring tools (Prometheus, Grafana)
+
+Choose the highest-value enhancement. Given the recent focus on CLI/UX improvements, implementing **advanced features** (option 1) would add significant user value.
+
+## Files Modified in Iteration 146
+
+- `amorsize/__main__.py` - Added 4 format functions, refactored JSON, updated CLI parser (3 commits, +179/-7 lines)
+- `examples/demo_format_options.py` - NEW: Comprehensive demo script showing all formats (140 lines)
+- `tests/test_format_options.py` - NEW: 17 comprehensive tests for format options (369 lines)
+- `CONTEXT.md` - Updated with Iteration 146 progress
 
 ## What Was Accomplished in Iteration 145
 
