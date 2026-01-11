@@ -152,6 +152,29 @@ except ImportError:
     ENABLE_ENSEMBLE_PREDICTION = True
     MIN_SAMPLES_FOR_ENSEMBLE = 15
 
+# ML training data pruning functions (optional feature, requires ml_prediction)
+try:
+    from .ml_pruning import (
+        prune_training_data,
+        auto_prune_training_data,
+        PruningResult,
+        DEFAULT_SIMILARITY_THRESHOLD as PRUNING_SIMILARITY_THRESHOLD,
+        MIN_SAMPLES_FOR_PRUNING,
+        TARGET_PRUNING_RATIO
+    )
+    _has_ml_pruning = True
+except ImportError:
+    _has_ml_pruning = False
+    # Stubs for when ML pruning is not available
+    def prune_training_data(*args, **kwargs):
+        raise ImportError("ML pruning module not available")
+    def auto_prune_training_data(*args, **kwargs):
+        raise ImportError("ML pruning module not available")
+    PruningResult = None
+    PRUNING_SIMILARITY_THRESHOLD = 0.5
+    MIN_SAMPLES_FOR_PRUNING = 50
+    TARGET_PRUNING_RATIO = 0.35
+
 # Distributed cache functions (optional, requires redis-py)
 try:
     from .distributed_cache import (
@@ -273,6 +296,12 @@ __all__ = [
     "DEFAULT_K_VALUE",
     "ENABLE_ENSEMBLE_PREDICTION",
     "MIN_SAMPLES_FOR_ENSEMBLE",
+    "prune_training_data",
+    "auto_prune_training_data",
+    "PruningResult",
+    "PRUNING_SIMILARITY_THRESHOLD",
+    "MIN_SAMPLES_FOR_PRUNING",
+    "TARGET_PRUNING_RATIO",
     "AdaptiveChunkingPool",
     "create_adaptive_pool",
     "PoolManager",
