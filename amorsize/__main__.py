@@ -103,6 +103,66 @@ def colorize(text: str, color: str) -> str:
     return text
 
 
+def create_progress_callback(verbose: bool = False):
+    """
+    Create a simple progress bar callback for optimization.
+
+    Args:
+        verbose: If True, show detailed phase names. If False, show compact progress.
+
+    Returns:
+        A callback function compatible with optimize(progress_callback=...)
+
+    The callback displays a text-based progress bar that updates in place:
+        [████████████░░░░░░░░] 60% - Calculating optimal parameters
+    """
+    last_line_length = [0]  # Use list to allow modification in nested function
+
+    def progress_callback(phase: str, progress: float):
+        """
+        Display progress bar for optimization.
+
+        Args:
+            phase: Description of current phase (e.g., "Sampling function")
+            progress: Progress value from 0.0 to 1.0
+        """
+        # Don't show progress if output is not a TTY
+        if not sys.stdout.isatty():
+            return
+
+        # Calculate bar width (40 chars for the bar itself)
+        bar_width = 40
+        filled = int(bar_width * progress)
+        empty = bar_width - filled
+
+        # Create the bar
+        bar = '█' * filled + '░' * empty
+
+        # Format the message
+        if verbose:
+            # Verbose mode: show full phase description
+            message = f"\r[{bar}] {progress*100:3.0f}% - {phase}"
+        else:
+            # Compact mode: just bar and percentage
+            message = f"\r[{bar}] {progress*100:3.0f}%"
+
+        # Clear previous line if it was longer
+        if len(message) < last_line_length[0]:
+            message += ' ' * (last_line_length[0] - len(message))
+        last_line_length[0] = len(message)
+
+        # Write progress (no newline)
+        sys.stdout.write(message)
+        sys.stdout.flush()
+
+        # Add newline when complete
+        if progress >= 1.0:
+            sys.stdout.write('\n')
+            sys.stdout.flush()
+
+    return progress_callback
+
+
 def load_function(function_path: str) -> Callable:
     """
     Load a function from a module path.
@@ -769,6 +829,11 @@ def cmd_optimize(args: argparse.Namespace):
         getattr(args, 'show_overhead', False)
     )
 
+    # Create progress callback if requested
+    progress_callback = None
+    if getattr(args, 'progress', False):
+        progress_callback = create_progress_callback(verbose=args.verbose)
+
     # Run optimization
     result = optimize(
         func,
@@ -779,7 +844,8 @@ def cmd_optimize(args: argparse.Namespace):
         profile=need_profile,  # Enable profiling if any feature needs it
         use_spawn_benchmark=not args.no_spawn_benchmark,
         use_chunking_benchmark=not args.no_chunking_benchmark,
-        auto_adjust_for_nested_parallelism=not args.no_auto_adjust
+        auto_adjust_for_nested_parallelism=not args.no_auto_adjust,
+        progress_callback=progress_callback
     )
 
     # Format and display output
@@ -932,6 +998,11 @@ def cmd_execute(args: argparse.Namespace):
             sys.exit(1)
 
     # Normal execution path (optimize then execute)
+    # Create progress callback if requested
+    progress_callback = None
+    if getattr(args, 'progress', False):
+        progress_callback = create_progress_callback(verbose=args.verbose)
+
     result = execute(
         func,
         data,
@@ -942,7 +1013,8 @@ def cmd_execute(args: argparse.Namespace):
         use_spawn_benchmark=not args.no_spawn_benchmark,
         use_chunking_benchmark=not args.no_chunking_benchmark,
         auto_adjust_for_nested_parallelism=not args.no_auto_adjust,
-        return_optimization_result=True  # Always get both for CLI
+        return_optimization_result=True,  # Always get both for CLI
+        progress_callback=progress_callback
     )
 
     # Format and display output
@@ -1511,6 +1583,9 @@ Examples:
   # Execute with optimization
   python -m amorsize execute mymodule.process_item --data-file input.txt
 
+  # Show progress bar for large datasets
+  python -m amorsize optimize math.factorial --data-range 10000 --progress
+
   # Compare multiple strategies
   python -m amorsize compare math.factorial --data-range 100 --configs "2,50" "4,25" "8,10"
 
@@ -1645,6 +1720,11 @@ Examples:
         '-v',
         action='store_true',
         help='Enable verbose output'
+    )
+    parent_parser.add_argument(
+        '--progress',
+        action='store_true',
+        help='Show progress bar during optimization (useful for large datasets)'
     )
     parent_parser.add_argument(
         '--profile',
