@@ -35,7 +35,7 @@ RESULT_BUFFER_MEMORY_FRACTION = 0.1
 class StreamingOptimizationResult:
     """
     Result container for streaming optimization analysis.
-    
+
     Contains optimal parameters for imap/imap_unordered usage along with
     detailed rationale and performance estimates.
     """
@@ -92,7 +92,7 @@ class StreamingOptimizationResult:
     def explain(self) -> str:
         """
         Return detailed explanation of streaming optimization.
-        
+
         Returns:
             Human-readable explanation with diagnostic details
         """
@@ -117,7 +117,7 @@ def _validate_streaming_parameters(
 ) -> None:
     """
     Validate parameters for optimize_streaming().
-    
+
     Raises:
         ValueError: If any parameter is invalid
     """
@@ -195,16 +195,16 @@ def optimize_streaming(
 ) -> StreamingOptimizationResult:
     """
     Optimize parameters for streaming workloads using imap/imap_unordered.
-    
+
     This function analyzes your function and data to determine optimal parameters
     for streaming execution (processing results one-by-one or in chunks without
     accumulating all results in memory). This is ideal for:
-    
+
     - Very large datasets that don't fit in memory
     - Infinite generators or streams
     - Processing results as they become available
     - Avoiding memory accumulation of large return objects
-    
+
     Args:
         func: Function to optimize (must accept single argument and be picklable)
         data: Input data (list, generator, or iterator)
@@ -231,7 +231,7 @@ def optimize_streaming(
                                    (default: False). Pauses consumption when memory
                                    pressure is high.
         memory_threshold: Memory usage threshold (0.0-1.0) to trigger backpressure
-                         (default: 0.8 = 80%). Only used when 
+                         (default: 0.8 = 80%). Only used when
                          enable_memory_backpressure=True.
         enable_ml_prediction: Use ML to predict parameters without dry-run sampling
                              (default: False). Requires historical training data.
@@ -241,7 +241,7 @@ def optimize_streaming(
         estimated_item_time: Optional rough estimate of per-item execution time (seconds).
                             Only used for ML prediction when enable_ml_prediction=True.
                             If not provided, a default estimate will be used.
-    
+
     Returns:
         StreamingOptimizationResult with optimal parameters for streaming:
         - n_jobs: Number of worker processes
@@ -256,40 +256,40 @@ def optimize_streaming(
         - adaptive_chunking_params: Parameters for adaptive chunking
         - buffer_size: Recommended buffer size
         - memory_backpressure_enabled: Whether memory backpressure is enabled
-    
+
     Usage Example:
         >>> from amorsize import optimize_streaming
         >>> from multiprocessing import Pool
-        >>> 
+        >>>
         >>> def process_item(x):
         ...     # Expensive function with large return value
         ...     return expensive_computation(x)
-        >>> 
+        >>>
         >>> # Optimize for streaming
         >>> result = optimize_streaming(process_item, data_generator(), verbose=True)
-        >>> 
+        >>>
         >>> # Use with imap/imap_unordered
         >>> with Pool(result.n_jobs) as pool:
         ...     if result.use_ordered:
         ...         iterator = pool.imap(process_item, result.data, chunksize=result.chunksize)
         ...     else:
         ...         iterator = pool.imap_unordered(process_item, result.data, chunksize=result.chunksize)
-        ...     
+        ...
         ...     # Process results as they become available (no memory accumulation)
         ...     for item in iterator:
         ...         handle_result(item)
-    
+
     Streaming vs Batch vs Map:
         - Use optimize_streaming() for: Large datasets, infinite streams, memory constraints
         - Use optimize() with Pool.map() for: Moderate datasets, need all results at once
         - Use process_in_batches() for: Large datasets with memory limits, batch processing
-    
+
     Key Differences from optimize():
         - Does NOT consider result memory accumulation (streaming processes one at a time)
         - Provides guidance on ordered vs unordered based on overhead
         - Optimized for continuous processing rather than bulk operations
         - Suitable for infinite or very large datasets
-    
+
     Note:
         For generators, the dry run consumes sample items. Use result.data
         instead of the original generator to get the reconstructed iterator

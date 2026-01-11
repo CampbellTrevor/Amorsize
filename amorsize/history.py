@@ -26,7 +26,7 @@ from .system_info import (
 class HistoryEntry:
     """
     Container for a single historical result entry.
-    
+
     Attributes:
         id: Unique identifier for this entry
         name: User-provided name for this result
@@ -127,7 +127,7 @@ class HistoryEntry:
 def get_system_fingerprint() -> Dict[str, Any]:
     """
     Get a fingerprint of the current system for comparison purposes.
-    
+
     Returns:
         Dictionary containing system information
     """
@@ -152,7 +152,7 @@ def _generate_id(name: str, timestamp: str) -> str:
 def get_history_dir() -> Path:
     """
     Get the directory where history files are stored.
-    
+
     Returns:
         Path to history directory (creates if doesn't exist)
     """
@@ -172,17 +172,17 @@ def save_result(
 ) -> str:
     """
     Save a comparison result to history.
-    
+
     Args:
         result: ComparisonResult to save
         name: User-provided name for this result (e.g., "baseline", "v2.0", "optimized")
         function_name: Name of the function that was tested
         data_size: Size of the dataset that was used
         metadata: Optional additional metadata to store
-    
+
     Returns:
         ID of the saved entry
-    
+
     Example:
         >>> result = compare_strategies(func, data, configs)
         >>> entry_id = save_result(result, "v1.0-baseline", "my_func", 1000)
@@ -217,13 +217,13 @@ def save_result(
 def load_result(entry_id: str) -> Optional[HistoryEntry]:
     """
     Load a specific result from history by ID.
-    
+
     Args:
         entry_id: ID of the entry to load
-    
+
     Returns:
         HistoryEntry object, or None if not found
-    
+
     Example:
         >>> entry = load_result("a1b2c3d4e5f6")
         >>> if entry:
@@ -247,14 +247,14 @@ def list_results(
 ) -> List[HistoryEntry]:
     """
     List all saved results, optionally filtered by name.
-    
+
     Args:
         name_filter: If provided, only return results with names containing this substring
         limit: If provided, limit the number of results returned
-    
+
     Returns:
         List of HistoryEntry objects, sorted by timestamp (newest first)
-    
+
     Example:
         >>> entries = list_results(name_filter="baseline", limit=10)
         >>> for entry in entries:
@@ -290,13 +290,13 @@ def list_results(
 def delete_result(entry_id: str) -> bool:
     """
     Delete a result from history.
-    
+
     Args:
         entry_id: ID of the entry to delete
-    
+
     Returns:
         True if deleted, False if not found
-    
+
     Example:
         >>> if delete_result("a1b2c3d4e5f6"):
         ...     print("Deleted successfully")
@@ -317,14 +317,14 @@ def compare_entries(
 ) -> Optional[Dict[str, Any]]:
     """
     Compare two historical results.
-    
+
     Args:
         entry_id1: ID of first entry
         entry_id2: ID of second entry
-    
+
     Returns:
         Dictionary containing comparison data, or None if either entry not found
-    
+
     Example:
         >>> comparison = compare_entries("abc123", "def456")
         >>> if comparison:
@@ -386,13 +386,13 @@ def compare_entries(
 def clear_history() -> int:
     """
     Clear all history entries.
-    
+
     Returns:
         Number of entries deleted
-    
+
     Warning:
         This cannot be undone!
-    
+
     Example:
         >>> count = clear_history()
         >>> print(f"Deleted {count} entries")

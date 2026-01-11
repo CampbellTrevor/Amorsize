@@ -48,11 +48,11 @@ _function_hash_cache_lock = threading.Lock()
 def clear_function_hash_cache() -> None:
     """
     Clear the function hash cache.
-    
+
     This is primarily useful for testing to ensure test isolation.
     The function hash cache uses id(func) as the key, and when Python
     reuses object IDs, stale hashes can cause issues.
-    
+
     Note: This function is safe to call in production but rarely needed,
     as the cache is designed to be long-lived and self-managing.
     """
@@ -63,24 +63,24 @@ def clear_function_hash_cache() -> None:
 def _compute_function_hash(func: Callable) -> str:
     """
     Compute a hash of the function's bytecode with caching for performance.
-    
+
     This function caches the bytecode hash based on the function's id(),
     which is constant during the function's lifetime. This optimization
     avoids repeated SHA256 computations for the same function.
-    
+
     Thread-safe: Uses lock to prevent race conditions.
-    
+
     Args:
         func: Function to hash
-    
+
     Returns:
         First 16 characters of SHA256 hash (hexadecimal)
-        
+
     Performance Impact:
         - First call: Computes SHA256 hash (~50-100μs)
         - Subsequent calls: Dictionary lookup (~1-2μs)
         - Measured speedup for cache key computation: ~4x
-        
+
         Note: Overall cache key computation includes bucketing logic,
         so the total speedup is lower than raw hash computation speedup.
     """
@@ -112,7 +112,7 @@ def _compute_function_hash(func: Callable) -> str:
 class CacheEntry:
     """
     Container for a cached optimization result.
-    
+
     Attributes:
         n_jobs: Recommended number of workers
         chunksize: Recommended chunk size
@@ -204,11 +204,11 @@ class CacheEntry:
     def is_system_compatible(self) -> Tuple[bool, str]:
         """
         Check if cached result is compatible with current system.
-        
+
         Returns tuple of (is_compatible, reason):
         - is_compatible: False if key system parameters have changed
         - reason: Human-readable explanation of why cache is incompatible
-        
+
         Checks:
         - Physical core count
         - Multiprocessing start method
@@ -244,7 +244,7 @@ class CacheEntry:
 def get_cache_dir() -> Path:
     """
     Get the cache directory path.
-    
+
     Returns:
         Path to cache directory (creates if doesn't exist)
     """
@@ -264,22 +264,22 @@ def get_cache_dir() -> Path:
 def compute_cache_key(func: Callable, data_size: int, avg_time_per_item: float) -> str:
     """
     Compute a cache key for a function and workload characteristics.
-    
+
     The key is based on:
     1. Function bytecode hash (detects function changes)
     2. Data size (affects optimal chunksize)
     3. Average execution time per item (affects parallelization benefit)
-    
+
     Performance Optimized:
         Uses cached function hash to avoid repeated SHA256 computations.
         Provides ~4x speedup for repeated cache key computations of the
         same function (measured: uncached ~3μs, cached ~0.7μs per call).
-    
+
     Args:
         func: Function to cache results for
         data_size: Number of items in the workload
         avg_time_per_item: Average execution time per item (seconds)
-    
+
     Returns:
         SHA256 hash as hexadecimal string
     """
@@ -337,9 +337,9 @@ def save_cache_entry(
 ) -> None:
     """
     Save an optimization result to the cache.
-    
+
     Tries distributed cache first (if configured), then falls back to local file cache.
-    
+
     Args:
         cache_key: Unique key for this optimization
         n_jobs: Recommended number of workers
@@ -412,18 +412,18 @@ def save_cache_entry(
 def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> Tuple[Optional[CacheEntry], str]:
     """
     Load a cached optimization result.
-    
+
     Tries distributed cache first (if configured), then falls back to local file cache.
-    
+
     This function includes automatic cache pruning: with a small probability
     (default 5%), it will trigger cleanup of expired entries. This ensures
     cache directories don't grow unbounded over time without requiring
     explicit user action.
-    
+
     Args:
         cache_key: Unique key for the optimization
         ttl_seconds: Maximum age in seconds (default: 7 days)
-    
+
     Returns:
         Tuple of (CacheEntry, miss_reason):
         - CacheEntry if found and valid, None if invalid/missing
@@ -499,7 +499,7 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
 def clear_cache() -> int:
     """
     Clear all cached optimization results.
-    
+
     Returns:
         Number of cache entries deleted
     """
@@ -523,10 +523,10 @@ def clear_cache() -> int:
 def prune_expired_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> int:
     """
     Remove expired cache entries.
-    
+
     Args:
         ttl_seconds: Maximum age in seconds (default: 7 days)
-    
+
     Returns:
         Number of cache entries deleted
     """
@@ -562,26 +562,26 @@ def prune_expired_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> int:
 def _maybe_auto_prune_cache(cache_dir_func, probability: float = AUTO_PRUNE_PROBABILITY, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> None:
     """
     Probabilistically trigger automatic cache pruning.
-    
+
     This function is called during cache load operations to gradually clean up
     expired entries without requiring explicit user action. The pruning happens
     with a low probability to minimize performance impact while ensuring that
     expired entries are eventually removed.
-    
+
     Strategy:
         - Use probabilistic triggering (default 5% chance per load)
         - Distributes cleanup cost across many operations
         - Avoids performance impact on individual operations
         - Ensures long-running applications eventually clean up
-    
+
     Args:
         cache_dir_func: Function that returns the cache directory Path
         probability: Probability of triggering pruning (0.0-1.0)
         ttl_seconds: Maximum age in seconds for cache entries
-    
+
     Returns:
         None (pruning happens silently in background)
-    
+
     Note:
         This function never raises exceptions - failures are silently ignored
         to ensure caching never breaks the main functionality.
@@ -629,7 +629,7 @@ def _maybe_auto_prune_cache(cache_dir_func, probability: float = AUTO_PRUNE_PROB
 class BenchmarkCacheEntry:
     """
     Container for a cached benchmark validation result.
-    
+
     Attributes:
         serial_time: Measured serial execution time (seconds)
         parallel_time: Measured parallel execution time (seconds)
@@ -696,11 +696,11 @@ class BenchmarkCacheEntry:
     def is_system_compatible(self) -> Tuple[bool, str]:
         """
         Check if cached benchmark is compatible with current system.
-        
+
         Returns tuple of (is_compatible, reason):
         - is_compatible: False if key system parameters have changed
         - reason: Human-readable explanation of why cache is incompatible
-        
+
         Benchmark results are highly system-dependent.
         """
         current_cores = get_physical_cores()
@@ -732,7 +732,7 @@ class BenchmarkCacheEntry:
 def get_benchmark_cache_dir() -> Path:
     """
     Get the benchmark cache directory path.
-    
+
     Returns:
         Path to benchmark cache directory (creates if doesn't exist)
     """
@@ -752,15 +752,15 @@ def get_benchmark_cache_dir() -> Path:
 def compute_benchmark_cache_key(func: Callable, data_size: int) -> str:
     """
     Compute a cache key for a benchmark validation.
-    
+
     The key is based on:
     1. Function bytecode hash (detects function changes)
     2. Data size (exact match for benchmark validity)
-    
+
     Args:
         func: Function being benchmarked
         data_size: Number of items in the benchmark dataset
-    
+
     Returns:
         Cache key string
     """
@@ -788,7 +788,7 @@ def save_benchmark_cache_entry(
 ) -> None:
     """
     Save a benchmark validation result to the cache.
-    
+
     Args:
         cache_key: Unique key for this benchmark
         serial_time: Measured serial execution time
@@ -838,16 +838,16 @@ def load_benchmark_cache_entry(
 ) -> Tuple[Optional[BenchmarkCacheEntry], str]:
     """
     Load a cached benchmark validation result.
-    
+
     This function includes automatic cache pruning: with a small probability
     (default 5%), it will trigger cleanup of expired entries. This ensures
     cache directories don't grow unbounded over time without requiring
     explicit user action.
-    
+
     Args:
         cache_key: Unique key for the benchmark
         ttl_seconds: Maximum age in seconds (default: 7 days)
-    
+
     Returns:
         Tuple of (BenchmarkCacheEntry, miss_reason):
         - BenchmarkCacheEntry if found and valid, None if invalid/missing
@@ -906,7 +906,7 @@ def load_benchmark_cache_entry(
 def clear_benchmark_cache() -> int:
     """
     Clear all cached benchmark results.
-    
+
     Returns:
         Number of cache entries deleted
     """
@@ -930,7 +930,7 @@ def clear_benchmark_cache() -> int:
 class CacheStats:
     """
     Statistics about cache usage and effectiveness.
-    
+
     Attributes:
         total_entries: Total number of cache entries
         valid_entries: Number of valid (non-expired, compatible) entries
@@ -1011,17 +1011,17 @@ class CacheStats:
 def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
     """
     Get statistics about the optimization cache.
-    
+
     This function analyzes the cache directory and returns comprehensive
     statistics including entry counts, disk usage, and age information.
     Useful for monitoring cache effectiveness and identifying cleanup needs.
-    
+
     Args:
         ttl_seconds: Maximum age for valid entries (default: 7 days)
-    
+
     Returns:
         CacheStats object with cache statistics
-    
+
     Example:
         >>> stats = get_cache_stats()
         >>> print(stats)
@@ -1103,17 +1103,17 @@ def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
 def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
     """
     Get statistics about the benchmark cache.
-    
+
     This function analyzes the benchmark cache directory and returns comprehensive
     statistics including entry counts, disk usage, and age information.
     Useful for monitoring cache effectiveness and identifying cleanup needs.
-    
+
     Args:
         ttl_seconds: Maximum age for valid entries (default: 7 days)
-    
+
     Returns:
         CacheStats object with benchmark cache statistics
-    
+
     Example:
         >>> stats = get_benchmark_cache_stats()
         >>> print(stats)
@@ -1200,26 +1200,26 @@ def prewarm_cache(
 ) -> int:
     """
     Prewarm the optimization cache to eliminate first-run penalty.
-    
+
     This function pre-populates the cache with optimization results, allowing
     subsequent optimize() calls to return instantly without performing dry runs
     or overhead measurements. This is especially valuable for:
-    
+
     - Serverless/Lambda functions (fast cold starts)
     - Production deployments (consistent first-run performance)
     - Development iteration (faster testing cycles)
     - CI/CD pipelines (predictable build times)
-    
+
     Usage:
         There are two modes of operation:
-        
+
         1. **Automatic mode** (workload_profiles specified):
            Prewarming with common workload patterns for a function.
-           
+
            ```python
            # Prewarm with default patterns (CPU-bound, various sizes)
            prewarm_cache(my_function)
-           
+
            # Prewarm with custom patterns
            patterns = [
                {"data_size": 100, "avg_time": 0.001},    # Small, fast
@@ -1227,18 +1227,18 @@ def prewarm_cache(
            ]
            prewarm_cache(my_function, workload_profiles=patterns)
            ```
-        
+
         2. **Manual mode** (optimization_result specified):
            Prewarming from an actual optimization result.
-           
+
            ```python
            # Run optimization once
            result = optimize(my_function, sample_data)
-           
+
            # Prewarm cache with this result for future runs
            prewarm_cache(my_function, optimization_result=result)
            ```
-    
+
     Args:
         func: Function to prewarm cache for
         workload_profiles: List of workload patterns to prewarm with.
@@ -1248,30 +1248,30 @@ def prewarm_cache(
                            If provided, workload_profiles is ignored.
         force: If True, overwrites existing cache entries. If False, skips
                entries that already exist in cache. Default: False.
-    
+
     Returns:
         Number of cache entries created or updated
-    
+
     Raises:
         ValueError: If neither workload_profiles nor optimization_result provided
         TypeError: If workload_profiles format is invalid
-    
+
     Examples:
         >>> # Prewarm with default patterns
         >>> count = prewarm_cache(expensive_function)
         >>> print(f"Prewarmed {count} cache entries")
-        
+
         >>> # Prewarm from optimization result
         >>> result = optimize(func, data)
         >>> prewarm_cache(func, optimization_result=result)
-        
+
         >>> # Custom workload patterns
         >>> patterns = [
         ...     {"data_size": 50, "avg_time": 0.005},
         ...     {"data_size": 500, "avg_time": 0.01},
         ... ]
         >>> prewarm_cache(func, workload_profiles=patterns, force=True)
-    
+
     Note:
         - Prewarming does not validate that the function works or that the
           parameters are optimal. It simply populates the cache.
@@ -1394,14 +1394,14 @@ def prewarm_cache(
 def _get_default_workload_profiles() -> list:
     """
     Get default workload profiles for cache prewarming.
-    
+
     These profiles cover common use cases with distinct buckets:
     - Tiny/instant: Very quick operations
     - Small/fast: Quick operations on small datasets
     - Medium/moderate: Typical batch processing
     - Large/slow: Heavy computation on large datasets
     - XLarge/very_slow: Very heavy computation
-    
+
     Returns:
         List of workload profile dictionaries
     """
@@ -1435,15 +1435,15 @@ def _estimate_optimization_parameters(
 ) -> Tuple[int, int, str, float, str, list]:
     """
     Estimate optimization parameters for cache prewarming.
-    
+
     This is a simplified heuristic that provides reasonable defaults without
     performing actual measurements. For accurate optimization, use the full
     optimize() function.
-    
+
     Args:
         data_size: Number of items in workload
         avg_time: Average time per item (seconds)
-    
+
     Returns:
         Tuple of (n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings)
     """
@@ -1504,30 +1504,30 @@ def export_cache(
 ) -> int:
     """
     Export cache entries to a portable file format.
-    
+
     This function exports the optimization cache to a JSON file that can be:
     - Shared with team members
     - Version controlled for reproducible builds
     - Deployed to production environments
     - Imported on different machines
-    
+
     Args:
         output_file: Path to output file (will be created/overwritten)
         include_expired: Include expired entries (default: False)
         include_incompatible: Include system-incompatible entries (default: False)
         ttl_seconds: TTL for determining expiration (default: 7 days)
-    
+
     Returns:
         Number of entries exported
-    
+
     Example:
         >>> # Export only valid entries
         >>> count = export_cache('cache_backup.json')
         >>> print(f"Exported {count} valid cache entries")
-        
+
         >>> # Export all entries including expired
         >>> count = export_cache('full_cache.json', include_expired=True)
-        
+
         >>> # Export to version control
         >>> export_cache('production_cache.json')
         >>> # Commit to git for reproducible builds
@@ -1595,10 +1595,10 @@ def import_cache(
 ) -> Tuple[int, int, int]:
     """
     Import cache entries from an exported file.
-    
+
     This function imports cache entries that were previously exported,
     enabling cache sharing across environments and reproducible builds.
-    
+
     Args:
         input_file: Path to exported cache file
         merge_strategy: How to handle existing entries:
@@ -1607,21 +1607,21 @@ def import_cache(
             - "update": Only update if exported entry is newer
         validate_compatibility: Check system compatibility before import (default: True)
         update_timestamps: Update timestamps to current time (default: False)
-    
+
     Returns:
         Tuple of (imported_count, skipped_count, incompatible_count)
-    
+
     Example:
         >>> # Import cache from team member
         >>> imported, skipped, incompatible = import_cache('teammate_cache.json')
         >>> print(f"Imported {imported}, skipped {skipped}, incompatible {incompatible}")
-        
+
         >>> # Deploy to production with overwrite
         >>> imported, _, _ = import_cache('production_cache.json', merge_strategy='overwrite')
-        
+
         >>> # Import without compatibility check (use with caution)
         >>> import_cache('cache.json', validate_compatibility=False)
-    
+
     Raises:
         IOError: If file cannot be read or is invalid
         ValueError: If merge_strategy is invalid
@@ -1726,7 +1726,7 @@ def import_cache(
 class CacheValidationResult:
     """
     Result of cache validation operations.
-    
+
     Attributes:
         is_valid: Overall validation status (True if no critical issues)
         total_entries: Total number of cache entries examined
@@ -1777,7 +1777,7 @@ class CacheValidationResult:
 def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> Tuple[bool, list]:
     """
     Validate a single cache entry file.
-    
+
     Checks:
     - File exists and is readable
     - Valid JSON structure
@@ -1786,16 +1786,16 @@ def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECOND
     - Values within reasonable ranges
     - Not expired (if ttl_seconds specified)
     - System compatibility
-    
+
     Args:
         cache_file: Path to cache entry file
         ttl_seconds: TTL for expiration check (default: 7 days)
-    
+
     Returns:
         Tuple of (is_valid, issues_list)
         - is_valid: True if entry passes all checks
         - issues_list: List of validation issues found (empty if valid)
-    
+
     Examples:
         >>> cache_file = Path("/path/to/cache/entry.json")
         >>> is_valid, issues = validate_cache_entry(cache_file)
@@ -1879,21 +1879,21 @@ def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECOND
 def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "optimization") -> CacheValidationResult:
     """
     Validate all entries in the cache directory.
-    
+
     Performs comprehensive validation of all cache entries, checking for:
     - File corruption or invalid JSON
     - Missing or invalid fields
     - Expired entries
     - System incompatibility
     - Unreasonable parameter values
-    
+
     Args:
         ttl_seconds: TTL for expiration check (default: 7 days)
         cache_type: Type of cache to validate ("optimization" or "benchmark")
-    
+
     Returns:
         CacheValidationResult with detailed validation information
-    
+
     Examples:
         >>> result = validate_cache()
         >>> print(result)
@@ -1903,7 +1903,7 @@ def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "op
         Invalid entries: 4
         Health score: 90.5/100
         Status: ✓ HEALTHY
-        
+
         >>> if not result.is_valid:
         ...     print("Cache has issues - consider running prune_expired_cache()")
     """
@@ -1986,30 +1986,30 @@ def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "op
 def repair_cache(dry_run: bool = True, cache_type: str = "optimization") -> Dict[str, int]:
     """
     Repair cache by removing invalid entries.
-    
+
     This function scans the cache directory and removes entries that fail
     validation checks. It performs the same validation as validate_cache()
     but actually deletes the problematic files.
-    
+
     Safety: By default, runs in dry_run mode to show what would be deleted
     without actually removing files. Set dry_run=False to perform actual deletion.
-    
+
     Args:
         dry_run: If True, show what would be deleted without actually deleting.
                 If False, perform actual deletion. Default: True.
         cache_type: Type of cache to repair ("optimization" or "benchmark")
-    
+
     Returns:
         Dictionary with counts:
         - "examined": Total entries examined
         - "deleted": Entries deleted (or would be deleted in dry_run)
         - "kept": Valid entries kept
-    
+
     Examples:
         >>> # Preview what would be deleted
         >>> result = repair_cache(dry_run=True)
         >>> print(f"Would delete {result['deleted']} invalid entries")
-        
+
         >>> # Actually repair the cache
         >>> result = repair_cache(dry_run=False)
         >>> print(f"Deleted {result['deleted']} invalid entries")

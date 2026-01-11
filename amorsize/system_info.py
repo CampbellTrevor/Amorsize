@@ -58,10 +58,10 @@ DEFAULT_CHUNKING_OVERHEAD = 0.0005  # 0.5ms per chunk
 def _clear_physical_cores_cache():
     """
     Clear the cached physical core count.
-    
+
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
-    
+
     Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_PHYSICAL_CORES
@@ -72,10 +72,10 @@ def _clear_physical_cores_cache():
 def _clear_spawn_cost_cache():
     """
     Clear the cached spawn cost measurement.
-    
+
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
-    
+
     Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_SPAWN_COST
@@ -86,10 +86,10 @@ def _clear_spawn_cost_cache():
 def _clear_chunking_overhead_cache():
     """
     Clear the cached chunking overhead measurement.
-    
+
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
-    
+
     Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_CHUNKING_OVERHEAD
@@ -100,10 +100,10 @@ def _clear_chunking_overhead_cache():
 def _clear_memory_cache():
     """
     Clear the cached available memory value.
-    
+
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
-    
+
     Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_AVAILABLE_MEMORY, _memory_cache_timestamp
@@ -115,10 +115,10 @@ def _clear_memory_cache():
 def _clear_logical_cores_cache():
     """
     Clear the cached logical core count.
-    
+
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
-    
+
     Thread-safe: Uses lock to prevent race conditions.
     """
     global _CACHED_LOGICAL_CORES
@@ -129,10 +129,10 @@ def _clear_logical_cores_cache():
 def _parse_proc_cpuinfo() -> Optional[int]:
     """
     Parse /proc/cpuinfo to determine physical core count on Linux.
-    
+
     Returns:
         Number of physical cores, or None if parsing fails
-        
+
     Algorithm:
         Counts unique (physical_id, core_id) pairs in /proc/cpuinfo.
         This gives the actual number of physical cores, excluding hyperthreading.
@@ -177,10 +177,10 @@ def _parse_proc_cpuinfo() -> Optional[int]:
 def _parse_lscpu() -> Optional[int]:
     """
     Use lscpu command to determine physical core count on Linux.
-    
+
     Returns:
         Number of physical cores, or None if command fails
-        
+
     Note:
         This is a secondary fallback after /proc/cpuinfo parsing.
         lscpu is part of util-linux and should be available on most Linux systems.
@@ -221,26 +221,26 @@ def _parse_lscpu() -> Optional[int]:
 def get_physical_cores() -> int:
     """
     Get the number of physical CPU cores.
-    
+
     The physical core count is cached globally after first detection since
     it's a system constant that never changes during program execution.
     Thread-safe: Uses lock to prevent concurrent detection.
-    
+
     Returns:
         Number of physical cores, using the best available detection method
-        
+
     Detection Strategy (in order of preference):
         1. psutil (most reliable, cross-platform)
         2. /proc/cpuinfo parsing (Linux, no dependencies)
         3. lscpu command (Linux, secondary fallback)
         4. Logical cores / 2 (conservative estimate for hyperthreading)
         5. 1 core (absolute fallback)
-        
+
     Rationale:
         For CPU-bound tasks, using logical cores (with hyperthreading) can lead
         to over-subscription and worse performance. Physical cores provide better
         parallelization characteristics.
-        
+
     Performance:
         Cached globally after first call to eliminate redundant system calls,
         file I/O, and subprocess spawns on subsequent calls. This is especially
@@ -305,19 +305,19 @@ def get_physical_cores() -> int:
 def get_logical_cores() -> int:
     """
     Get the number of logical CPU cores (including hyperthreading).
-    
+
     The logical core count is cached globally after first detection since
     it's a system constant that never changes during program execution.
     Thread-safe: Uses lock to prevent concurrent detection.
-    
+
     Returns:
         Number of logical cores, or 1 if detection fails
-        
+
     Rationale:
         Logical cores include hyperthreading/SMT cores. This is useful for
         diagnostic information and understanding the system topology, though
         physical cores are typically preferred for CPU-bound parallelization.
-        
+
     Performance:
         Cached globally after first call to eliminate redundant system calls
         on subsequent calls. This is especially beneficial when multiple
@@ -355,42 +355,42 @@ def _noop_worker(_):
 def measure_spawn_cost(timeout: float = 2.0) -> float:
     """
     Measure the actual per-worker process spawn cost by benchmarking.
-    
+
     This function measures the marginal cost of spawning additional workers
     by comparing pool creation times with different worker counts. This gives
     a more accurate per-worker cost than measuring a single worker pool.
-    
+
     The measurement is cached globally to avoid repeated benchmarking.
     Thread-safe: Uses lock to prevent concurrent measurements.
-    
+
     Enhanced with quality validation to ensure reliable measurements across
     diverse system conditions (similar to chunking overhead measurement).
-    
+
     Args:
         timeout: Maximum time to wait for measurement in seconds
-    
+
     Returns:
         Measured per-worker spawn cost in seconds, or OS-based estimate on failure
-        
+
     Algorithm:
         1. Measure time to create pool with 1 worker
         2. Measure time to create pool with 2 workers
         3. Calculate marginal cost: (time_2_workers - time_1_worker) / 1
         4. Validate measurement quality with multiple criteria
         5. Use intelligent fallback if measurement is unreliable
-        
+
         This isolates the per-worker cost from fixed pool initialization overhead.
-        
+
     Quality Validation:
         - Check 1: Reasonable range based on start method
         - Check 2: Signal strength (2-worker measurement significantly larger)
         - Check 3: Consistency with start method expectations
         - Check 4: Overhead fraction validation
-        
+
     Fallback Strategy:
         If benchmarking fails or produces unreliable results, falls back to
         OS-based estimates based on the multiprocessing start method.
-        
+
     Thread Safety:
         Uses a lock to ensure only one thread performs the measurement. If
         multiple threads call this function simultaneously, the first one
@@ -515,41 +515,41 @@ def _minimal_worker(x):
 def measure_chunking_overhead(timeout: float = 2.0) -> float:
     """
     Measure the per-chunk overhead for task distribution in multiprocessing.Pool.
-    
+
     This function measures the marginal cost of task distribution overhead by
     comparing execution with different chunk sizes. The overhead comes from:
     - Queue operations for task distribution
     - Context switches between workers
     - Task scheduling and management
-    
+
     The measurement is cached globally to avoid repeated benchmarking.
     Thread-safe: Uses lock to prevent concurrent measurements.
-    
+
     Args:
         timeout: Maximum time to wait for measurement in seconds
-    
+
     Returns:
         Measured per-chunk overhead in seconds, or default estimate on failure
-        
+
     Algorithm:
         1. Execute workload with large chunks (fewer chunks, less overhead)
         2. Execute workload with small chunks (more chunks, more overhead)
         3. Calculate marginal cost: (time_small - time_large) / (chunks_small - chunks_large)
         4. Validate measurement quality with multiple criteria
         5. Use intelligent fallback if measurement is unreliable
-        
+
         This isolates the per-chunk overhead from the actual computation time.
-        
+
     Improvements:
         - Multiple validation checks for measurement quality
         - Detects and handles measurement noise
         - Adaptive chunk size selection
         - More robust fallback strategies
-        
+
     Fallback Strategy:
         If benchmarking fails or produces unreliable results, falls back to
         the default estimate (0.5ms per chunk).
-        
+
     Thread Safety:
         Uses a lock to ensure only one thread performs the measurement. If
         multiple threads call this function simultaneously, the first one
@@ -652,12 +652,12 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
 def get_chunking_overhead(use_benchmark: bool = True) -> float:
     """
     Get the per-chunk overhead, either measured or estimated.
-    
+
     Args:
         use_benchmark: If True, measures actual chunking overhead. If False,
                       uses default estimate. Default is True for accuracy
                       as measurements are fast (~10ms) and cached globally.
-    
+
     Returns:
         Chunking overhead in seconds per chunk
     """
@@ -670,16 +670,16 @@ def get_chunking_overhead(use_benchmark: bool = True) -> float:
 def get_multiprocessing_start_method() -> str:
     """
     Get the current multiprocessing start method.
-    
+
     Returns:
         The current start method name ('fork', 'spawn', or 'forkserver')
-        
+
     Rationale:
         The start method determines how child processes are created:
         - 'fork': Uses fork() (fast, Linux/Unix default, not available on Windows)
         - 'spawn': Starts fresh interpreter (slow, Windows/macOS default, safest)
         - 'forkserver': Uses a server process (middle ground, Unix only)
-        
+
     Note:
         Users can override the default with multiprocessing.set_start_method().
         This function detects the actual method being used, not the OS default.
@@ -702,10 +702,10 @@ def get_multiprocessing_start_method() -> str:
 def _get_default_start_method() -> str:
     """
     Get the default multiprocessing start method for the current OS.
-    
+
     Returns:
         Default start method name for the current platform
-        
+
     OS Defaults:
         - Linux/Unix: 'fork'
         - Windows: 'spawn'
@@ -730,17 +730,17 @@ def _get_default_start_method() -> str:
 def get_spawn_cost_estimate() -> float:
     """
     Estimate the process spawn cost based on actual start method.
-    
+
     This is a fallback when actual measurement is not possible.
-    
+
     Returns:
         Estimated spawn cost in seconds based on start method
-        
+
     Rationale:
         - fork: Uses fork() with copy-on-write, very fast (~10-15ms measured)
         - spawn: Starts fresh interpreter, requires module imports (~200ms)
         - forkserver: Server process + fork, middle ground (~50-100ms)
-        
+
     Important:
         This function now checks the ACTUAL start method being used,
         not just the OS. A user can set spawn on Linux, making spawn
@@ -766,13 +766,13 @@ def get_spawn_cost_estimate() -> float:
 def get_spawn_cost(use_benchmark: bool = True) -> float:
     """
     Get the process spawn cost, either measured or estimated.
-    
+
     Args:
         use_benchmark: If True, measures actual spawn cost. If False,
                       uses start-method-based estimate. Default is True
                       for accuracy as measurements are fast (~15ms) and
                       cached globally.
-    
+
     Returns:
         Spawn cost in seconds
     """
@@ -785,16 +785,16 @@ def get_spawn_cost(use_benchmark: bool = True) -> float:
 def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
     """
     Check if the current start method differs from the OS default.
-    
+
     Returns:
         Tuple of (is_mismatch, warning_message) where:
         - is_mismatch: True if start method differs from OS default
         - warning_message: Explanation of the mismatch (None if no mismatch)
-        
+
     Use Case:
         This detects when users have explicitly set a non-default start method,
         which can significantly affect spawn costs and optimization decisions.
-        
+
         Example: User sets 'spawn' on Linux for safety reasons, but this makes
         spawning 13x slower (200ms vs 15ms), changing optimal parallelization.
     """
@@ -826,18 +826,18 @@ def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
 def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
     """
     Read memory limit from cgroup v2 unified hierarchy.
-    
+
     Args:
         base_path: Base path to check (e.g., "/sys/fs/cgroup")
-    
+
     Returns:
         Memory limit in bytes, or None if not found or invalid
-        
+
     Algorithm:
         1. Check memory.max (hard limit)
         2. Check memory.high (soft limit - use if lower than max)
         3. Return the most restrictive limit
-        
+
     Note:
         In cgroup v2, memory.high is a "soft" limit where the kernel
         will throttle but not kill. memory.max is the "hard" limit where
@@ -884,15 +884,15 @@ def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
 def _get_cgroup_path() -> Optional[str]:
     """
     Get the cgroup path for the current process from /proc/self/cgroup.
-    
+
     Returns:
         Cgroup path for the current process, or None if not found
-        
+
     Rationale:
         In modern container environments, cgroup paths can be hierarchical.
         We need to read /proc/self/cgroup to find where our process is
         actually located in the cgroup hierarchy.
-        
+
     Example /proc/self/cgroup formats:
         cgroup v2: 0::/docker/abc123...
         cgroup v1: 3:memory:/docker/abc123...
@@ -921,21 +921,21 @@ def _get_cgroup_path() -> Optional[str]:
 def _read_cgroup_memory_limit() -> Optional[int]:
     """
     Read memory limit from cgroup (Docker/container environments).
-    
+
     Returns:
         Memory limit in bytes, or None if not in a container or can't read
-        
+
     Rationale:
         Docker and other containers use cgroups to limit resources.
         Without this check, we'd see the host's total memory and
         potentially spawn too many workers, causing OOM kills.
-        
+
     Enhanced Detection (Iteration 69):
         - Supports cgroup v2 unified hierarchy with hierarchical paths
         - Respects both memory.max (hard) and memory.high (soft) limits
         - Properly handles /proc/self/cgroup path resolution
         - Falls back gracefully through multiple strategies
-        
+
     Detection Strategy:
         1. Try cgroup v2 with process-specific path (most accurate)
         2. Try cgroup v2 at root (simple containers)
@@ -994,24 +994,24 @@ def _read_cgroup_memory_limit() -> Optional[int]:
 def get_available_memory() -> int:
     """
     Get available system memory in bytes, respecting container limits.
-    
+
     The available memory is cached with a short TTL (Time-To-Live) to
     eliminate redundant system calls while still reflecting memory changes.
     Thread-safe: Uses lock to prevent concurrent detection.
-    
+
     Returns:
         Available memory in bytes. Returns a conservative default if
         detection fails.
-        
+
     Container Handling:
         Checks for Docker/cgroup memory limits before falling back to
         system memory. This prevents OOM kills in containerized environments.
-        
+
     Fallback Strategy:
         1. Try cgroup limits (Docker/containers)
         2. Try psutil for system memory
         3. Return 1GB conservative default
-        
+
     Performance:
         Cached with 1-second TTL to eliminate redundant file I/O and system
         calls within a single optimization session. The short TTL ensures we
@@ -1070,21 +1070,21 @@ def get_available_memory() -> int:
 def get_swap_usage() -> Tuple[float, int, int]:
     """
     Get current swap memory usage information.
-    
+
     Returns:
         Tuple of (swap_percent, swap_used_bytes, swap_total_bytes) where:
         - swap_percent: Percentage of swap being used (0-100)
         - swap_used_bytes: Amount of swap currently used in bytes
         - swap_total_bytes: Total swap space available in bytes
-        
+
         Returns (0.0, 0, 0) if psutil is not available or swap detection fails.
-        
+
     Rationale:
         When a system is actively using swap, it indicates memory pressure.
         Spawning additional workers in this state can cause severe performance
         degradation due to disk I/O thrashing as the kernel swaps memory pages
         to/from disk.
-        
+
     Note:
         Some systems (like containers) may have no swap configured, which is
         normal and not an error condition.
@@ -1104,22 +1104,22 @@ def get_swap_usage() -> Tuple[float, int, int]:
 def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
     """
     Calculate maximum number of workers based on memory constraints.
-    
+
     Enhanced in Iteration 70 to account for swap usage. When the system
     is actively swapping, worker count is reduced to prevent disk thrashing.
-    
+
     Args:
         physical_cores: Number of physical CPU cores
         estimated_job_ram: Estimated RAM usage per job in bytes
-    
+
     Returns:
         Maximum number of workers, potentially reduced if system is swapping
-        
+
     Swap-Aware Logic:
         - If swap usage < 10%: No adjustment (normal operation)
         - If swap usage 10-50%: Reduce workers by 25% (moderate pressure)
         - If swap usage > 50%: Reduce workers by 50% (severe pressure)
-        
+
         This prevents spawning too many workers when the system is already
         under memory pressure, which would cause severe performance degradation.
     """
@@ -1156,20 +1156,20 @@ def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
 def get_current_cpu_load(interval: float = 0.1) -> float:
     """
     Get current system-wide CPU load as a percentage.
-    
+
     Args:
         interval: Time interval in seconds to measure CPU usage (default: 0.1s)
                  A longer interval provides more accurate measurements but adds latency.
-    
+
     Returns:
         CPU usage percentage (0.0-100.0) averaged across all logical cores.
         Returns 0.0 if psutil is not available or measurement fails.
-        
+
     Rationale:
         Real-time CPU load helps detect if the system is already busy.
         When CPU load is high, spawning more workers may not improve performance
         and could lead to contention and context switching overhead.
-        
+
     Note:
         This function is intentionally NOT cached because CPU load changes
         rapidly and we want fresh measurements for dynamic adjustment.
@@ -1191,16 +1191,16 @@ def get_current_cpu_load(interval: float = 0.1) -> float:
 def get_memory_pressure() -> float:
     """
     Get current memory pressure as a percentage of used memory.
-    
+
     Returns:
         Memory usage percentage (0.0-100.0).
         Returns 0.0 if psutil is not available or measurement fails.
-        
+
     Rationale:
         Memory pressure indicates how much of the system's RAM is currently in use.
         High memory pressure means spawning more workers may cause OOM or swapping.
         This complements get_available_memory() by showing current usage trends.
-        
+
     Note:
         This function is intentionally NOT cached because memory usage changes
         dynamically and we want fresh measurements for load-aware decisions.
@@ -1226,10 +1226,10 @@ def calculate_load_aware_workers(
 ) -> int:
     """
     Calculate optimal number of workers based on current system load.
-    
+
     This function extends calculate_max_workers() by considering real-time
     system load (CPU and memory usage) in addition to hardware constraints.
-    
+
     Args:
         physical_cores: Number of physical CPU cores
         estimated_job_ram: Estimated RAM usage per job in bytes
@@ -1237,10 +1237,10 @@ def calculate_load_aware_workers(
         memory_threshold: Memory usage % above which to reduce workers (default: 75%)
         aggressive_reduction: If True, apply more aggressive reduction when system
                             is under load (default: False for backward compatibility)
-    
+
     Returns:
         Optimal number of workers adjusted for current system load (minimum 1)
-        
+
     Load-Aware Logic:
         1. Start with base calculation (physical cores + memory + swap constraints)
         2. Check current CPU load:
@@ -1250,20 +1250,20 @@ def calculate_load_aware_workers(
            - If memory < threshold: No adjustment
            - If memory >= threshold: Reduce workers to prevent OOM
         4. Apply the most conservative (lowest) worker count
-        
+
     Examples:
         >>> # System: 8 cores, 50% CPU load, 60% memory usage
         >>> calculate_load_aware_workers(8, 1024*1024*1024)  # 1GB per job
         8  # No reduction (below thresholds)
-        
+
         >>> # System: 8 cores, 80% CPU load, 60% memory usage
         >>> calculate_load_aware_workers(8, 1024*1024*1024)
         6  # Reduced due to high CPU (only 20% capacity remains)
-        
+
         >>> # System: 8 cores, 50% CPU load, 85% memory usage
         >>> calculate_load_aware_workers(8, 1024*1024*1024)
         6  # Reduced due to high memory pressure
-        
+
     Thread Safety:
         This function is thread-safe. It calls get_current_cpu_load() and
         get_memory_pressure() which are not cached and always return fresh data.
@@ -1330,7 +1330,7 @@ def calculate_load_aware_workers(
 def get_system_info() -> Tuple[int, float, int]:
     """
     Get all relevant system information.
-    
+
     Returns:
         Tuple of (physical_cores, spawn_cost, available_memory)
     """

@@ -28,7 +28,7 @@ except ImportError:
 class TuningResult:
     """
     Container for auto-tuning results.
-    
+
     Attributes:
         best_n_jobs: Optimal number of workers found
         best_chunksize: Optimal chunk size found
@@ -113,10 +113,10 @@ class TuningResult:
     def get_top_configurations(self, n: int = 5) -> List[Tuple[int, int, float, float]]:
         """
         Get the top N configurations by execution time.
-        
+
         Args:
             n: Number of top configurations to return
-        
+
         Returns:
             List of (n_jobs, chunksize, time, speedup) tuples
         """
@@ -135,13 +135,13 @@ class TuningResult:
     ) -> None:
         """
         Save the best tuning result as a reusable configuration file.
-        
+
         Args:
             filepath: Path to save configuration file
             function_name: Optional name of the function
             notes: Optional notes about this configuration
             overwrite: If True, overwrite existing file
-        
+
         Examples:
             >>> result = tune_parameters(my_func, data)
             >>> result.save_config('my_tuned_config.json', function_name='my_func')
@@ -182,7 +182,7 @@ def _benchmark_configuration(
 ) -> float:
     """
     Benchmark a specific configuration.
-    
+
     Args:
         func: Function to benchmark
         data: Input data
@@ -190,7 +190,7 @@ def _benchmark_configuration(
         chunksize: Chunk size
         executor_type: "process" or "thread"
         timeout: Maximum time to wait for execution
-    
+
     Returns:
         Execution time in seconds, or float('inf') on error
     """
@@ -226,10 +226,10 @@ def tune_parameters(
 ) -> TuningResult:
     """
     Automatically find optimal n_jobs and chunksize through grid search.
-    
+
     This function benchmarks multiple parameter combinations to empirically
     determine the optimal configuration for your specific function and data.
-    
+
     Args:
         func: Function to optimize (must accept single argument)
         data: Input data (list, range, or iterator)
@@ -239,17 +239,17 @@ def tune_parameters(
         verbose: If True, prints progress during search
         timeout_per_config: Maximum seconds per configuration (None = no limit)
         prefer_threads_for_io: If True, uses ThreadPoolExecutor instead of multiprocessing.Pool
-    
+
     Returns:
         TuningResult with optimal parameters and benchmark data
-    
+
     Examples:
         >>> def expensive_func(x):
         ...     return sum(i**2 for i in range(x))
         >>> data = range(100, 500)
         >>> result = tune_parameters(expensive_func, data, verbose=True)
         >>> print(f"Optimal: n_jobs={result.best_n_jobs}, chunksize={result.best_chunksize}")
-        
+
         >>> # Custom search space
         >>> result = tune_parameters(
         ...     expensive_func, data,
@@ -415,19 +415,19 @@ def quick_tune(
 ) -> TuningResult:
     """
     Quick auto-tuning using a minimal search space.
-    
+
     This is a faster alternative to tune_parameters() that tests fewer
     configurations, focusing on the most likely optimal values.
-    
+
     Args:
         func: Function to optimize
         data: Input data
         verbose: If True, prints progress
         prefer_threads_for_io: If True, uses ThreadPoolExecutor
-    
+
     Returns:
         TuningResult with optimal parameters
-    
+
     Examples:
         >>> result = quick_tune(expensive_func, data, verbose=True)
         >>> print(f"Optimal: n_jobs={result.best_n_jobs}")
@@ -476,18 +476,18 @@ def bayesian_tune_parameters(
 ) -> TuningResult:
     """
     Automatically find optimal n_jobs and chunksize using Bayesian Optimization.
-    
+
     This function uses Gaussian Process-based Bayesian Optimization to intelligently
     explore the parameter space and find optimal configurations with fewer benchmarks
     than grid search. This is especially useful when benchmarking is expensive.
-    
+
     Bayesian optimization builds a probabilistic model (surrogate) of the objective
     function and uses an acquisition function to decide which configuration to try
     next, balancing exploration and exploitation.
-    
+
     Requires:
         scikit-optimize (skopt) - Install with: pip install scikit-optimize
-    
+
     Args:
         func: Function to optimize (must accept single argument)
         data: Input data (list, range, or iterator)
@@ -502,20 +502,20 @@ def bayesian_tune_parameters(
         timeout_per_config: Maximum seconds per configuration (None = no limit)
         prefer_threads_for_io: If True, uses ThreadPoolExecutor instead of multiprocessing.Pool
         random_state: Random seed for reproducibility (default: None)
-    
+
     Returns:
         TuningResult with optimal parameters and benchmark data
-    
+
     Examples:
         >>> def expensive_func(x):
         ...     return sum(i**2 for i in range(x))
         >>> data = range(100, 500)
-        >>> 
+        >>>
         >>> # Find optimal configuration with 30 intelligent trials
         >>> result = bayesian_tune_parameters(expensive_func, data, n_iterations=30, verbose=True)
         >>> print(f"Optimal: n_jobs={result.best_n_jobs}, chunksize={result.best_chunksize}")
         >>> print(f"Speedup: {result.best_speedup:.2f}x")
-        
+
         >>> # Custom search bounds
         >>> result = bayesian_tune_parameters(
         ...     expensive_func, data,
@@ -523,7 +523,7 @@ def bayesian_tune_parameters(
         ...     chunksize_min=5, chunksize_max=100,
         ...     n_iterations=25
         ... )
-    
+
     Note:
         Falls back to grid search if scikit-optimize is not installed.
         For quick results, use n_iterations=15-20. For thorough search, use 30-50.

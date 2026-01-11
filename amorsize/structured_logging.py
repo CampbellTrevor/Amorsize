@@ -32,10 +32,10 @@ class LogLevel(Enum):
 class StructuredLogger:
     """
     Structured logger for Amorsize optimization events.
-    
+
     Provides JSON-formatted logging with structured data for key
     optimization decisions, system information, and performance metrics.
-    
+
     Thread-safe: Uses Python's logging module which is thread-safe.
     Multiprocessing-safe: Each process gets its own logger instance.
     """
@@ -43,7 +43,7 @@ class StructuredLogger:
     def __init__(self, name: str = "amorsize", level: str = "INFO"):
         """
         Initialize structured logger.
-        
+
         Args:
             name: Logger name (default: "amorsize")
             level: Log level (DEBUG, INFO, WARNING, ERROR)
@@ -67,7 +67,7 @@ class StructuredLogger:
     def enable(self, output: str = "stderr", format_json: bool = True, level: str = "INFO"):
         """
         Enable structured logging.
-        
+
         Args:
             output: Output destination ("stderr", "stdout", or file path)
             format_json: If True, use JSON formatting (default: True)
@@ -106,7 +106,7 @@ class StructuredLogger:
     def _log(self, level: LogLevel, event: str, data: Optional[Dict[str, Any]] = None):
         """
         Internal logging method with lazy evaluation.
-        
+
         Args:
             level: Log level
             event: Event name/description
@@ -203,7 +203,7 @@ class StructuredLogger:
 class JSONFormatter(logging.Formatter):
     """
     Custom formatter that outputs logs as JSON.
-    
+
     This enables easy parsing by log aggregation systems and
     structured log analysis.
     """
@@ -211,10 +211,10 @@ class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """
         Format log record as JSON.
-        
+
         Args:
             record: Log record to format
-            
+
         Returns:
             JSON-formatted log string
         """
@@ -248,7 +248,7 @@ _global_logger: Optional[StructuredLogger] = None
 def get_logger() -> StructuredLogger:
     """
     Get the global structured logger instance.
-    
+
     Returns:
         The global StructuredLogger instance
     """
@@ -262,23 +262,23 @@ def configure_logging(enabled: bool = True, output: str = "stderr",
                       format_json: bool = True, level: str = "INFO"):
     """
     Configure structured logging for Amorsize.
-    
+
     Args:
         enabled: Enable or disable structured logging (default: True)
         output: Output destination - "stderr", "stdout", or file path (default: "stderr")
         format_json: Use JSON formatting (default: True)
         level: Log level - "DEBUG", "INFO", "WARNING", "ERROR" (default: "INFO")
-    
+
     Example:
         >>> from amorsize import configure_logging
         >>> configure_logging(enabled=True, output="stderr", level="INFO")
         >>> # Now all optimizations will log structured events
         >>> result = optimize(my_func, data)
-    
+
     Production Example:
         >>> # Log to file in JSON format for log aggregation
         >>> configure_logging(enabled=True, output="/var/log/amorsize.log", level="INFO")
-    
+
     Disable Example:
         >>> # Disable logging (default behavior)
         >>> configure_logging(enabled=False)

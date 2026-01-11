@@ -17,33 +17,33 @@ class AdaptiveChunkingPool:
     """
     Wrapper around multiprocessing.Pool that dynamically adjusts chunk sizes
     during execution based on runtime performance feedback.
-    
+
     This class is designed for heterogeneous workloads where task execution
     times vary significantly. It monitors task completion times and adjusts
     chunk sizes to maintain optimal load balancing.
-    
+
     Algorithm:
         1. Start with initial chunk size from optimize()
         2. Monitor completion times for each chunk
         3. Calculate moving average of chunk durations
         4. If duration deviates from target, adjust chunk size
         5. Enforce min/max bounds to prevent extreme values
-    
+
     Benefits:
         - Better load balancing for heterogeneous workloads
         - Self-tuning performance without manual intervention
         - Reduces stragglers (workers waiting for slow tasks)
         - Maintains throughput stability
-    
+
     Usage:
         >>> from amorsize import optimize
         >>> from amorsize.adaptive_chunking import AdaptiveChunkingPool
-        >>> 
+        >>>
         >>> result = optimize(func, data)
-        >>> 
+        >>>
         >>> with AdaptiveChunkingPool(result.n_jobs, result.chunksize) as pool:
         ...     results = pool.map(func, result.data)
-    
+
     Thread Safety:
         This class is thread-safe. Multiple threads can submit work concurrently.
         Internal state is protected by locks.
@@ -63,7 +63,7 @@ class AdaptiveChunkingPool:
     ):
         """
         Initialize adaptive chunking pool.
-        
+
         Args:
             n_jobs: Number of worker processes/threads
             initial_chunksize: Starting chunk size (from optimize())
@@ -75,7 +75,7 @@ class AdaptiveChunkingPool:
             enable_adaptation: If False, disables adaptation (acts like normal Pool)
             use_threads: If True, use ThreadPool instead of Pool (default: False)
             window_size: Number of recent chunks to consider for adaptation (default: 10)
-        
+
         Raises:
             ValueError: If parameters are invalid
         """
@@ -122,11 +122,11 @@ class AdaptiveChunkingPool:
     def _record_chunk_duration(self, duration: float, num_items: int) -> None:
         """
         Record chunk completion time and potentially adjust chunk size.
-        
+
         Args:
             duration: Time taken to process chunk in seconds
             num_items: Number of items in the chunk
-        
+
         Thread-safe: Uses lock to protect internal state.
         """
         with self._lock:
@@ -179,18 +179,18 @@ class AdaptiveChunkingPool:
     ) -> List[Any]:
         """
         Apply func to each element in iterable with adaptive chunking.
-        
+
         This method monitors chunk completion times and adjusts chunk size
         dynamically for optimal load balancing.
-        
+
         Args:
             func: Function to apply to each element
             iterable: Iterable of input items
             chunksize: Override chunk size (disables adaptation if provided)
-        
+
         Returns:
             List of results in the same order as input
-        
+
         Note:
             If chunksize is explicitly provided, adaptation is disabled for
             this call and the provided chunksize is used throughout.
@@ -248,15 +248,15 @@ class AdaptiveChunkingPool:
     ):
         """
         Apply func to each element in iterable, yielding results as they complete.
-        
+
         Note: Adaptation is limited for imap since we can't control chunk boundaries
         after submission. Consider using map() for full adaptive benefits.
-        
+
         Args:
             func: Function to apply to each element
             iterable: Iterable of input items
             chunksize: Chunk size (uses current_chunksize if None)
-        
+
         Returns:
             Iterator yielding results as they complete
         """
@@ -274,15 +274,15 @@ class AdaptiveChunkingPool:
     ):
         """
         Apply func to each element in iterable, yielding results in completion order.
-        
+
         Note: Adaptation is limited for imap_unordered since we can't control chunk
         boundaries after submission. Consider using map() for full adaptive benefits.
-        
+
         Args:
             func: Function to apply to each element
             iterable: Iterable of input items
             chunksize: Chunk size (uses current_chunksize if None)
-        
+
         Returns:
             Iterator yielding results as they complete (unordered)
         """
@@ -295,7 +295,7 @@ class AdaptiveChunkingPool:
     def close(self) -> None:
         """
         Prevent any more tasks from being submitted to the pool.
-        
+
         Once closed, the pool cannot accept new work. Call join() to wait
         for all tasks to complete.
         """
@@ -306,7 +306,7 @@ class AdaptiveChunkingPool:
     def terminate(self) -> None:
         """
         Stop all worker processes immediately without completing pending work.
-        
+
         This is a forceful shutdown. Pending work will be lost.
         """
         self._pool.terminate()
@@ -315,7 +315,7 @@ class AdaptiveChunkingPool:
     def join(self) -> None:
         """
         Wait for all worker processes to exit.
-        
+
         Must call close() or terminate() before calling join().
         """
         self._pool.join()
@@ -333,7 +333,7 @@ class AdaptiveChunkingPool:
     def get_stats(self) -> dict:
         """
         Get statistics about adaptation performance.
-        
+
         Returns:
             Dictionary with adaptation statistics:
             - current_chunksize: Current chunk size
@@ -366,26 +366,26 @@ def create_adaptive_pool(
 ) -> AdaptiveChunkingPool:
     """
     Factory function to create an adaptive chunking pool.
-    
+
     This is a convenience function that creates an AdaptiveChunkingPool
     with sensible defaults.
-    
+
     Args:
         n_jobs: Number of worker processes/threads
         initial_chunksize: Starting chunk size
         enable_adaptation: Enable runtime adaptation (default: True)
         use_threads: Use threading instead of multiprocessing (default: False)
         **kwargs: Additional arguments passed to AdaptiveChunkingPool
-    
+
     Returns:
         AdaptiveChunkingPool instance
-    
+
     Example:
         >>> from amorsize import optimize
         >>> from amorsize.adaptive_chunking import create_adaptive_pool
-        >>> 
+        >>>
         >>> result = optimize(func, data)
-        >>> 
+        >>>
         >>> with create_adaptive_pool(result.n_jobs, result.chunksize) as pool:
         ...     results = pool.map(func, result.data)
     """

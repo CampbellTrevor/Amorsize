@@ -27,7 +27,7 @@ except ImportError:
 def check_matplotlib() -> bool:
     """
     Check if matplotlib is available.
-    
+
     Returns:
         True if matplotlib is installed, False otherwise
     """
@@ -59,7 +59,7 @@ def plot_comparison_times(
 ) -> Optional[str]:
     """
     Create a bar chart comparing execution times across strategies.
-    
+
     Args:
         config_names: Names of configurations
         execution_times: Execution times for each config (seconds)
@@ -67,10 +67,10 @@ def plot_comparison_times(
         title: Chart title
         figsize: Figure size in inches (width, height)
         show_values: Whether to display values on bars
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> names = ["Serial", "4 workers", "8 workers"]
         >>> times = [10.0, 3.2, 2.1]
@@ -144,7 +144,7 @@ def plot_speedup_comparison(
 ) -> Optional[str]:
     """
     Create a bar chart comparing speedups relative to baseline.
-    
+
     Args:
         config_names: Names of configurations
         speedups: Speedup factors relative to serial (e.g., 2.5x means 2.5x faster)
@@ -153,10 +153,10 @@ def plot_speedup_comparison(
         figsize: Figure size in inches (width, height)
         show_values: Whether to display values on bars
         baseline_name: Name of the baseline configuration (usually "Serial")
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> names = ["Serial", "4 workers", "8 workers"]
         >>> speedups = [1.0, 3.1, 4.8]
@@ -242,7 +242,7 @@ def plot_overhead_breakdown(
 ) -> Optional[str]:
     """
     Create a stacked bar chart showing overhead breakdown.
-    
+
     Args:
         n_workers_list: List of worker counts
         compute_times: Pure computation times for each worker count
@@ -252,10 +252,10 @@ def plot_overhead_breakdown(
         output_path: Path to save the plot (if None, returns path to temp file)
         title: Chart title
         figsize: Figure size in inches (width, height)
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> workers = [1, 2, 4, 8]
         >>> compute = [10.0, 5.0, 2.5, 1.3]
@@ -328,7 +328,7 @@ def plot_scaling_curve(
 ) -> Optional[str]:
     """
     Create a line plot showing how execution time scales with worker count.
-    
+
     Args:
         n_workers_list: List of worker counts
         execution_times: Execution times for each worker count
@@ -336,10 +336,10 @@ def plot_scaling_curve(
         output_path: Path to save the plot (if None, returns path to temp file)
         title: Chart title
         figsize: Figure size in inches (width, height)
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> workers = [1, 2, 4, 8, 16]
         >>> times = [10.0, 5.5, 3.2, 2.0, 1.5]
@@ -405,16 +405,16 @@ def visualize_comparison_result(
 ) -> Dict[str, Optional[str]]:
     """
     Generate all visualization plots for a comparison result.
-    
+
     Args:
         comparison_result: ComparisonResult object from compare_strategies()
         output_dir: Directory to save plots (if None, saves to current directory)
         plots: List of plot types to generate. Options: 'times', 'speedups', 'all'
                If None, generates all plots.
-    
+
     Returns:
         Dictionary mapping plot type to file path (or None if generation failed)
-        
+
     Example:
         >>> from amorsize.comparison import compare_strategies, ComparisonConfig
         >>> configs = [

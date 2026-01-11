@@ -18,7 +18,7 @@ from .optimizer import OptimizationResult, optimize
 class ComparisonConfig:
     """
     Configuration for a single strategy to compare.
-    
+
     Attributes:
         name: Human-readable name for this configuration
         n_jobs: Number of workers (1 for serial)
@@ -59,7 +59,7 @@ class ComparisonConfig:
 class ComparisonResult:
     """
     Result of comparing multiple parallelization strategies.
-    
+
     Attributes:
         configs: List of configurations that were compared
         execution_times: Execution times for each config (seconds)
@@ -126,7 +126,7 @@ class ComparisonResult:
     def get_sorted_configs(self) -> List[Tuple[ComparisonConfig, float, float]]:
         """
         Get configurations sorted by execution time (fastest first).
-        
+
         Returns:
             List of tuples: (config, time, speedup) sorted by time
         """
@@ -144,11 +144,11 @@ def compare_strategies(
 ) -> ComparisonResult:
     """
     Compare multiple parallelization strategies by benchmarking each.
-    
+
     This function runs actual benchmarks for each configuration and compares
     their performance. This helps users understand trade-offs between different
     parallelization approaches and choose the best one for their workload.
-    
+
     Args:
         func: Function to benchmark (must accept single argument)
         data: Input data (list, generator, or iterator)
@@ -156,32 +156,32 @@ def compare_strategies(
         max_items: Maximum items to benchmark (limits runtime for large datasets)
         timeout: Maximum time for each benchmark in seconds (default: 120s)
         verbose: Print progress information (default: False)
-    
+
     Returns:
         ComparisonResult with execution times and speedups for each config
-    
+
     Raises:
         ValueError: If parameters are invalid
         TimeoutError: If any benchmark exceeds timeout
-    
+
     Example:
         >>> from amorsize import compare_strategies, ComparisonConfig
-        >>> 
+        >>>
         >>> def expensive_func(x):
         ...     return sum(i**2 for i in range(x))
-        >>> 
+        >>>
         >>> data = range(100, 1000)
-        >>> 
+        >>>
         >>> configs = [
         ...     ComparisonConfig("Serial", n_jobs=1),
         ...     ComparisonConfig("2 Workers", n_jobs=2, chunksize=50),
         ...     ComparisonConfig("4 Workers", n_jobs=4, chunksize=25),
         ...     ComparisonConfig("8 Workers", n_jobs=8, chunksize=13),
         ... ]
-        >>> 
+        >>>
         >>> result = compare_strategies(expensive_func, data, configs, verbose=True)
         >>> print(result)
-    
+
     Notes:
         - First config is used as baseline for speedup calculation
         - Configs are run in order provided
@@ -327,12 +327,12 @@ def compare_with_optimizer(
 ) -> Tuple[ComparisonResult, OptimizationResult]:
     """
     Compare optimizer recommendation against alternative strategies.
-    
+
     This convenience function:
     1. Gets optimizer recommendation
     2. Benchmarks optimizer recommendation + additional configs
     3. Returns comparison results and original optimization
-    
+
     Args:
         func: Function to benchmark
         data: Input data
@@ -340,10 +340,10 @@ def compare_with_optimizer(
         max_items: Maximum items to benchmark
         timeout: Maximum time per benchmark
         verbose: Print progress information
-    
+
     Returns:
         Tuple of (ComparisonResult, OptimizationResult)
-    
+
     Example:
         >>> result, opt = compare_with_optimizer(func, data, verbose=True)
         >>> print(f"Optimizer recommended: {opt.n_jobs} workers")

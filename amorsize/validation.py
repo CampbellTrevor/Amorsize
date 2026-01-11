@@ -25,7 +25,7 @@ from .system_info import (
 class ValidationResult:
     """
     Container for system validation results.
-    
+
     Attributes:
         checks_passed: Number of validation checks that passed
         checks_failed: Number of validation checks that failed
@@ -133,15 +133,15 @@ class ValidationResult:
 def validate_spawn_cost_measurement(verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """
     Validate that spawn cost measurement is working correctly.
-    
+
     This function verifies that:
     1. Spawn cost measurement completes without errors
     2. Measured value is within reasonable bounds (1ms - 5s)
     3. Measured value is consistent with OS estimate (within 10x)
-    
+
     Args:
         verbose: Print detailed progress if True
-    
+
     Returns:
         Tuple of (passed, details) where:
         - passed: True if validation passed
@@ -200,15 +200,15 @@ def validate_spawn_cost_measurement(verbose: bool = False) -> Tuple[bool, Dict[s
 def validate_chunking_overhead_measurement(verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """
     Validate that chunking overhead measurement is working correctly.
-    
+
     This function verifies that:
     1. Chunking overhead measurement completes without errors
     2. Measured value is within reasonable bounds (0.01ms - 100ms per chunk)
     3. Measurement is repeatable (variance < 50%)
-    
+
     Args:
         verbose: Print detailed progress if True
-    
+
     Returns:
         Tuple of (passed, details) where:
         - passed: True if validation passed
@@ -251,13 +251,13 @@ def validate_chunking_overhead_measurement(verbose: bool = False) -> Tuple[bool,
 def validate_pickle_overhead_measurement(verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """
     Validate that pickle overhead measurement is working correctly.
-    
+
     This function tests pickling of various data types to ensure
     serialization time measurement is accurate.
-    
+
     Args:
         verbose: Print detailed progress if True
-    
+
     Returns:
         Tuple of (passed, details) where:
         - passed: True if validation passed
@@ -309,15 +309,15 @@ def validate_pickle_overhead_measurement(verbose: bool = False) -> Tuple[bool, D
 def validate_system_resources(verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """
     Validate system resource detection.
-    
+
     This function verifies that:
     1. Physical core detection works
     2. Memory detection works
     3. Values are reasonable for a real system
-    
+
     Args:
         verbose: Print detailed progress if True
-    
+
     Returns:
         Tuple of (passed, details) where:
         - passed: True if validation passed
@@ -367,13 +367,13 @@ def _simple_test_func(x):
 def validate_multiprocessing_basic(verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     """
     Validate that basic multiprocessing functionality works.
-    
+
     This function tests that Pool.map() works correctly, which is
     essential for the optimizer to function.
-    
+
     Args:
         verbose: Print detailed progress if True
-    
+
     Returns:
         Tuple of (passed, details) where:
         - passed: True if validation passed
@@ -414,13 +414,13 @@ def validate_multiprocessing_basic(verbose: bool = False) -> Tuple[bool, Dict[st
 def validate_system(verbose: bool = False) -> ValidationResult:
     """
     Run complete system validation suite.
-    
+
     This function runs all validation checks and returns a comprehensive
     report on system health and measurement accuracy.
-    
+
     Args:
         verbose: Print detailed progress if True
-    
+
     Returns:
         ValidationResult object with complete validation report
     """

@@ -24,14 +24,14 @@ def process_in_batches(
 ) -> List[Any]:
     """
     Process data in batches to avoid memory exhaustion.
-    
+
     This function automatically divides data into batches, optimizes each batch
     independently, and processes them sequentially. This prevents memory exhaustion
     when function results are large and would otherwise accumulate in RAM.
-    
+
     This is the recommended solution when optimize() warns:
     "Result memory exceeds safety threshold - consider processing in batches"
-    
+
     Args:
         func: Function to apply to each data item. Must be picklable.
         data: Input data to process (list, range, iterator, etc.)
@@ -45,23 +45,23 @@ def process_in_batches(
         verbose: If True, print progress information for each batch.
         **optimize_kwargs: Additional keyword arguments passed to optimize(),
                           such as target_chunk_duration, profile, etc.
-    
+
     Returns:
         List of all results concatenated from all batches.
-        
+
     Raises:
         ValueError: If parameters are invalid (e.g., negative batch_size)
-        
+
     Examples:
         >>> # Process large dataset with large return objects
         >>> def process_image(path):
         ...     img = load_large_image(path)
         ...     return transform(img)  # Returns large result
-        >>> 
+        >>>
         >>> image_paths = list_all_images()  # 10,000 images
         >>> # Memory-safe batch processing
         >>> results = process_in_batches(process_image, image_paths, verbose=True)
-        
+
         >>> # Custom batch size
         >>> results = process_in_batches(
         ...     expensive_func,
@@ -69,7 +69,7 @@ def process_in_batches(
         ...     batch_size=1000,
         ...     verbose=True
         ... )
-        
+
         >>> # With profiling for first batch
         >>> results = process_in_batches(
         ...     func,
@@ -77,19 +77,19 @@ def process_in_batches(
         ...     profile=True,  # Passed to optimize()
         ...     verbose=True
         ... )
-    
+
     Notes:
         - Each batch is optimized independently using optimize()
         - Results are accumulated in memory after each batch
         - Total memory = batch_size * result_size (controlled by batch_size)
         - Progress is printed if verbose=True
         - Generator inputs are fully materialized (required for batching)
-    
+
     Memory Safety:
         The batch_size is automatically calculated to keep result memory under
         max_memory_percent of available RAM. This prevents OOM kills while
         still processing as much data as possible per batch.
-        
+
     Performance Characteristics:
         - Overhead: One optimize() call per batch (~10-50ms each)
         - Memory: Peak memory = batch_size * avg_result_size
@@ -215,22 +215,22 @@ def estimate_safe_batch_size(
 ) -> int:
     """
     Estimate safe batch size based on result size and available memory.
-    
+
     This is a helper function for users who want to manually calculate batch sizes
     before calling process_in_batches().
-    
+
     Args:
         result_size_bytes: Size of a single result in bytes
         max_memory_percent: Maximum percentage of available memory to use (default: 0.5)
-    
+
     Returns:
         Safe batch size (number of items)
-        
+
     Examples:
         >>> # Estimate batch size for 10MB results
         >>> batch_size = estimate_safe_batch_size(10 * 1024 * 1024)
         >>> print(f"Safe batch size: {batch_size} items")
-        
+
         >>> # More conservative (30% of memory)
         >>> batch_size = estimate_safe_batch_size(
         ...     result_size_bytes=50 * 1024 * 1024,

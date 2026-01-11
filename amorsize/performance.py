@@ -21,7 +21,7 @@ from .optimizer import OptimizationResult, optimize
 class WorkloadSpec:
     """
     Specification for a benchmark workload.
-    
+
     Attributes:
         name: Human-readable name for the workload
         description: What this workload tests
@@ -46,7 +46,7 @@ class WorkloadSpec:
 class PerformanceResult:
     """
     Result from running a performance benchmark.
-    
+
     Attributes:
         workload_name: Name of the workload that was tested
         optimizer_result: OptimizationResult from the optimizer
@@ -149,10 +149,10 @@ def _memory_intensive_func(n: int) -> List[int]:
 def get_standard_workloads() -> List[WorkloadSpec]:
     """
     Get the standard benchmark workloads for performance testing.
-    
+
     Returns:
         List of WorkloadSpec objects for different workload patterns
-        
+
     Standard Workloads:
         1. CPU-Intensive: Pure computation (prime checking)
         2. Mixed: Computation + light I/O
@@ -224,16 +224,16 @@ def run_performance_benchmark(
 ) -> PerformanceResult:
     """
     Run a performance benchmark on a specific workload.
-    
+
     Args:
         workload: WorkloadSpec defining the benchmark
         run_validation: Whether to run empirical validation (default: True)
         validate_max_items: Max items for validation benchmark (default: 50)
         verbose: Print progress information (default: False)
-    
+
     Returns:
         PerformanceResult with benchmark results and regression detection
-        
+
     Example:
         >>> workload = get_standard_workloads()[0]  # CPU-intensive
         >>> result = run_performance_benchmark(workload, verbose=True)
@@ -374,7 +374,7 @@ def run_performance_suite(
 ) -> Dict[str, PerformanceResult]:
     """
     Run the full performance benchmark suite.
-    
+
     Args:
         workloads: List of workloads to run (default: all standard workloads)
         run_validation: Whether to run empirical validation (default: True)
@@ -382,10 +382,10 @@ def run_performance_suite(
         verbose: Print progress information (default: False)
         save_results: Save results to JSON file (default: False)
         results_path: Path to save results (default: ./performance_results.json)
-    
+
     Returns:
         Dictionary mapping workload names to PerformanceResult objects
-        
+
     Example:
         >>> results = run_performance_suite(verbose=True, save_results=True)
         >>> passed = sum(1 for r in results.values() if r.passed)
@@ -461,15 +461,15 @@ def compare_performance_results(
 ) -> Dict[str, Any]:
     """
     Compare two performance benchmark results to detect regressions.
-    
+
     Args:
         baseline_path: Path to baseline results JSON file
         current_path: Path to current results JSON file
         regression_threshold: Threshold for regression detection (default: 10%)
-    
+
     Returns:
         Dictionary with comparison results and detected regressions
-        
+
     Example:
         >>> comparison = compare_performance_results(
         ...     Path("baseline.json"),

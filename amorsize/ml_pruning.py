@@ -79,7 +79,7 @@ MIN_TOTAL_SAMPLES_TO_KEEP = 20
 class PruningResult:
     """
     Result of training data pruning operation.
-    
+
     Attributes:
         pruned_data: List of training samples after pruning
         original_count: Number of samples before pruning
@@ -116,18 +116,18 @@ def _calculate_sample_importance(
 ) -> float:
     """
     Calculate importance score for a training sample.
-    
+
     Combines multiple factors:
     - Age: Newer samples are more relevant (exponential decay)
     - Performance: Samples with higher speedup are more valuable
     - Base score: All samples start with equal base importance
-    
+
     Args:
         sample: Training sample to score
         current_time: Current timestamp (for age calculation)
         age_weight: Weight factor for age component (0-1)
         performance_weight: Weight factor for performance component (0-1)
-    
+
     Returns:
         Importance score (higher = more important to keep)
     """
@@ -165,17 +165,17 @@ def _find_similar_samples(
 ) -> List[Set[int]]:
     """
     Group training samples into similarity clusters.
-    
+
     Uses distance-based clustering to identify groups of similar samples.
     Samples with feature distance < threshold are grouped together.
-    
+
     NOTE: Feature distance is in range [0, sqrt(12)] ≈ [0, 3.46]
     Default threshold of 1.0 means features must be quite similar (within ~29% of max distance)
-    
+
     Args:
         training_data: List of training samples
         similarity_threshold: Maximum distance for samples to be considered similar
-    
+
     Returns:
         List of sets, where each set contains indices of similar samples
     """
@@ -221,16 +221,16 @@ def _select_representative_samples(
 ) -> List[int]:
     """
     Select most representative samples from a cluster.
-    
+
     Uses importance scoring to keep the most valuable samples while
     maintaining diversity within the cluster.
-    
+
     Args:
         training_data: Full list of training samples
         cluster_indices: Indices of samples in this cluster
         max_samples: Maximum number of samples to keep from cluster
         current_time: Current timestamp for age calculation
-    
+
     Returns:
         List of indices to keep from this cluster
     """
@@ -302,40 +302,40 @@ def prune_training_data(
 ) -> PruningResult:
     """
     Prune training data to reduce memory while maintaining accuracy.
-    
+
     This function implements intelligent pruning that:
     1. Identifies clusters of similar training samples
     2. Keeps representative samples from each cluster
     3. Removes redundant samples that add little value
     4. Maintains diversity for better generalization
-    
+
     Pruning Strategy:
     - Similar samples are grouped into clusters
     - Within each cluster, keep 5-20 most important samples
     - Importance is based on recency and performance
     - Diversity is enforced to prevent overfitting
     - Absolute minimum of 20 samples kept to prevent over-pruning
-    
+
     Args:
         training_data: List of training samples to prune
         similarity_threshold: Distance threshold for similarity (0.0-3.5)
         target_pruning_ratio: Target fraction of samples to remove (0.0-1.0)
         min_samples: Minimum samples needed before pruning occurs
         verbose: If True, print diagnostic information
-    
+
     Returns:
         PruningResult with pruned data and statistics
-    
+
     Example:
         >>> training_data = load_ml_training_data()
         >>> result = prune_training_data(training_data, verbose=True)
         >>> print(f"Removed {result.removed_count} samples, kept {result.pruned_count}")
         >>> # Use result.pruned_data for predictions
-    
+
     Memory Savings:
         Typical: 30-40% reduction in training data size
         Depends on: Data redundancy, similarity threshold, target ratio
-    
+
     Accuracy Impact:
         Expected: < 5% degradation in prediction accuracy
         Maintained by: Diversity preservation, importance scoring
@@ -458,18 +458,18 @@ def auto_prune_training_data(
 ) -> PruningResult:
     """
     Automatically prune training data with smart defaults.
-    
+
     This is a convenience function that selects appropriate pruning parameters
     based on the dataset size and characteristics.
-    
+
     Args:
         training_data: List of training samples to prune
         aggressive: If True, use more aggressive pruning (50% target vs 35%)
         verbose: If True, print diagnostic information
-    
+
     Returns:
         PruningResult with pruned data and statistics
-    
+
     Example:
         >>> training_data = load_ml_training_data()
         >>> result = auto_prune_training_data(training_data)

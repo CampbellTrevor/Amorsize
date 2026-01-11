@@ -14,11 +14,11 @@ def get_picklability_error_message(
 ) -> str:
     """
     Generate an enhanced error message for function picklability issues.
-    
+
     Args:
         function_name: Name of the function that failed (if available)
         error_type: Type of pickling error (if available)
-    
+
     Returns:
         Detailed error message with actionable guidance
     """
@@ -58,12 +58,12 @@ def get_data_picklability_error_message(
 ) -> str:
     """
     Generate an enhanced error message for data picklability issues.
-    
+
     Args:
         index: Index of the unpicklable data item
         error_type: Type of pickling error (if available)
         item_type: Type of the unpicklable item (if available)
-    
+
     Returns:
         Detailed error message with actionable guidance
     """
@@ -113,13 +113,13 @@ def get_memory_constraint_message(
 ) -> str:
     """
     Generate an enhanced message for memory constraint issues.
-    
+
     Args:
         required_mb: Memory required per worker in MB
         available_mb: Available system memory in MB
         optimal_workers: Optimal worker count without memory constraints
         constrained_workers: Worker count limited by memory
-    
+
     Returns:
         Detailed message with actionable guidance
     """
@@ -159,13 +159,13 @@ def get_no_speedup_benefit_message(
 ) -> str:
     """
     Generate an enhanced message when parallelization provides no benefit.
-    
+
     Args:
         estimated_speedup: Estimated speedup (< 1.2 typically)
         avg_function_time_ms: Average function execution time in milliseconds
         overhead_ms: Overhead per worker in milliseconds
         min_function_time_ms: Minimum function time needed for benefit
-    
+
     Returns:
         Detailed message with actionable guidance
     """
@@ -204,12 +204,12 @@ def get_workload_too_small_message(
 ) -> str:
     """
     Generate an enhanced message when workload is too small to benefit.
-    
+
     Args:
         total_items: Total number of items to process
         speedup_with_2_workers: Speedup with 2 workers
         min_items_recommended: Minimum items recommended for parallel benefit
-    
+
     Returns:
         Detailed message with actionable guidance
     """
@@ -242,10 +242,10 @@ def get_workload_too_small_message(
 def get_sampling_failure_message(error: Exception) -> str:
     """
     Generate an enhanced message for sampling failures.
-    
+
     Args:
         error: The exception that occurred during sampling
-    
+
     Returns:
         Detailed message with actionable guidance
     """
@@ -289,11 +289,11 @@ def get_sampling_failure_message(error: Exception) -> str:
 def format_warning_with_guidance(warning_type: str, **kwargs) -> List[str]:
     """
     Format warnings with additional helpful guidance.
-    
+
     Args:
         warning_type: Type of warning (e.g., 'io_bound', 'heterogeneous')
         **kwargs: Additional context for the warning
-    
+
     Returns:
         List of warning lines with guidance
     """
@@ -334,7 +334,7 @@ def format_warning_with_guidance(warning_type: str, **kwargs) -> List[str]:
 def get_helpful_tips() -> str:
     """
     Get general helpful tips for optimization.
-    
+
     Returns:
         String with general optimization tips
     """

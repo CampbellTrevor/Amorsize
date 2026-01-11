@@ -21,10 +21,10 @@ from typing import Any, Dict, Optional, Tuple
 class PoolManager:
     """
     Manages a pool of reusable multiprocessing/threading workers.
-    
+
     This class maintains worker pools and reuses them across multiple
     optimize() calls, amortizing the expensive process spawn cost.
-    
+
     Features:
     - Automatic pool lifecycle management
     - Thread-safe pool access
@@ -32,7 +32,7 @@ class PoolManager:
     - Support for both multiprocessing and threading
     - Automatic cleanup on program exit
     - Idle timeout for resource conservation
-    
+
     Usage:
         >>> manager = PoolManager()
         >>> pool = manager.get_pool(n_jobs=4, executor_type="process")
@@ -47,7 +47,7 @@ class PoolManager:
     def __init__(self, idle_timeout: float = 300.0, enable_auto_cleanup: bool = True):
         """
         Initialize the pool manager.
-        
+
         Args:
             idle_timeout: Seconds of inactivity before automatically closing
                          idle pools to free resources (default: 300s = 5 minutes).
@@ -74,18 +74,18 @@ class PoolManager:
     ) -> Any:
         """
         Get or create a worker pool with the specified configuration.
-        
+
         If a pool with the same configuration exists and is not in use,
         it will be reused. Otherwise, a new pool is created.
-        
+
         Args:
             n_jobs: Number of workers in the pool
             executor_type: Type of executor ("process" or "thread")
             force_new: If True, always create a new pool instead of reusing
-        
+
         Returns:
             A multiprocessing.Pool or ThreadPoolExecutor instance
-        
+
         Raises:
             ValueError: If n_jobs <= 0 or executor_type is invalid
             RuntimeError: If manager has been shut down
@@ -135,11 +135,11 @@ class PoolManager:
     def _is_pool_alive(self, pool: Any, executor_type: str) -> bool:
         """
         Check if a pool is still alive and functional.
-        
+
         Args:
             pool: The pool to check
             executor_type: Type of executor ("process" or "thread")
-        
+
         Returns:
             True if pool is alive, False otherwise
         """
@@ -164,7 +164,7 @@ class PoolManager:
     def _cleanup_idle_pools(self):
         """
         Clean up pools that have been idle for longer than idle_timeout.
-        
+
         This is called internally before creating new pools to free resources.
         Must be called with _lock held.
         """
@@ -189,7 +189,7 @@ class PoolManager:
     def _close_pool(self, pool: Any, executor_type: str):
         """
         Safely close a pool.
-        
+
         Args:
             pool: The pool to close
             executor_type: Type of executor ("process" or "thread")
@@ -207,10 +207,10 @@ class PoolManager:
     def release_pool(self, n_jobs: int, executor_type: str = "process"):
         """
         Release a pool back to the manager (no-op, pools are managed automatically).
-        
+
         This method exists for API completeness but does nothing since pools
         are automatically managed and reused.
-        
+
         Args:
             n_jobs: Number of workers in the pool
             executor_type: Type of executor ("process" or "thread")
@@ -225,10 +225,10 @@ class PoolManager:
     def shutdown(self, force: bool = False):
         """
         Shutdown the pool manager and close all managed pools.
-        
+
         This should be called when the manager is no longer needed to ensure
         clean resource cleanup.
-        
+
         Args:
             force: If True, terminate pools immediately without waiting for
                   tasks to complete (default: False).
@@ -260,7 +260,7 @@ class PoolManager:
     def get_stats(self) -> Dict[str, Any]:
         """
         Get statistics about managed pools.
-        
+
         Returns:
             Dictionary with pool statistics:
             - active_pools: Number of pools currently managed
@@ -287,7 +287,7 @@ class PoolManager:
     def clear(self):
         """
         Clear all pools immediately, forcing recreation on next get_pool().
-        
+
         This is useful for testing or when you want to ensure fresh pools.
         """
         with self._lock:
@@ -318,13 +318,13 @@ _global_manager_lock = threading.Lock()
 def get_global_pool_manager() -> PoolManager:
     """
     Get the global pool manager instance.
-    
+
     This provides a singleton pool manager that can be used across the
     entire application for pool reuse.
-    
+
     Returns:
         The global PoolManager instance
-    
+
     Example:
         >>> from amorsize.pool_manager import get_global_pool_manager
         >>> manager = get_global_pool_manager()
@@ -351,19 +351,19 @@ def managed_pool(
 ):
     """
     Context manager for managed pool usage.
-    
+
     Automatically gets a pool from the manager and ensures it's returned
     (though pools are managed automatically, this provides clean API).
-    
+
     Args:
         n_jobs: Number of workers
         executor_type: Type of executor ("process" or "thread")
         manager: Specific pool manager to use (default: None = use global)
         use_global: If True and manager is None, use global manager (default: True)
-    
+
     Yields:
         A pool instance (Pool or ThreadPoolExecutor)
-    
+
     Example:
         >>> with managed_pool(n_jobs=4) as pool:
         ...     results = pool.map(func, data, chunksize=10)
@@ -393,7 +393,7 @@ def managed_pool(
 def shutdown_global_pool_manager():
     """
     Shutdown the global pool manager.
-    
+
     This should be called when the application is shutting down to ensure
     clean resource cleanup. It's automatically registered with atexit, but
     can be called explicitly for more control.

@@ -23,7 +23,7 @@ _CACHED_ENVIRONMENT_VARS: Optional[Dict[str, str]] = None
 def _clear_workload_caches():
     """
     Clear cached workload characteristic detection results.
-    
+
     This is primarily for testing purposes to ensure tests don't
     interfere with each other's cached values.
     """
@@ -90,10 +90,10 @@ class SamplingResult:
 def check_picklability(func: Callable) -> bool:
     """
     Check if a function can be pickled.
-    
+
     Args:
         func: Function to check
-    
+
     Returns:
         True if the function is picklable, False otherwise
     """
@@ -107,26 +107,26 @@ def check_picklability(func: Callable) -> bool:
 def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception]]:
     """
     Check if data items can be pickled (required for multiprocessing).
-    
+
     This function tests a sample of data items to ensure they can be serialized
     by pickle, which is necessary for multiprocessing.Pool.map() to work.
     Common unpicklable objects include: thread locks, file handles, database
     connections, lambdas, and objects with __getstate__ that raises errors.
-    
+
     Args:
         data_items: List of data items to check
-    
+
     Returns:
         Tuple of (all_picklable, first_unpicklable_index, exception)
         - all_picklable: True if all items can be pickled, False otherwise
         - first_unpicklable_index: Index of first unpicklable item, or None
         - exception: The exception raised during pickling, or None
-        
+
     Examples:
         >>> data = [1, 2, 3, 4, 5]
         >>> check_data_picklability(data)
         (True, None, None)
-        
+
         >>> import threading
         >>> data_with_lock = [1, threading.Lock(), 3]
         >>> picklable, idx, exc = check_data_picklability(data_with_lock)
@@ -147,23 +147,23 @@ def check_data_picklability(data_items: List[Any]) -> Tuple[bool, Optional[int],
 def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bool, Optional[int], Optional[Exception], List[Tuple[float, int]]]:
     """
     Check if data items can be pickled AND measure pickle time/size for each item.
-    
+
     This is an optimized version of check_data_picklability that also collects
     the pickle measurements, avoiding redundant pickle.dumps() calls in perform_dry_run().
-    
+
     Memory Optimization:
         Only stores timing and size measurements, not the pickled bytes themselves.
         This significantly reduces memory usage for large objects (numpy arrays,
         dataframes, etc.) during the optimization phase.
-    
+
     Performance Optimization (Iteration 89):
         - Pre-allocates measurements list to avoid dynamic resizing
         - Uses indexed assignment instead of append()
         - Calculates timing delta inline to reduce perf_counter() overhead (~6% faster)
-    
+
     Args:
         data_items: List of data items to check
-    
+
     Returns:
         Tuple of (all_picklable, first_unpicklable_index, exception, measurements)
         - all_picklable: True if all items can be pickled, False otherwise
@@ -196,13 +196,13 @@ def check_data_picklability_with_measurements(data_items: List[Any]) -> Tuple[bo
 def detect_parallel_libraries() -> List[str]:
     """
     Detect commonly used parallel computing libraries that are currently loaded.
-    
+
     This helps identify potential nested parallelism issues where the function
     being optimized may already use internal parallelism.
-    
+
     Returns:
         List of detected parallel library names
-        
+
     Libraries detected:
         - numpy (with MKL/OpenBLAS threading)
         - scipy (often uses numpy's BLAS)
@@ -211,12 +211,12 @@ def detect_parallel_libraries() -> List[str]:
         - tensorflow (GPU/CPU parallelism)
         - torch/pytorch (GPU/CPU parallelism)
         - dask (distributed computing)
-        
+
     Note:
         This function excludes concurrent.futures and multiprocessing.pool
         because they are loaded by Amorsize itself and don't indicate that
         the user's function uses internal parallelism.
-        
+
     Performance:
         Results are cached after first call. Modules typically stay in
         sys.modules for the process lifetime, though they can be removed
@@ -256,10 +256,10 @@ def detect_parallel_libraries() -> List[str]:
 def check_parallel_environment_vars() -> Dict[str, str]:
     """
     Check environment variables that control parallel library behavior.
-    
+
     Returns:
         Dictionary of relevant environment variable names and their values
-        
+
     Variables checked:
         - OMP_NUM_THREADS: OpenMP thread count
         - MKL_NUM_THREADS: Intel MKL thread count
@@ -267,7 +267,7 @@ def check_parallel_environment_vars() -> Dict[str, str]:
         - NUMEXPR_NUM_THREADS: NumExpr thread count
         - VECLIB_MAXIMUM_THREADS: macOS Accelerate framework
         - NUMBA_NUM_THREADS: Numba JIT thread count
-        
+
     Performance:
         Results are cached after first call. In typical usage, environment
         variables are set before program execution and remain constant.
@@ -298,20 +298,20 @@ def check_parallel_environment_vars() -> Dict[str, str]:
 def estimate_internal_threads(parallel_libraries: List[str], thread_activity: Dict[str, int], env_vars: Dict[str, str]) -> int:
     """
     Estimate the number of internal threads used by the function.
-    
+
     This function attempts to determine how many threads the function
     uses internally for parallel computation. This is important for
     avoiding thread oversubscription when combining multiprocessing
     with internally-threaded functions.
-    
+
     Args:
         parallel_libraries: List of detected parallel libraries
         thread_activity: Dict with thread count before/during/after execution
         env_vars: Environment variables controlling thread counts
-    
+
     Returns:
         Estimated number of internal threads per worker (minimum 1)
-        
+
     Algorithm:
         1. Check explicit thread count from environment variables
         2. Use observed thread delta if available
@@ -354,24 +354,24 @@ def estimate_internal_threads(parallel_libraries: List[str], thread_activity: Di
 def detect_workload_type(func: Callable, sample_items: List[Any]) -> Tuple[str, float]:
     """
     Detect if a workload is CPU-bound, I/O-bound, or mixed.
-    
+
     This function measures CPU time vs wall-clock time to determine workload characteristics.
     CPU-bound tasks use CPU constantly, while I/O-bound tasks wait for external resources.
-    
+
     Args:
         func: Function to analyze
         sample_items: Sample data items to test with
-    
+
     Returns:
         Tuple of (workload_type, cpu_time_ratio) where:
         - workload_type: 'cpu_bound', 'io_bound', or 'mixed'
         - cpu_time_ratio: Ratio of CPU time to wall-clock time (0.0 to 1.0+)
-    
+
     Classification:
         - cpu_bound: cpu_time_ratio >= 0.7 (70%+ CPU utilization)
         - mixed: 0.3 <= cpu_time_ratio < 0.7 (30-70% CPU utilization)
         - io_bound: cpu_time_ratio < 0.3 (<30% CPU utilization)
-    
+
     Rationale:
         - CPU-bound: Benefits from multiprocessing (parallel computation)
         - I/O-bound: Benefits from threading or asyncio (no GIL during I/O)
@@ -450,18 +450,18 @@ def detect_workload_type(func: Callable, sample_items: List[Any]) -> Tuple[str, 
 def detect_thread_activity(func: Callable, sample_item: Any) -> Dict[str, int]:
     """
     Detect threading activity by monitoring thread count before/during/after function execution.
-    
+
     Args:
         func: Function to test
         sample_item: Sample data item to execute function on
-    
+
     Returns:
         Dictionary with thread count information:
         - 'before': Thread count before execution
         - 'during': Peak thread count during execution
         - 'after': Thread count after execution
         - 'delta': Maximum increase in thread count (during - before)
-        
+
     If delta > 0, the function likely creates threads internally, indicating
     potential nested parallelism issues.
     """
@@ -503,30 +503,30 @@ def detect_thread_activity(func: Callable, sample_item: Any) -> Dict[str, int]:
 def safe_slice_data(data: Union[List, Iterator], sample_size: int) -> Tuple[List, Union[List, Iterator], bool]:
     """
     Safely extract a sample from data, preserving iterators when possible.
-    
+
     Args:
         data: Input data (list, iterator, or generator)
         sample_size: Number of items to sample
-    
+
     Returns:
         Tuple of (sample_list, reconstructed_data, is_generator) where:
         - sample_list: List of sampled items
         - reconstructed_data: Original data (List) or remaining iterator (Iterator)
         - is_generator: True if data was a generator/iterator, False otherwise
-        
+
     Note on Return Type:
         The second element type depends on input:
         - If data is a list: returns the original list (unmodified)
         - If data is an iterator: returns the remaining unconsumed iterator
-        
+
         For iterators, use reconstruct_iterator(sample, remaining) to rebuild
         the full sequence.
-        
+
     Generator Handling:
         For generators/iterators, we consume items for sampling but return
         them along with the sample. The caller must use itertools.chain
         to reconstruct the full iterator: chain(sample, remaining_data).
-        
+
         This prevents the "Iterator Consumption" problem where dry runs
         would destroy user data.
     """
@@ -554,7 +554,7 @@ def perform_dry_run(
 ) -> SamplingResult:
     """
     Perform a dry run of the function on a small sample of data.
-    
+
     Args:
         func: The function to test
         data: The input data
@@ -564,18 +564,18 @@ def perform_dry_run(
         enable_memory_tracking: If True, use tracemalloc to track peak memory
                                usage. Set to False to skip memory tracking overhead
                                for faster optimization (default: True)
-    
+
     Returns:
         SamplingResult with timing and memory information, plus sample and
         remaining data for generator reconstruction. If enable_function_profiling
         is True, also includes function_profiler_stats with cProfile statistics.
         If enable_memory_tracking is False, peak_memory will be 0.
-        
+
     Important:
         For generators, this function stores the consumed sample and the
         remaining iterator, allowing callers to reconstruct the full dataset
         using itertools.chain(sample, remaining_data).
-        
+
     Performance:
         Setting enable_memory_tracking=False skips tracemalloc initialization
         and provides ~2-3% faster dry run performance. Memory-based worker
@@ -900,11 +900,11 @@ def perform_dry_run(
 def estimate_total_items(data: Union[List, Iterator], sample_consumed: bool) -> int:
     """
     Estimate the total number of items in the data.
-    
+
     Args:
         data: Input data
         sample_consumed: Whether the sample was consumed from a generator
-    
+
     Returns:
         Estimated total items, or -1 if unknown
     """
@@ -918,17 +918,17 @@ def estimate_total_items(data: Union[List, Iterator], sample_consumed: bool) -> 
 def reconstruct_iterator(sample: List[Any], remaining_data: Union[Iterator, List, range]) -> Iterator:
     """
     Reconstruct an iterator by chaining the sample back with remaining data.
-    
+
     This is critical for generators: after sampling, we must restore the
     consumed items so the user gets their full dataset back.
-    
+
     Args:
         sample: Items that were consumed during sampling
         remaining_data: The rest of the iterator, or full list/range
-    
+
     Returns:
         Iterator that yields sample items first, then remaining items
-        
+
     Example:
         >>> def gen():
         ...     for i in range(10):

@@ -24,7 +24,7 @@ from .system_info import (
 class ConfigData:
     """
     Container for configuration data with metadata.
-    
+
     Stores parallelization parameters along with system information,
     timestamps, and optional user notes for documentation.
     """
@@ -45,7 +45,7 @@ class ConfigData:
     ):
         """
         Initialize configuration data.
-        
+
         Args:
             n_jobs: Number of workers
             chunksize: Items per chunk
@@ -177,18 +177,18 @@ def save_config(
 ) -> None:
     """
     Save configuration to file.
-    
+
     Args:
         config: ConfigData object to save
         filepath: Path to save file
         format: File format ('json', 'yaml', or 'auto' to detect from extension)
         overwrite: If True, overwrite existing file. If False, raise error.
-    
+
     Raises:
         FileExistsError: If file exists and overwrite=False
         ValueError: If format is unsupported
         IOError: If file cannot be written
-    
+
     Examples:
         >>> config = ConfigData(n_jobs=4, chunksize=100)
         >>> save_config(config, 'my_config.json')
@@ -240,19 +240,19 @@ def save_config(
 def load_config(filepath: Union[str, Path], format: str = "auto") -> ConfigData:
     """
     Load configuration from file.
-    
+
     Args:
         filepath: Path to configuration file
         format: File format ('json', 'yaml', or 'auto' to detect from extension)
-    
+
     Returns:
         ConfigData object loaded from file
-    
+
     Raises:
         FileNotFoundError: If file doesn't exist
         ValueError: If format is unsupported or file is invalid
         IOError: If file cannot be read
-    
+
     Examples:
         >>> config = load_config('my_config.json')
         >>> print(f"Using n_jobs={config.n_jobs}, chunksize={config.chunksize}")
@@ -316,13 +316,13 @@ def load_config(filepath: Union[str, Path], format: str = "auto") -> ConfigData:
 def list_configs(directory: Union[str, Path] = ".") -> list:
     """
     List all configuration files in a directory.
-    
+
     Args:
         directory: Directory to search (default: current directory)
-    
+
     Returns:
         List of configuration file paths
-    
+
     Examples:
         >>> configs = list_configs('configs/')
         >>> for config_path in configs:
@@ -345,10 +345,10 @@ def list_configs(directory: Union[str, Path] = ".") -> list:
 def get_default_config_dir() -> Path:
     """
     Get default directory for storing configurations.
-    
+
     Returns:
         Path to default config directory (~/.amorsize/configs)
-    
+
     The directory is created if it doesn't exist.
     """
     config_dir = Path.home() / '.amorsize' / 'configs'

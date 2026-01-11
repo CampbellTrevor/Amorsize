@@ -3,7 +3,17 @@ Main optimizer module that coordinates the analysis and returns optimal paramete
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 if TYPE_CHECKING:
     import pstats
@@ -47,7 +57,7 @@ _RECOMMENDATION_EXTRACT_SERIALIZABLE = "Extract only serializable data from comp
 class DiagnosticProfile:
     """
     Comprehensive diagnostic information about optimization decisions.
-    
+
     This class captures all the factors that influenced the optimizer's
     decision, providing transparency into the decision-making process.
     """
@@ -137,7 +147,7 @@ class DiagnosticProfile:
     def explain_decision(self) -> str:
         """
         Generate a detailed human-readable explanation of the optimization decision.
-        
+
         Returns:
             Multi-line string with comprehensive diagnostic information
         """
@@ -276,7 +286,7 @@ class OptimizationResult:
     def explain(self) -> str:
         """
         Get detailed diagnostic explanation of the optimization decision.
-        
+
         Returns:
             Human-readable diagnostic report, or message if profiling wasn't enabled
         """
@@ -288,10 +298,10 @@ class OptimizationResult:
         """
         Display cProfile function profiling results showing where time is spent
         inside the user's function.
-        
+
         This shows the internal performance characteristics of your function,
         helping you identify bottlenecks and optimization opportunities.
-        
+
         Args:
             sort_by: Sort key for stats. Common options:
                     'cumulative' - Total time in function + subcalls (default)
@@ -299,11 +309,11 @@ class OptimizationResult:
                     'calls' - Number of function calls
                     'name' - Function name
             limit: Maximum number of lines to display (default: 20)
-        
+
         Example:
             >>> result = optimize(my_func, data, enable_function_profiling=True)
             >>> result.show_function_profile(sort_by='cumulative', limit=30)
-        
+
         Note:
             Requires enable_function_profiling=True in optimize() call.
         """
@@ -324,12 +334,12 @@ class OptimizationResult:
     def save_function_profile(self, filepath: str, sort_by: str = 'cumulative', limit: int = 50) -> None:
         """
         Save cProfile function profiling results to a file.
-        
+
         Args:
             filepath: Path to save profile report
             sort_by: Sort key for stats (see show_function_profile for options)
             limit: Maximum number of lines to include (default: 50)
-        
+
         Example:
             >>> result = optimize(my_func, data, enable_function_profiling=True)
             >>> result.save_function_profile('function_profile.txt')
@@ -365,13 +375,13 @@ class OptimizationResult:
     ) -> None:
         """
         Save this optimization result as a reusable configuration file.
-        
+
         Args:
             filepath: Path to save configuration file
             function_name: Optional name of the function
             notes: Optional notes about this configuration
             overwrite: If True, overwrite existing file
-        
+
         Examples:
             >>> result = optimize(my_func, data)
             >>> result.save_config('my_config.json', function_name='my_func')
@@ -422,7 +432,7 @@ def _validate_optimize_parameters(
 ) -> Optional[str]:
     """
     Validate input parameters for the optimize() function.
-    
+
     Args:
         func: Function to validate
         data: Data to validate
@@ -440,7 +450,7 @@ def _validate_optimize_parameters(
         enable_memory_tracking: Enable memory tracking flag to validate
         use_ml_prediction: Use ML prediction flag to validate
         ml_confidence_threshold: ML confidence threshold to validate
-    
+
     Returns:
         None if all parameters are valid, error message string otherwise
     """
@@ -527,19 +537,19 @@ def calculate_amdahl_speedup(
 ) -> float:
     """
     Calculate realistic speedup using Amdahl's Law with overhead accounting.
-    
+
     This implements a refined version of Amdahl's Law that accounts for:
     1. Process spawn overhead (one-time cost per worker)
     2. Input data pickle overhead (per-item serialization cost for data → workers)
     3. Output result pickle overhead (per-item serialization cost for results → main)
     4. Chunking overhead (per-chunk communication cost)
     5. IPC overlap factor (pipelining in Pool.map reduces effective IPC overhead)
-    
+
     The formula breaks execution into:
     - Serial portion: spawn costs + partial IPC overhead
     - Parallel portion: actual computation time divided across workers
     - IPC overhead: pickle time with overlap factor accounting for pipelining
-    
+
     Args:
         total_compute_time: Total serial computation time (seconds)
         pickle_overhead_per_item: Time to pickle one result (seconds)
@@ -549,13 +559,13 @@ def calculate_amdahl_speedup(
         chunksize: Items per chunk
         total_items: Total number of items to process
         data_pickle_overhead_per_item: Time to pickle one input data item (seconds)
-    
+
     Returns:
         Estimated speedup factor (>1.0 means parallelization helps)
-        
+
     Mathematical Model:
         Serial Time = T_compute
-        
+
         Parallel Time = T_spawn + T_parallel_compute + T_data_ipc_effective + T_result_ipc_effective + T_chunking
         where:
             T_spawn = spawn_cost * n_jobs (one-time startup)
@@ -564,13 +574,13 @@ def calculate_amdahl_speedup(
             T_result_ipc_effective = pickle_overhead * total_items * overlap_factor
             T_chunking = chunking_overhead * num_chunks (task distribution)
             overlap_factor = 0.5 (conservative estimate of IPC/compute overlap)
-        
+
         The overlap factor accounts for pipelining in Pool.map() where:
         - Initial data distribution happens before any computation (serial)
         - Middle chunks: data pickling overlaps with worker computation
         - Final result collection happens after all computation (serial)
         - Conservative factor of 0.5 means we assume ~50% effective overlap
-        
+
         This provides a more accurate model than treating all IPC as purely serial,
         while remaining conservative enough to avoid over-optimistic predictions.
     """
@@ -626,10 +636,10 @@ def calculate_amdahl_speedup(
 def _get_unpicklable_data_info(sampling_result) -> Tuple[Optional[str], Optional[str]]:
     """
     Extract error type and item type from unpicklable data in sampling result.
-    
+
     Args:
         sampling_result: The SamplingResult object containing unpicklable data info
-        
+
     Returns:
         Tuple of (error_type, item_type) or (None, None) if not available
     """
@@ -672,38 +682,38 @@ def optimize(
 ) -> OptimizationResult:
     """
     Analyze a function and data to determine optimal parallelization parameters.
-    
+
     This function performs a heuristic analysis to prevent "Negative Scaling"
     where parallelism is slower than serial execution, following these steps:
-    
+
     1. Dry Run Sampling: Execute func on sample_size items to measure timing
     2. Overhead Estimation: Calculate process spawn costs (OS-dependent)
     3. Optimization: Determine optimal chunksize and n_jobs based on:
        - Target chunk duration (default: 0.2s to amortize IPC overhead)
        - Physical cores (not hyperthreaded logical cores)
        - Memory constraints (prevents OOM)
-    
+
     Fail-Safe Protocol:
         If ANY step fails (pickling error, sampling error, etc.), the function
         returns n_jobs=1 (serial execution) rather than crashing your program.
         Safety over speed is the priority.
-    
+
     Generator Handling:
         When data is a generator, the sampling process consumes items from it.
         To preserve the full dataset, the consumed items are automatically
         reconstructed using itertools.chain. The reconstructed data is available
         in the result.data attribute. For list inputs, result.data will contain
         the original list unchanged.
-        
+
         IMPORTANT: When using generators, always use result.data instead of
         the original generator to ensure no data is lost:
-        
+
         >>> gen = (x for x in range(1000))
         >>> result = optimize(func, gen)
         >>> # Use result.data, NOT gen!
         >>> with Pool(result.n_jobs) as pool:
         ...     results = pool.map(func, result.data, chunksize=result.chunksize)
-    
+
     Args:
         func: The function to parallelize. Must accept a single argument and
               be picklable (no lambdas, no local functions with closures).
@@ -744,7 +754,7 @@ def optimize(
         prefer_threads_for_io: If True, automatically use ThreadPoolExecutor instead of
                 multiprocessing.Pool for I/O-bound workloads (< 30% CPU utilization).
                 Threading is typically faster for I/O-bound tasks due to lower overhead
-                and better handling of I/O operations that release the GIL. 
+                and better handling of I/O operations that release the GIL.
                 (default: True). Set to False to always use multiprocessing.
                 Must be a boolean.
         enable_function_profiling: If True, use Python's cProfile to profile the function
@@ -791,11 +801,11 @@ def optimize(
                 adds ~10-20ms overhead for topology detection (cached after first call).
                 (default: False for backward compatibility). Must be a boolean.
                 Recommended for: large core counts (>8), NUMA systems, memory-intensive workloads.
-    
+
     Raises:
         ValueError: If any parameter fails validation (e.g., None func, negative
                    sample_size, non-iterable data, invalid type for boolean params)
-    
+
     Returns:
         OptimizationResult with:
             - n_jobs: Recommended number of workers
@@ -807,7 +817,7 @@ def optimize(
             - warnings: List of constraints or issues
             - profile: DiagnosticProfile object (if profile=True)
             - function_profiler_stats: cProfile stats (if enable_function_profiling=True)
-    
+
     Example:
         >>> def expensive_function(x):
         ...     result = 0
@@ -822,7 +832,7 @@ def optimize(
         >>> with Pool(result.n_jobs) as pool:
         ...     # Use result.data to ensure generators are properly reconstructed
         ...     results = pool.map(expensive_function, result.data, chunksize=result.chunksize)
-        
+
         >>> # For detailed diagnostic analysis:
         >>> result = optimize(expensive_function, data, profile=True)
         >>> print(result.explain())  # Shows comprehensive breakdown

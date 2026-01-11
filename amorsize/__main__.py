@@ -56,7 +56,7 @@ _USE_COLOR = None
 def should_use_color() -> bool:
     """
     Determine if colored output should be used.
-    
+
     Returns:
         True if colors should be used, False otherwise
     """
@@ -90,11 +90,11 @@ def set_color_mode(enabled: bool):
 def colorize(text: str, color: str) -> str:
     """
     Apply color to text if colors are enabled.
-    
+
     Args:
         text: Text to colorize
         color: Color code from Colors class
-        
+
     Returns:
         Colored text if colors enabled, otherwise plain text
     """
@@ -106,16 +106,16 @@ def colorize(text: str, color: str) -> str:
 def load_function(function_path: str) -> Callable:
     """
     Load a function from a module path.
-    
+
     Args:
         function_path: Path in format "module.submodule.function" or "module:function"
-        
+
     Returns:
         The loaded function
-        
+
     Raises:
         ValueError: If function cannot be loaded
-        
+
     Examples:
         >>> func = load_function("math.sqrt")
         >>> func = load_function("mymodule:myfunction")
@@ -149,13 +149,13 @@ def load_function(function_path: str) -> Callable:
 def extract_function_name(function_path: str) -> str:
     """
     Extract the function name from a module path.
-    
+
     Args:
         function_path: Path in format "module.function" or "module:function"
-    
+
     Returns:
         Function name only (last component)
-    
+
     Examples:
         >>> extract_function_name("math.factorial")
         'factorial'
@@ -173,13 +173,13 @@ def extract_function_name(function_path: str) -> str:
 def load_data(args: argparse.Namespace) -> List[Any]:
     """
     Load data based on command-line arguments.
-    
+
     Args:
         args: Parsed command-line arguments
-        
+
     Returns:
         List of data items
-        
+
     Priority order:
         1. --data-range: Generate range(N)
         2. --data-file: Read from file (one item per line)
@@ -214,7 +214,7 @@ def load_data(args: argparse.Namespace) -> List[Any]:
 def format_output_human(result, mode: str, args: argparse.Namespace):
     """
     Format optimization result in human-readable form.
-    
+
     Args:
         result: OptimizationResult or (results, OptimizationResult) tuple
         mode: "optimize" or "execute"
@@ -303,10 +303,10 @@ def format_output_human(result, mode: str, args: argparse.Namespace):
 def _generate_optimization_tips(result) -> List[str]:
     """
     Generate actionable optimization tips based on the result.
-    
+
     Args:
         result: OptimizationResult
-        
+
     Returns:
         List of tip strings
     """
@@ -375,7 +375,7 @@ def _generate_optimization_tips(result) -> List[str]:
 def _show_overhead_breakdown(profile) -> None:
     """
     Show detailed overhead breakdown.
-    
+
     Args:
         profile: DiagnosticProfile with overhead measurements
     """
@@ -417,7 +417,7 @@ def _show_overhead_breakdown(profile) -> None:
 def _show_user_friendly_explanation(result) -> None:
     """
     Show user-friendly explanation of the optimization decision.
-    
+
     Args:
         result: OptimizationResult
     """
@@ -487,7 +487,7 @@ def _show_user_friendly_explanation(result) -> None:
 def format_output_json(result, mode: str):
     """
     Format optimization result as JSON.
-    
+
     Args:
         result: OptimizationResult or (results, OptimizationResult) tuple
         mode: "optimize" or "execute"
@@ -523,7 +523,7 @@ def format_output_json(result, mode: str):
 def _set_color_mode_from_args(args: argparse.Namespace):
     """
     Set color mode based on command-line arguments.
-    
+
     Args:
         args: Command-line arguments
     """
@@ -856,15 +856,15 @@ def cmd_tune(args: argparse.Namespace):
 def parse_strategy_config(config_str: str) -> ComparisonConfig:
     """
     Parse a strategy config from command line string.
-    
+
     Format: "name:n_jobs,chunksize,executor" or "n_jobs,chunksize"
-    
+
     Args:
         config_str: Strategy specification string
-        
+
     Returns:
         ComparisonConfig object
-        
+
     Examples:
         "2,50" -> ComparisonConfig("2 processes", n_jobs=2, chunksize=50)
         "Custom:4,25,thread" -> ComparisonConfig("Custom", n_jobs=4, chunksize=25, executor_type="thread")
@@ -1228,34 +1228,34 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   # Validate system health and measurements
   python -m amorsize validate
-  
+
   # Analyze optimal parameters for a function
   python -m amorsize optimize math.sqrt --data-range 1000
-  
+
   # Execute with optimization
   python -m amorsize execute mymodule.process_item --data-file input.txt
-  
+
   # Compare multiple strategies
   python -m amorsize compare math.factorial --data-range 100 --configs "2,50" "4,25" "8,10"
-  
+
   # Compare with optimizer recommendation
   python -m amorsize compare mymodule.func --data-range 500 --include-optimizer --configs "4,20"
-  
+
   # Get detailed profiling
   python -m amorsize optimize math.factorial --data-range 100 --profile
-  
+
   # Show user-friendly explanation with tips
   python -m amorsize optimize math.sqrt --data-range 1000 --explain --tips
-  
+
   # Show overhead breakdown
   python -m amorsize optimize mymodule.func --data-range 100 --show-overhead
-  
+
   # Quiet mode (just the recommendation)
   python -m amorsize optimize math.sqrt --data-range 1000 --quiet
-  
+
   # Output as JSON for scripting
   python -m amorsize optimize math.sqrt --data-range 1000 --json
-  
+
   # Read data from stdin
   cat data.txt | python -m amorsize execute mymodule:process --data-stdin
         """

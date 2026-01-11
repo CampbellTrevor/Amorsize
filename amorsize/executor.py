@@ -31,7 +31,7 @@ def execute(
 ) -> Union[List[Any], tuple]:
     """
     Optimize and execute a function on data in parallel.
-    
+
     This is a convenience function that combines optimize() and multiprocessing.Pool
     in a single call. It automatically:
     1. Analyzes the function and data to find optimal parameters
@@ -39,12 +39,12 @@ def execute(
     3. Executes the function with the optimal chunksize
     4. Returns the results
     5. Optionally updates ML model with actual execution results (online learning)
-    
+
     This eliminates the boilerplate of manually creating and managing the Pool.
-    
+
     For serial execution (n_jobs=1), the function is executed directly without
     creating a Pool, which is more efficient.
-    
+
     Args:
         func: The function to parallelize. Must accept a single argument and
               be picklable (no lambdas, no local functions with closures).
@@ -66,25 +66,25 @@ def execute(
         enable_online_learning: If True, update ML model with actual execution results
                 to improve future predictions. This helps the model learn from real
                 workload behavior over time (default: False).
-    
+
     Returns:
         List of results from applying func to each item in data.
         If return_optimization_result=True, returns tuple of (results, OptimizationResult).
-    
+
     Raises:
         ValueError: If any parameter fails validation (same as optimize()).
-    
+
     Example:
         >>> def expensive_function(x):
         ...     result = 0
         ...     for i in range(1000):
         ...         result += x ** 2
         ...     return result
-        
+
         >>> data = range(10000)
         >>> results = execute(expensive_function, data, verbose=True)
         >>> print(f"Processed {len(results)} items")
-        
+
         >>> # To get optimization details:
         >>> results, opt_result = execute(
         ...     expensive_function,
@@ -93,7 +93,7 @@ def execute(
         ...     profile=True
         ... )
         >>> print(opt_result.explain())
-        
+
         >>> # To enable online learning (improves ML predictions over time):
         >>> results = execute(
         ...     expensive_function,
@@ -101,7 +101,7 @@ def execute(
         ...     enable_online_learning=True,
         ...     verbose=True
         ... )
-    
+
     Note:
         This function creates a new Pool for each call. If you need to reuse
         a Pool across multiple calls, use optimize() directly and manage

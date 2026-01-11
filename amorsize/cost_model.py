@@ -54,10 +54,10 @@ class SystemTopology:
 def _parse_size_string(size_str: str) -> int:
     """
     Parse a size string like '256K', '8M', '2.5G' into bytes.
-    
+
     Args:
         size_str: Size string with K/M/G suffix
-    
+
     Returns:
         Size in bytes
     """
@@ -83,7 +83,7 @@ def _parse_size_string(size_str: str) -> int:
 def _parse_lscpu_cache() -> Optional[CacheInfo]:
     """
     Parse cache information from lscpu on Linux systems.
-    
+
     Returns:
         CacheInfo object if successful, None otherwise
     """
@@ -141,7 +141,7 @@ def _parse_lscpu_cache() -> Optional[CacheInfo]:
 def _parse_sysfs_cache() -> Optional[CacheInfo]:
     """
     Parse cache information from /sys/devices/system/cpu on Linux.
-    
+
     Returns:
         CacheInfo object if successful, None otherwise
     """
@@ -211,10 +211,10 @@ def _parse_sysfs_cache() -> Optional[CacheInfo]:
 def detect_cache_info() -> CacheInfo:
     """
     Detect CPU cache hierarchy information.
-    
+
     Returns:
         CacheInfo object with detected or estimated cache sizes
-        
+
     Detection Strategy:
         1. Try lscpu -C (modern Linux)
         2. Try /sys/devices/system/cpu (Linux sysfs)
@@ -246,7 +246,7 @@ def detect_cache_info() -> CacheInfo:
 def _detect_numa_linux() -> Optional[NUMAInfo]:
     """
     Detect NUMA topology on Linux using numactl or /sys.
-    
+
     Returns:
         NUMAInfo object if NUMA detected, None otherwise
     """
@@ -306,13 +306,13 @@ def _detect_numa_linux() -> Optional[NUMAInfo]:
 def detect_numa_info(physical_cores: int) -> NUMAInfo:
     """
     Detect NUMA (Non-Uniform Memory Access) topology.
-    
+
     Args:
         physical_cores: Number of physical CPU cores
-    
+
     Returns:
         NUMAInfo object with detected or estimated NUMA topology
-        
+
     Detection Strategy:
         1. Try numactl --hardware (Linux with numactl)
         2. Try /sys/devices/system/node (Linux sysfs)
@@ -338,10 +338,10 @@ def detect_numa_info(physical_cores: int) -> NUMAInfo:
 def estimate_memory_bandwidth() -> MemoryBandwidthInfo:
     """
     Estimate system memory bandwidth.
-    
+
     Returns:
         MemoryBandwidthInfo with estimated bandwidth
-        
+
     Estimation Strategy:
         Based on typical system configurations:
         - DDR4-2400: ~19 GB/s per channel
@@ -349,7 +349,7 @@ def estimate_memory_bandwidth() -> MemoryBandwidthInfo:
         - DDR5-4800: ~38 GB/s per channel
         - Server systems: Multiple channels (2-8)
         - Consumer systems: 2 channels typical
-        
+
         We use conservative estimates based on CPU generation markers.
     """
     # Conservative estimate: DDR4 dual-channel
@@ -377,13 +377,13 @@ def estimate_memory_bandwidth() -> MemoryBandwidthInfo:
 def detect_system_topology(physical_cores: int) -> SystemTopology:
     """
     Detect complete system topology for advanced cost modeling.
-    
+
     Args:
         physical_cores: Number of physical CPU cores
-    
+
     Returns:
         SystemTopology object with detected hardware information
-        
+
     This function combines all topology detection:
     - Cache hierarchy (L1/L2/L3 sizes)
     - NUMA architecture (nodes and core distribution)
@@ -405,23 +405,23 @@ def estimate_cache_coherency_overhead(
 ) -> float:
     """
     Estimate cache coherency overhead for multi-core execution.
-    
+
     Args:
         n_jobs: Number of parallel workers
         data_size_per_item: Size of data per work item in bytes
         cache_info: Cache hierarchy information
         numa_info: NUMA topology information
-    
+
     Returns:
         Estimated overhead factor (multiplicative, >= 1.0)
-        
+
     Theory:
         Cache coherency overhead occurs when multiple cores access and modify
         shared memory. The overhead grows with:
         - Number of cores (more cores = more coherency traffic)
         - Working set size relative to L3 cache (cache misses)
         - NUMA boundaries (cross-node access is slower)
-        
+
     Model:
         overhead = 1.0 + (coherency_factor × scale_factor)
         where:
@@ -471,24 +471,24 @@ def estimate_memory_bandwidth_impact(
 ) -> float:
     """
     Estimate memory bandwidth saturation impact on speedup.
-    
+
     Args:
         n_jobs: Number of parallel workers
         data_size_per_item: Size of data per work item in bytes
         items_per_second_per_core: Processing rate per core
         memory_bandwidth: Memory bandwidth information
-    
+
     Returns:
         Slowdown factor due to bandwidth saturation (0.0 to 1.0)
         1.0 = no slowdown, 0.5 = 50% slowdown
-        
+
     Theory:
         When multiple cores compete for memory bandwidth, they can saturate
         the memory bus. This is particularly common for memory-intensive workloads.
-        
+
         Memory bandwidth becomes a bottleneck when:
         total_bandwidth_demand > available_bandwidth
-        
+
     Model:
         If demand <= bandwidth: no impact (factor = 1.0)
         If demand > bandwidth: linear slowdown based on saturation ratio
@@ -530,24 +530,24 @@ def estimate_false_sharing_overhead(
 ) -> float:
     """
     Estimate false sharing overhead.
-    
+
     Args:
         n_jobs: Number of parallel workers
         return_size: Size of return objects in bytes
         cache_line_size: CPU cache line size (typically 64 bytes)
-    
+
     Returns:
         Overhead factor (multiplicative, >= 1.0)
-        
+
     Theory:
         False sharing occurs when multiple cores modify data that resides in
         the same cache line, causing cache line ping-ponging and invalidation.
-        
+
         This is most likely when:
         - Small return objects (< cache line size)
         - Many workers
         - Shared data structures
-        
+
     Model:
         For small return objects that might share cache lines, add overhead.
         Overhead increases with core count and decreases with object size.
@@ -589,13 +589,13 @@ def calculate_advanced_amdahl_speedup(
 ) -> Tuple[float, Dict[str, float]]:
     """
     Calculate realistic speedup using advanced cost modeling.
-    
+
     This extends basic Amdahl's Law with hardware-level cost models:
     - Cache coherency overhead (L1/L2/L3 cache effects)
     - Memory bandwidth saturation (memory bus contention)
     - NUMA penalties (cross-node access overhead)
     - False sharing (cache line ping-ponging)
-    
+
     Args:
         total_compute_time: Total serial computation time (seconds)
         pickle_overhead_per_item: Time to pickle one result (seconds)
@@ -608,7 +608,7 @@ def calculate_advanced_amdahl_speedup(
         system_topology: System hardware topology information
         data_size_per_item: Size of input data per item (bytes)
         return_size_per_item: Size of return object per item (bytes)
-    
+
     Returns:
         Tuple of (speedup, overhead_breakdown) where:
         - speedup: Estimated speedup factor (>1.0 means parallelization helps)

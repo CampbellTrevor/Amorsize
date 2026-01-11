@@ -21,7 +21,7 @@ from .optimizer import OptimizationResult, optimize
 class BenchmarkResult:
     """
     Container for benchmark validation results.
-    
+
     Attributes:
         optimization: Original optimization result being validated
         serial_time: Measured serial execution time (seconds)
@@ -97,10 +97,10 @@ class BenchmarkResult:
     def is_accurate(self, threshold: float = 75.0) -> bool:
         """
         Check if prediction accuracy meets threshold.
-        
+
         Args:
             threshold: Minimum accuracy percentage (default: 75%)
-        
+
         Returns:
             True if accuracy >= threshold
         """
@@ -118,12 +118,12 @@ def validate_optimization(
 ) -> BenchmarkResult:
     """
     Validate optimizer recommendations by running empirical benchmarks.
-    
+
     This function runs both serial and parallel execution on actual data
     and compares the measured performance against the optimizer's predictions.
     This helps users verify that recommendations are accurate for their
     specific system and workload.
-    
+
     Args:
         func: Function to benchmark (must accept single argument)
         data: Input data (list, generator, or iterator)
@@ -132,23 +132,23 @@ def validate_optimization(
         timeout: Maximum time for each benchmark in seconds (default: 60s)
         verbose: Print progress information (default: False)
         use_cache: Enable caching of benchmark results (default: True)
-    
+
     Returns:
         BenchmarkResult with actual vs predicted performance comparison
-    
+
     Raises:
         ValueError: If parameters are invalid
         TimeoutError: If benchmark exceeds timeout
-    
+
     Example:
         >>> def expensive_func(x):
         ...     return sum(i**2 for i in range(x))
-        >>> 
+        >>>
         >>> data = range(100, 1000)
         >>> result = validate_optimization(expensive_func, data, verbose=True)
         >>> print(result)
         >>> print(f"Accuracy: {result.accuracy_percent:.1f}%")
-    
+
     Notes:
         - For very large datasets, use max_items to limit benchmark runtime
         - Serial execution is skipped if n_jobs=1 (already optimal)
@@ -419,29 +419,29 @@ def quick_validate(
 ) -> BenchmarkResult:
     """
     Quick validation using a small sample of data.
-    
+
     This is a convenience function for fast validation without running
     benchmarks on large datasets. It samples the data and runs validation
     on the sample only.
-    
+
     Args:
         func: Function to benchmark
         data: Input data
         sample_size: Number of items to sample for validation (default: 100)
         verbose: Print progress information
         use_cache: Enable caching of benchmark results (default: True)
-    
+
     Returns:
         BenchmarkResult based on sampled data
-    
+
     Example:
         >>> def process(x):
         ...     return x ** 2
-        >>> 
+        >>>
         >>> data = range(10000)
         >>> result = quick_validate(process, data, sample_size=100)
         >>> print(f"Quick check: {result.accuracy_percent:.1f}% accurate")
-    
+
     Notes:
         - Much faster than full validation
         - Less accurate for heterogeneous workloads

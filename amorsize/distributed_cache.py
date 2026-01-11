@@ -18,10 +18,10 @@ Requirements:
 
 Example:
     >>> from amorsize import optimize, configure_distributed_cache
-    >>> 
+    >>>
     >>> # Enable distributed caching
     >>> configure_distributed_cache(redis_url="redis://localhost:6379/0")
-    >>> 
+    >>>
     >>> # Now optimize() will use shared cache across machines
     >>> result = optimize(my_func, data)
 """
@@ -61,7 +61,7 @@ _redis_client_lock = threading.Lock()
 class DistributedCacheConfig:
     """
     Configuration for distributed cache backend.
-    
+
     Attributes:
         redis_url: Redis connection URL (e.g., "redis://localhost:6379/0")
         key_prefix: Prefix for all cache keys (default: "amorsize:")
@@ -99,21 +99,21 @@ def configure_distributed_cache(
 ) -> bool:
     """
     Configure distributed caching with Redis backend.
-    
+
     Args:
         redis_url: Redis connection URL (e.g., "redis://localhost:6379/0")
         key_prefix: Prefix for all cache keys (default: "amorsize:")
         ttl_seconds: Time-to-live for cache entries (default: 7 days)
         **kwargs: Additional Redis connection parameters
-    
+
     Returns:
         True if configuration successful, False otherwise
-    
+
     Example:
         >>> configure_distributed_cache(redis_url="redis://localhost:6379/0")
         True
         >>> # Now optimize() will use Redis for caching
-    
+
     Note:
         Requires redis-py library. Install with: pip install redis
         If Redis is unavailable, falls back to local file cache.
@@ -161,7 +161,7 @@ def configure_distributed_cache(
 def disable_distributed_cache() -> None:
     """
     Disable distributed caching and fall back to local file cache.
-    
+
     This is useful for testing or when you want to temporarily disable
     distributed caching without changing configuration.
     """
@@ -179,7 +179,7 @@ def disable_distributed_cache() -> None:
 def is_distributed_cache_enabled() -> bool:
     """
     Check if distributed caching is enabled and operational.
-    
+
     Returns:
         True if Redis client is configured and responding, False otherwise
     """
@@ -196,10 +196,10 @@ def is_distributed_cache_enabled() -> bool:
 def _make_redis_key(cache_key: str) -> str:
     """
     Create a Redis key from a cache key by adding prefix.
-    
+
     Args:
         cache_key: Cache key from compute_cache_key()
-    
+
     Returns:
         Redis key with prefix
     """
@@ -218,7 +218,7 @@ def save_to_distributed_cache(
 ) -> bool:
     """
     Save an optimization result to the distributed cache.
-    
+
     Args:
         cache_key: Cache key from compute_cache_key()
         n_jobs: Recommended number of workers
@@ -227,7 +227,7 @@ def save_to_distributed_cache(
         estimated_speedup: Expected speedup
         reason: Explanation of recommendation
         warnings: List of warning messages
-    
+
     Returns:
         True if saved successfully, False otherwise
     """
@@ -275,10 +275,10 @@ def save_to_distributed_cache(
 def load_from_distributed_cache(cache_key: str) -> Tuple[Optional[CacheEntry], str]:
     """
     Load an optimization result from the distributed cache.
-    
+
     Args:
         cache_key: Cache key from compute_cache_key()
-    
+
     Returns:
         Tuple of (CacheEntry or None, miss_reason):
         - CacheEntry if found and valid
@@ -325,17 +325,17 @@ def load_from_distributed_cache(cache_key: str) -> Tuple[Optional[CacheEntry], s
 def clear_distributed_cache(pattern: str = "*") -> int:
     """
     Clear entries from the distributed cache.
-    
+
     Args:
         pattern: Key pattern to match (default: "*" for all)
                 Use Unix glob-style patterns:
                 - "*" matches everything
                 - "func:abc123*" matches specific function
                 - "*:size:large*" matches specific size bucket
-    
+
     Returns:
         Number of entries deleted, or 0 if cache not available
-    
+
     Example:
         >>> clear_distributed_cache()  # Clear all
         42
@@ -369,7 +369,7 @@ def clear_distributed_cache(pattern: str = "*") -> int:
 def get_distributed_cache_stats() -> Dict[str, Any]:
     """
     Get statistics about the distributed cache.
-    
+
     Returns:
         Dictionary with cache statistics:
         - enabled: Whether distributed cache is enabled
@@ -423,19 +423,19 @@ def prewarm_distributed_cache(
 ) -> int:
     """
     Pre-populate the distributed cache with optimization results.
-    
+
     This is useful for warming up the cache before deploying to a distributed
     environment. Run this once on a development machine, and all workers will
     benefit from the cached results.
-    
+
     Args:
         func: Function to pre-warm cache for
         workload_configs: List of dicts with 'data_size' and 'avg_time_per_item'
         force_refresh: If True, re-compute even if cached
-    
+
     Returns:
         Number of entries pre-warmed
-    
+
     Example:
         >>> workloads = [
         ...     {'data_size': 1000, 'avg_time_per_item': 0.001},
