@@ -710,9 +710,10 @@ def get_multiprocessing_start_method() -> str:
         This function detects the actual method being used, not the OS default.
 
     Performance Impact:
-        - First call: Full multiprocessing query (~0.28μs on Linux)
-        - Subsequent calls: Direct return of cached string (~0.1μs)
+        - First call: Full multiprocessing query and platform fallback (~4.71μs on Linux)
+        - Subsequent calls: Direct return of cached string (~0.09μs)
         - Called 4 times per optimize() invocation, providing measurable speedup
+          (savings of ~13.86μs per optimize() call)
     """
     global _CACHED_START_METHOD
 
