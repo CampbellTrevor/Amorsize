@@ -63,7 +63,7 @@ Implemented thread-safe caching for `get_cache_dir()` using proven double-checke
 
 **Cache Directory Lookup Performance:**
 - **First call:** 0.179ms (full initialization)
-- **Cached calls:** 0.12μs (dictionary lookup)
+- **Cached calls:** 0.12μs (direct return of cached Path object)
 - **Speedup:** 1475x for subsequent calls
 
 **optimize() Call Performance:**
