@@ -218,15 +218,15 @@ def test_calculate_amdahl_speedup_ipc_overlap():
     # - Result IPC: 0.25s (0.005 * 100 * 0.5)
     # - Data IPC: 0.15s (0.003 * 100 * 0.5)
     # - Chunking: 0.002s (0.0005 * 4)
-    # - Total parallel: ~2.94s
-    # - Speedup: 10.0 / 2.94 ≈ 3.4x
+    # - Total parallel: 2.942s
+    # - Speedup: 10.0 / 2.942 ≈ 3.40x
     
     assert speedup > 3.0, f"Expected speedup > 3.0 with overlap, got {speedup}"
     assert speedup <= 4.0, f"Speedup cannot exceed n_jobs (4), got {speedup}"
     
     # Without overlap (hypothetical), parallel time would be:
-    # 0.04 + 2.5 + 0.5 + 0.3 + 0.002 = 3.34s → speedup ≈ 3.0x
-    # With 0.5 overlap: 0.04 + 2.5 + 0.25 + 0.15 + 0.002 = 2.94s → speedup ≈ 3.4x
+    # 0.04 + 2.5 + 0.5 + 0.3 + 0.002 = 3.342s → speedup ≈ 2.99x
+    # With 0.5 overlap: 0.04 + 2.5 + 0.25 + 0.15 + 0.002 = 2.942s → speedup ≈ 3.40x
 
 
 def test_calculate_amdahl_speedup_overlap_factor_value():
@@ -256,8 +256,8 @@ def test_calculate_amdahl_speedup_overlap_factor_value():
         data_pickle_overhead_per_item=0.01  # 1s total without overlap, 0.5s with
     )
     
-    # No IPC: parallel_time = 0.02 + 5.0 + 0.001 = 5.021s, speedup = 1.99x
-    # With IPC: parallel_time = 0.02 + 5.0 + 0.5 + 0.5 + 0.001 = 6.021s, speedup = 1.66x
+    # No IPC: parallel_time = 0.02 + 5.0 + 0.001 = 5.021s, speedup ≈ 1.99x
+    # With IPC: parallel_time = 0.02 + 5.0 + 0.5 + 0.5 + 0.001 = 6.021s, speedup ≈ 1.66x
     # The IPC overhead (with 0.5 factor) should reduce speedup
     assert speedup_with_ipc < speedup_no_ipc
     assert speedup_with_ipc > 1.5  # Still beneficial despite overhead
