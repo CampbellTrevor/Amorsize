@@ -15,7 +15,7 @@ import time
 import threading
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 
 @dataclass
@@ -330,7 +330,7 @@ def create_checkpoint_wrapper(
 def get_pending_items(
     data: Union[List, range],
     checkpoint_state: Optional[CheckpointState]
-) -> tuple[List[int], List[Any]]:
+) -> Tuple[List[int], List[Any]]:
     """
     Get list of pending (not yet processed) items based on checkpoint state.
     
