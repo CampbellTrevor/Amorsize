@@ -5,7 +5,7 @@ This example demonstrates how to use the PoolManager to reuse worker pools
 across multiple optimize() calls, amortizing the expensive process spawn cost.
 
 Benefits:
-- 10-100x faster optimization for repeated calls
+- 1.5-5x faster optimization for repeated calls
 - Reduced overhead for web services and batch processing
 - Better resource utilization by keeping workers ready
 """
@@ -83,7 +83,8 @@ def example_2_with_pool_manager():
             result = optimize(compute_heavy, data, verbose=False)
             
             # Get pool from manager (reuses existing pool if available)
-            pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=result.executor_type)
+            executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
+            pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=executor_type)
             
             # Execute with the reused pool
             results = pool.map(compute_heavy, result.data, chunksize=result.chunksize)
@@ -124,7 +125,8 @@ def example_3_global_pool_manager():
         result = optimize(compute_heavy, data, verbose=False)
         
         # Get pool from global manager
-        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=result.executor_type)
+        executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
+        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=executor_type)
         
         # Execute
         results = pool.map(compute_heavy, result.data, chunksize=result.chunksize)
@@ -160,7 +162,8 @@ def example_4_context_manager():
     result = optimize(compute_heavy, data, verbose=False)
     
     # Use context manager for automatic pool management
-    with managed_pool(n_jobs=result.n_jobs, executor_type=result.executor_type) as pool:
+    executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
+    with managed_pool(n_jobs=result.n_jobs, executor_type=executor_type) as pool:
         results = pool.map(compute_heavy, result.data, chunksize=result.chunksize)
     
     print(f"  Processed {len(results)} items")
@@ -192,7 +195,8 @@ def example_5_web_service_pattern():
         result = optimize(request["func"], request["data"], verbose=False)
         
         # Reuse pool
-        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=result.executor_type)
+        executor_type = result.executor_type if hasattr(result, 'executor_type') else "process"
+        pool = manager.get_pool(n_jobs=result.n_jobs, executor_type=executor_type)
         results = pool.map(request["func"], result.data, chunksize=result.chunksize)
         
         print(f"  Request {i+1}: Processed {len(results)} items")
