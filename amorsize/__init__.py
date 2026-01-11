@@ -96,9 +96,17 @@ from .watch import WatchMonitor, WatchSnapshot, watch
 # Monitoring integrations (optional, no extra dependencies)
 try:
     from .monitoring import (
+        CloudWatchMetrics,
+        AzureMonitorMetrics,
+        GCPMonitoringMetrics,
+        OpenTelemetryTracer,
         PrometheusMetrics,
         StatsDClient,
+        create_azure_monitor_hook,
+        create_cloudwatch_hook,
+        create_gcp_monitoring_hook,
         create_multi_monitoring_hook,
+        create_opentelemetry_hook,
         create_prometheus_hook,
         create_statsd_hook,
         create_webhook_hook,
@@ -115,8 +123,20 @@ except ImportError:
         raise ImportError("Monitoring module not available")
     def create_multi_monitoring_hook(*args, **kwargs):
         raise ImportError("Monitoring module not available")
+    def create_cloudwatch_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    def create_azure_monitor_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    def create_gcp_monitoring_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
+    def create_opentelemetry_hook(*args, **kwargs):
+        raise ImportError("Monitoring module not available")
     PrometheusMetrics = None
     StatsDClient = None
+    CloudWatchMetrics = None
+    AzureMonitorMetrics = None
+    GCPMonitoringMetrics = None
+    OpenTelemetryTracer = None
 
 # ML prediction functions (optional feature)
 try:
@@ -363,6 +383,14 @@ __all__ = [
     "create_statsd_hook",
     "create_webhook_hook",
     "create_multi_monitoring_hook",
+    "create_cloudwatch_hook",
+    "create_azure_monitor_hook",
+    "create_gcp_monitoring_hook",
+    "create_opentelemetry_hook",
     "PrometheusMetrics",
     "StatsDClient",
+    "CloudWatchMetrics",
+    "AzureMonitorMetrics",
+    "GCPMonitoringMetrics",
+    "OpenTelemetryTracer",
 ]
