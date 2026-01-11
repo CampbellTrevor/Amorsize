@@ -601,13 +601,17 @@ class TestFeatureImportance:
         
         importance = predictor.analyze_feature_importance()
         
-        # Should have importance scores for all 8 features
-        assert len(importance) == 8
+        # Should have importance scores for all 12 features (updated in Iteration 118)
+        assert len(importance) == 12
         assert 'data_size' in importance
         assert 'execution_time' in importance
         assert 'pickle_size' in importance
         assert 'coefficient_of_variation' in importance
         assert 'function_complexity' in importance
+        assert 'l3_cache_size' in importance
+        assert 'numa_nodes' in importance
+        assert 'memory_bandwidth' in importance
+        assert 'has_numa' in importance
         
         # All importance scores should be in [0, 1]
         for score in importance.values():
@@ -665,6 +669,152 @@ class TestFeatureImportance:
         
         # All features should have 0 importance (no variance)
         assert all(score == 0.0 for score in importance.values())
+
+
+class TestFeatureImportanceCorrelation:
+    """Test suite for correlation-based feature importance analysis."""
+    
+    def test_correlation_importance_with_training_data(self):
+        """Test correlation-based feature importance calculation."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Add training samples with clear correlations
+        # Make data_size strongly correlated with n_jobs
+        # Make execution_time strongly correlated with chunksize
+        for i in range(10):
+            features = WorkloadFeatures(
+                data_size=1000 * (i + 1),  # Increases with i
+                estimated_item_time=0.01 * (i + 1),  # Increases with i
+                physical_cores=8,  # Constant
+                available_memory=16 * 1024**3,  # Constant
+                start_method='fork',
+                pickle_size=1000,  # Constant
+                coefficient_of_variation=0.1,  # Constant
+                function_complexity=500  # Constant
+            )
+            sample = TrainingData(
+                features=features,
+                n_jobs=2 + i,  # Correlates with data_size
+                chunksize=50 + i * 20,  # Correlates with execution_time
+                speedup=1.5 + i * 0.1,
+                timestamp=time.time()
+            )
+            predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance_correlation()
+        
+        # Should have three keys
+        assert 'n_jobs' in importance
+        assert 'chunksize' in importance
+        assert 'combined' in importance
+        
+        # Each should have all 12 features
+        assert len(importance['n_jobs']) == 12
+        assert len(importance['chunksize']) == 12
+        assert len(importance['combined']) == 12
+        
+        # All importance scores should be in [0, 1]
+        for key in ['n_jobs', 'chunksize', 'combined']:
+            for score in importance[key].values():
+                assert 0.0 <= score <= 1.0
+        
+        # data_size should be highly correlated with n_jobs (since both increase together)
+        assert importance['n_jobs']['data_size'] > 0.5
+        
+        # execution_time should be highly correlated with chunksize
+        assert importance['chunksize']['execution_time'] > 0.5
+        
+        # Constant features (physical_cores, pickle_size) should have low correlation
+        assert importance['combined']['physical_cores'] < 0.1
+    
+    def test_correlation_importance_insufficient_samples(self):
+        """Test correlation importance with insufficient samples."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Add only 1 sample (need at least 2 for correlation)
+        features = WorkloadFeatures(
+            data_size=1000,
+            estimated_item_time=0.01,
+            physical_cores=8,
+            available_memory=16 * 1024**3,
+            start_method='fork'
+        )
+        sample = TrainingData(
+            features=features,
+            n_jobs=4,
+            chunksize=100,
+            speedup=1.5,
+            timestamp=time.time()
+        )
+        predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance_correlation()
+        
+        # Should return empty dicts with insufficient samples
+        assert importance['n_jobs'] == {}
+        assert importance['chunksize'] == {}
+        assert importance['combined'] == {}
+    
+    def test_correlation_importance_zero_variance(self):
+        """Test correlation importance when features have zero variance."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Add samples where features don't vary but outcomes do
+        for i in range(5):
+            features = WorkloadFeatures(
+                data_size=1000,  # Constant
+                estimated_item_time=0.01,  # Constant
+                physical_cores=8,
+                available_memory=16 * 1024**3,
+                start_method='fork'
+            )
+            sample = TrainingData(
+                features=features,
+                n_jobs=4 + i,  # Varies
+                chunksize=100 + i * 10,  # Varies
+                speedup=1.5,
+                timestamp=time.time()
+            )
+            predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance_correlation()
+        
+        # All features should have 0 correlation (no feature variance)
+        for key in ['n_jobs', 'chunksize', 'combined']:
+            assert all(score == 0.0 for score in importance[key].values())
+    
+    def test_correlation_importance_perfect_correlation(self):
+        """Test correlation importance with perfect correlations."""
+        predictor = SimpleLinearPredictor(k=3)
+        
+        # Create perfect correlation: data_size directly determines n_jobs
+        for i in range(10):
+            data_size = 1000 * (i + 1)
+            features = WorkloadFeatures(
+                data_size=data_size,
+                estimated_item_time=0.01,
+                physical_cores=8,
+                available_memory=16 * 1024**3,
+                start_method='fork'
+            )
+            sample = TrainingData(
+                features=features,
+                n_jobs=i + 1,  # Perfectly correlates with data_size
+                chunksize=100,  # Constant
+                speedup=1.5,
+                timestamp=time.time()
+            )
+            predictor.add_training_sample(sample)
+        
+        importance = predictor.analyze_feature_importance_correlation()
+        
+        # data_size should have highest correlation with n_jobs
+        assert importance['n_jobs']['data_size'] == 1.0
+        
+        # All features should have 0 correlation with constant chunksize
+        for feature in importance['chunksize']:
+            assert importance['chunksize'][feature] == 0.0
+
 
 
 class TestPredictionPerformanceTracking:

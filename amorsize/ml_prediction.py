@@ -857,6 +857,7 @@ class SimpleLinearPredictor:
             # Need at least 2 samples to compute variance
             return {}
         
+        # Updated in Iteration 118 to include all 12 features (added hardware features from Iteration 114)
         feature_names = [
             'data_size',
             'execution_time',
@@ -865,7 +866,11 @@ class SimpleLinearPredictor:
             'start_method',
             'pickle_size',
             'coefficient_of_variation',
-            'function_complexity'
+            'function_complexity',
+            'l3_cache_size',
+            'numa_nodes',
+            'memory_bandwidth',
+            'has_numa'
         ]
         
         # Extract feature vectors
@@ -892,6 +897,121 @@ class SimpleLinearPredictor:
             normalized_importance = {name: 0.0 for name in feature_names}
         
         return normalized_importance
+    
+    def analyze_feature_importance_correlation(self) -> Dict[str, Dict[str, float]]:
+        """
+        Analyze feature importance using correlation with optimal parameters.
+        
+        This method calculates how strongly each feature correlates with the
+        optimal n_jobs and chunksize values. Features with high correlation
+        are more predictive of the optimal parameters.
+        
+        Returns:
+            Dictionary with 'n_jobs' and 'chunksize' keys, each mapping feature
+            names to correlation scores (0-1, higher = stronger correlation).
+            Also includes 'combined' which averages both correlations.
+        
+        Example:
+            >>> predictor = SimpleLinearPredictor()
+            >>> # ... add training samples ...
+            >>> importance = predictor.analyze_feature_importance_correlation()
+            >>> print(f"Features most correlated with n_jobs: {importance['n_jobs']}")
+            >>> print(f"Features most correlated with chunksize: {importance['chunksize']}")
+            >>> print(f"Overall most important: {max(importance['combined'], key=importance['combined'].get)}")
+        """
+        if len(self.training_data) < 2:
+            # Need at least 2 samples to compute correlation
+            return {'n_jobs': {}, 'chunksize': {}, 'combined': {}}
+        
+        feature_names = [
+            'data_size',
+            'execution_time',
+            'physical_cores',
+            'available_memory',
+            'start_method',
+            'pickle_size',
+            'coefficient_of_variation',
+            'function_complexity',
+            'l3_cache_size',
+            'numa_nodes',
+            'memory_bandwidth',
+            'has_numa'
+        ]
+        
+        # Extract feature vectors and targets
+        feature_vectors = [sample.features.to_vector() for sample in self.training_data]
+        n_jobs_values = [sample.n_jobs for sample in self.training_data]
+        chunksize_values = [sample.chunksize for sample in self.training_data]
+        
+        num_features = len(feature_vectors[0])
+        
+        # Calculate correlation for each feature with n_jobs
+        n_jobs_correlations = []
+        for i in range(num_features):
+            feature_values = [vec[i] for vec in feature_vectors]
+            corr = self._calculate_correlation(feature_values, n_jobs_values)
+            n_jobs_correlations.append(abs(corr))  # Use absolute value
+        
+        # Calculate correlation for each feature with chunksize
+        chunksize_correlations = []
+        for i in range(num_features):
+            feature_values = [vec[i] for vec in feature_vectors]
+            corr = self._calculate_correlation(feature_values, chunksize_values)
+            chunksize_correlations.append(abs(corr))  # Use absolute value
+        
+        # Normalize correlations to [0, 1] range
+        max_n_jobs_corr = max(n_jobs_correlations) if n_jobs_correlations else 1.0
+        max_chunksize_corr = max(chunksize_correlations) if chunksize_correlations else 1.0
+        
+        n_jobs_importance = {}
+        chunksize_importance = {}
+        combined_importance = {}
+        
+        for i, name in enumerate(feature_names):
+            n_jobs_score = n_jobs_correlations[i] / max_n_jobs_corr if max_n_jobs_corr > 0 else 0.0
+            chunksize_score = chunksize_correlations[i] / max_chunksize_corr if max_chunksize_corr > 0 else 0.0
+            
+            n_jobs_importance[name] = n_jobs_score
+            chunksize_importance[name] = chunksize_score
+            # Combined is average of both correlations
+            combined_importance[name] = (n_jobs_score + chunksize_score) / 2.0
+        
+        return {
+            'n_jobs': n_jobs_importance,
+            'chunksize': chunksize_importance,
+            'combined': combined_importance
+        }
+    
+    def _calculate_correlation(self, x: List[float], y: List[float]) -> float:
+        """
+        Calculate Pearson correlation coefficient between two variables.
+        
+        Args:
+            x: First variable values
+            y: Second variable values
+        
+        Returns:
+            Correlation coefficient in [-1, 1] range
+        """
+        if len(x) != len(y) or len(x) < 2:
+            return 0.0
+        
+        n = len(x)
+        
+        # Calculate means
+        mean_x = sum(x) / n
+        mean_y = sum(y) / n
+        
+        # Calculate covariance and standard deviations
+        cov = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n))
+        std_x = math.sqrt(sum((x[i] - mean_x) ** 2 for i in range(n)))
+        std_y = math.sqrt(sum((y[i] - mean_y) ** 2 for i in range(n)))
+        
+        # Avoid division by zero
+        if std_x == 0 or std_y == 0:
+            return 0.0
+        
+        return cov / (std_x * std_y)
     
     def track_prediction_performance(
         self,
