@@ -326,6 +326,12 @@ class OptimizationResult:
         # Import here to avoid circular dependency
         from .bottleneck_analysis import analyze_bottlenecks, format_bottleneck_report
         
+        # Handle edge case: serial execution (n_jobs could be 0 or 1)
+        if self.n_jobs <= 1:
+            estimated_memory = self.profile.estimated_result_memory
+        else:
+            estimated_memory = self.profile.estimated_result_memory // self.n_jobs
+        
         # Extract needed data from profile
         analysis = analyze_bottlenecks(
             n_jobs=self.n_jobs,
@@ -338,7 +344,7 @@ class OptimizationResult:
             estimated_speedup=self.estimated_speedup,
             physical_cores=self.profile.physical_cores,
             available_memory=self.profile.available_memory,
-            estimated_memory_per_job=self.profile.estimated_result_memory // max(1, self.n_jobs),
+            estimated_memory_per_job=estimated_memory,
             coefficient_of_variation=self.profile.coefficient_of_variation
         )
         

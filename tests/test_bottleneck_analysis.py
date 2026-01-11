@@ -157,11 +157,18 @@ class TestBottleneckAnalysis:
             coefficient_of_variation=0.8  # High variability
         )
         
-        assert BottleneckType.HETEROGENEOUS_WORKLOAD in [b[0] for b in analysis.contributing_factors] or \
-               analysis.primary_bottleneck == BottleneckType.HETEROGENEOUS_WORKLOAD
+        # Check if heterogeneous workload is identified
+        is_in_contributing = any(b[0] == BottleneckType.HETEROGENEOUS_WORKLOAD 
+                                 for b in analysis.contributing_factors)
+        is_primary = analysis.primary_bottleneck == BottleneckType.HETEROGENEOUS_WORKLOAD
+        assert is_in_contributing or is_primary, \
+            "Heterogeneous workload should be identified as bottleneck"
+        
+        # Check for heterogeneous-related recommendations
         found_heterogeneous_rec = any("heterogeneous" in rec.lower() or "dynamic" in rec.lower() 
                                        for rec in analysis.recommendations)
-        assert found_heterogeneous_rec
+        assert found_heterogeneous_rec, \
+            "Should provide recommendations for heterogeneous workload"
 
     def test_chunking_overhead_bottleneck(self):
         """Test detection of excessive task distribution overhead."""

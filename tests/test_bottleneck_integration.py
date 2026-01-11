@@ -71,9 +71,15 @@ class TestBottleneckAnalysisIntegration:
         result = optimize(fast_function, range(100), profile=True)
         report = result.analyze_bottlenecks()
         
-        # Fast function should have some bottleneck identified
-        # (spawn, IPC, chunking, or insufficient computation)
-        assert "Bottleneck" in report or "overhead" in report.lower() or "Excellent" in report
+        # Fast function should have identified bottleneck or be marked as excellent
+        # Check for various indicators of bottleneck detection
+        has_bottleneck = "Bottleneck" in report
+        has_overhead = "overhead" in report.lower()
+        is_excellent = "Excellent" in report
+        
+        # At least one should be true (either problem identified or excellent performance)
+        assert has_bottleneck or has_overhead or is_excellent, \
+            "Report should identify bottlenecks or indicate excellent performance"
 
     def test_bottleneck_report_provides_recommendations(self):
         """Test that report includes actionable recommendations."""

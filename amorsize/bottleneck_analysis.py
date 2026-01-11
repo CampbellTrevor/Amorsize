@@ -9,6 +9,15 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
+# Bottleneck detection thresholds
+SPAWN_OVERHEAD_THRESHOLD = 0.2  # 20% of parallel time
+IPC_OVERHEAD_THRESHOLD = 0.15  # 15% of parallel time
+CHUNKING_OVERHEAD_THRESHOLD = 0.1  # 10% of parallel time
+MEMORY_USAGE_THRESHOLD = 0.7  # 70% of available memory
+MIN_COMPUTATION_TIME_PER_ITEM = 0.001  # 1ms per item minimum
+MIN_TOTAL_WORKLOAD_TIME = 1.0  # 1 second minimum total work
+HETEROGENEOUS_CV_THRESHOLD = 0.5  # Coefficient of variation threshold
+
 
 class BottleneckType(Enum):
     """Types of performance bottlenecks."""
@@ -101,7 +110,7 @@ def analyze_bottlenecks(
         overhead_breakdown['chunking'] = (chunking_overhead / total_parallel_time) * 100
     
     # 1. Check for spawn overhead bottleneck
-    if total_parallel_time > 0 and spawn_cost / total_parallel_time > 0.2:
+    if total_parallel_time > 0 and spawn_cost / total_parallel_time > SPAWN_OVERHEAD_THRESHOLD:
         severity = spawn_cost / total_parallel_time
         bottlenecks.append((BottleneckType.SPAWN_OVERHEAD, severity))
         recommendations.append(
@@ -112,7 +121,7 @@ def analyze_bottlenecks(
         )
     
     # 2. Check for IPC overhead bottleneck
-    if total_parallel_time > 0 and ipc_overhead / total_parallel_time > 0.15:
+    if total_parallel_time > 0 and ipc_overhead / total_parallel_time > IPC_OVERHEAD_THRESHOLD:
         severity = ipc_overhead / total_parallel_time
         bottlenecks.append((BottleneckType.IPC_OVERHEAD, severity))
         recommendations.append(
@@ -124,7 +133,7 @@ def analyze_bottlenecks(
     
     # 3. Check for chunking overhead bottleneck
     num_chunks = (total_items + chunksize - 1) // chunksize if chunksize > 0 else total_items
-    if total_parallel_time > 0 and chunking_overhead / total_parallel_time > 0.1:
+    if total_parallel_time > 0 and chunking_overhead / total_parallel_time > CHUNKING_OVERHEAD_THRESHOLD:
         severity = chunking_overhead / total_parallel_time
         bottlenecks.append((BottleneckType.CHUNKING_OVERHEAD, severity))
         recommendations.append(
@@ -135,7 +144,7 @@ def analyze_bottlenecks(
     
     # 4. Check for memory constraint bottleneck
     memory_usage_ratio = (n_jobs * estimated_memory_per_job) / available_memory if available_memory > 0 else 0
-    if n_jobs < physical_cores and memory_usage_ratio > 0.7:
+    if n_jobs < physical_cores and memory_usage_ratio > MEMORY_USAGE_THRESHOLD:
         severity = min(1.0, memory_usage_ratio)
         bottlenecks.append((BottleneckType.MEMORY_CONSTRAINT, severity))
         recommendations.append(
@@ -146,8 +155,8 @@ def analyze_bottlenecks(
         )
     
     # 5. Check for insufficient computation per item
-    if avg_execution_time > 0 and avg_execution_time < 0.001:  # < 1ms per item
-        severity = 1.0 - min(1.0, avg_execution_time / 0.001)
+    if avg_execution_time > 0 and avg_execution_time < MIN_COMPUTATION_TIME_PER_ITEM:
+        severity = 1.0 - min(1.0, avg_execution_time / MIN_COMPUTATION_TIME_PER_ITEM)
         bottlenecks.append((BottleneckType.INSUFFICIENT_COMPUTATION, severity))
         recommendations.append(
             f"Each item takes only {avg_execution_time*1000:.3f}ms. Overhead dominates. Consider:\n"
@@ -157,7 +166,7 @@ def analyze_bottlenecks(
         )
     
     # 6. Check for small workload bottleneck
-    if total_serial_time > 0 and total_serial_time < 1.0:  # Less than 1 second of work
+    if total_serial_time > 0 and total_serial_time < MIN_TOTAL_WORKLOAD_TIME:
         severity = 1.0 - min(1.0, total_serial_time)
         bottlenecks.append((BottleneckType.WORKLOAD_TOO_SMALL, severity))
         recommendations.append(
@@ -168,7 +177,7 @@ def analyze_bottlenecks(
         )
     
     # 7. Check for heterogeneous workload
-    if coefficient_of_variation > 0.5:
+    if coefficient_of_variation > HETEROGENEOUS_CV_THRESHOLD:
         severity = min(1.0, coefficient_of_variation)
         bottlenecks.append((BottleneckType.HETEROGENEOUS_WORKLOAD, severity))
         recommendations.append(
