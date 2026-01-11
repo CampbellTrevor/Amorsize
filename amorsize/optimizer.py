@@ -612,6 +612,33 @@ def calculate_amdahl_speedup(
     return 1.0
 
 
+def _get_unpicklable_data_info(sampling_result) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract error type and item type from unpicklable data in sampling result.
+    
+    Args:
+        sampling_result: The SamplingResult object containing unpicklable data info
+        
+    Returns:
+        Tuple of (error_type, item_type) or (None, None) if not available
+    """
+    error_type = None
+    item_type = None
+    
+    if sampling_result.data_pickle_error:
+        error_type = type(sampling_result.data_pickle_error).__name__
+    
+    if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
+        try:
+            if sampling_result.unpicklable_data_index < len(sampling_result.sample):
+                item = sampling_result.sample[sampling_result.unpicklable_data_index]
+                item_type = type(item).__name__
+        except (IndexError, AttributeError, TypeError):
+            pass
+    
+    return error_type, item_type
+
+
 def optimize(
     func: Callable[[Any], Any],
     data: Union[List, Iterator],
@@ -1186,15 +1213,7 @@ def optimize(
         # If data items were detected as unpicklable, provide specific guidance
         if not sampling_result.data_items_picklable:
             # Get data-specific error message with pickling guidance
-            error_type = type(sampling_result.data_pickle_error).__name__ if sampling_result.data_pickle_error else None
-            item_type = None
-            if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
-                try:
-                    if sampling_result.unpicklable_data_index < len(sampling_result.sample):
-                        item = sampling_result.sample[sampling_result.unpicklable_data_index]
-                        item_type = type(item).__name__
-                except (IndexError, AttributeError, TypeError):
-                    pass
+            error_type, item_type = _get_unpicklable_data_info(sampling_result)
             
             error_message = get_data_picklability_error_message(
                 sampling_result.unpicklable_data_index or 0,
@@ -1264,16 +1283,7 @@ def optimize(
     
     # Check if data items are picklable
     if not sampling_result.data_items_picklable:
-        error_type = type(sampling_result.data_pickle_error).__name__ if sampling_result.data_pickle_error else None
-        # Try to get the type of the unpicklable item if available
-        item_type = None
-        if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
-            try:
-                if sampling_result.unpicklable_data_index < len(sampling_result.sample):
-                    item = sampling_result.sample[sampling_result.unpicklable_data_index]
-                    item_type = type(item).__name__
-            except (IndexError, AttributeError, TypeError):
-                pass
+        error_type, item_type = _get_unpicklable_data_info(sampling_result)
         
         error_message = get_data_picklability_error_message(
             sampling_result.unpicklable_data_index or 0,
