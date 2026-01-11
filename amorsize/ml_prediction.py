@@ -10,7 +10,7 @@ Key Features:
 - Learns from historical optimization data
 - Provides confidence scores for predictions
 - Falls back to dry-run sampling if confidence is low
-- Simple linear regression model (no external ML dependencies)
+- k-Nearest Neighbors model (no external ML dependencies)
 """
 
 import json
@@ -34,7 +34,8 @@ MIN_TRAINING_SAMPLES = 3
 
 # Confidence threshold for using predictions (0-1)
 # Below this threshold, fall back to dry-run sampling
-DEFAULT_CONFIDENCE_THRESHOLD = 0.6
+# Note: optimize() function uses 0.7 as default for consistency with conservative approach
+DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
 
 class PredictionResult:
@@ -171,7 +172,7 @@ class TrainingData:
 
 class SimpleLinearPredictor:
     """
-    Simple linear regression predictor for n_jobs and chunksize.
+    k-Nearest Neighbors predictor for n_jobs and chunksize.
     
     Uses weighted k-nearest neighbors approach:
     1. Find k most similar historical workloads
