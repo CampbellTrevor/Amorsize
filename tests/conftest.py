@@ -40,6 +40,11 @@ def clear_global_caches():
        This particularly affects tests that define local functions with similar
        signatures (e.g., def func(x): return x * 2), which is a common test pattern.
     
+    6. Cache Directory Cache Pollution (Iteration 164):
+       The cache directory path is cached globally for performance. Tests should
+       clear this cache to ensure proper isolation and avoid any potential issues
+       with test-specific cache configurations.
+    
     Solutions:
     - Clears caches before each test for isolation
     - Sets AMORSIZE_TESTING=1 environment variable to disable nested
@@ -49,7 +54,7 @@ def clear_global_caches():
     """
     from amorsize.system_info import _clear_spawn_cost_cache, _clear_chunking_overhead_cache
     from amorsize import clear_cache, clear_benchmark_cache
-    from amorsize.cache import clear_function_hash_cache
+    from amorsize.cache import clear_function_hash_cache, _clear_cache_dir_cache
     
     # Set testing environment variable to disable nested parallelism detection
     # This prevents false positives from test runner's multiprocessing usage
@@ -61,6 +66,7 @@ def clear_global_caches():
     clear_cache()  # Clear optimization cache
     clear_benchmark_cache()  # Clear benchmark cache
     clear_function_hash_cache()  # Clear function hash cache (Iteration 139)
+    _clear_cache_dir_cache()  # Clear cache directory cache (Iteration 164)
     
     # Yield to run the test
     yield
@@ -71,6 +77,7 @@ def clear_global_caches():
     clear_cache()  # Clear optimization cache
     clear_benchmark_cache()  # Clear benchmark cache
     clear_function_hash_cache()  # Clear function hash cache (Iteration 139)
+    _clear_cache_dir_cache()  # Clear cache directory cache (Iteration 164)
     
     # Remove testing environment variable
     if 'AMORSIZE_TESTING' in os.environ:
