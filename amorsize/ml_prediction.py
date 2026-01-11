@@ -47,6 +47,13 @@ MIN_TRAINING_SAMPLES = 3
 # Note: optimize() function uses 0.7 as default for consistency with conservative approach
 DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 
+# ML Training Data Version
+# Increment this when making backward-incompatible changes to the training data format
+# Version History:
+#   1 - Initial version (Iterations 115-121)
+#   2 - Added versioning and migration support (Iteration 122)
+ML_TRAINING_DATA_VERSION = 2
+
 # Filename format for ML training data
 ML_TRAINING_FILE_FORMAT = "ml_training_{func_hash}_{timestamp}.json"
 
@@ -2400,6 +2407,7 @@ def update_model_from_execution(
         
         # Prepare data for JSON serialization
         training_data = {
+            'version': ML_TRAINING_DATA_VERSION,  # Version field for future migrations
             'features': {
                 'data_size': features.data_size,
                 'estimated_item_time': features.estimated_item_time,
@@ -2575,6 +2583,7 @@ def update_model_from_streaming_execution(
         
         # Prepare data for JSON serialization (includes streaming parameters)
         training_data = {
+            'version': ML_TRAINING_DATA_VERSION,  # Version field for future migrations
             'features': {
                 'data_size': features.data_size,
                 'estimated_item_time': features.estimated_item_time,
@@ -2828,6 +2837,9 @@ def load_ml_training_data(
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
                 
+                # Apply migrations to bring data to current version
+                data = _migrate_training_data(data, verbose=verbose)
+                
                 # Extract features
                 feat_dict = data.get('features', {})
                 # Note: system_topology is not stored in cache files
@@ -2923,6 +2935,98 @@ def load_ml_training_data(
     return training_data
 
 
+def _migrate_training_data_v1_to_v2(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Migrate training data from version 1 to version 2.
+    
+    Version 1: Original format (Iterations 115-121)
+    Version 2: Added version field and migration support (Iteration 122)
+    
+    Args:
+        data: Training data dictionary in version 1 format
+    
+    Returns:
+        Training data dictionary in version 2 format
+    
+    Changes:
+        - Added 'version' field set to 2
+        - No other schema changes (version 2 is backward compatible)
+    """
+    # Add version field
+    migrated = data.copy()
+    migrated['version'] = 2
+    return migrated
+
+
+def _migrate_training_data(data: Dict[str, Any], verbose: bool = False) -> Dict[str, Any]:
+    """
+    Automatically migrate training data to the current version.
+    
+    This function detects the version of loaded training data and applies
+    all necessary migrations to bring it to the current format.
+    
+    Args:
+        data: Training data dictionary (any version)
+        verbose: If True, print migration information
+    
+    Returns:
+        Training data dictionary in current version format
+    
+    Migration Chain:
+        v1 → v2: Add version field (backward compatible)
+        
+    Future versions should extend this chain:
+        v2 → v3: Apply _migrate_training_data_v2_to_v3()
+        v3 → v4: Apply _migrate_training_data_v3_to_v4()
+    
+    Example:
+        >>> data = json.load(f)
+        >>> data = _migrate_training_data(data, verbose=True)
+        >>> # data is now in current version format
+    """
+    # Detect current version
+    current_version = data.get('version', 1)  # Default to v1 if no version field
+    
+    if current_version == ML_TRAINING_DATA_VERSION:
+        # Already at current version
+        return data
+    
+    if verbose:
+        print(f"Migrating training data from v{current_version} to v{ML_TRAINING_DATA_VERSION}")
+    
+    # Apply migration chain
+    migrated = data
+    
+    if current_version == 1:
+        # v1 → v2
+        migrated = _migrate_training_data_v1_to_v2(migrated)
+        current_version = 2
+    
+    # Future migrations would go here:
+    # if current_version == 2:
+    #     migrated = _migrate_training_data_v2_to_v3(migrated)
+    #     current_version = 3
+    
+    if verbose:
+        print(f"✓ Migration complete: v{data.get('version', 1)} → v{current_version}")
+    
+    return migrated
+
+
+def get_ml_training_data_version() -> int:
+    """
+    Get the current ML training data format version.
+    
+    Returns:
+        Current version number
+    
+    Example:
+        >>> version = get_ml_training_data_version()
+        >>> print(f"ML training data format version: {version}")
+    """
+    return ML_TRAINING_DATA_VERSION
+
+
 # Export public API
 __all__ = [
     'predict_parameters',
@@ -2932,6 +3036,7 @@ __all__ = [
     'track_prediction_accuracy',
     'get_calibration_stats',
     'load_ml_training_data',
+    'get_ml_training_data_version',
     'PredictionResult',
     'StreamingPredictionResult',
     'CalibrationData',
