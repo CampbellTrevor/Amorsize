@@ -21,7 +21,7 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 
 class HookEvent(Enum):
@@ -185,18 +185,69 @@ class HookManager:
                     self._hooks[event_type].clear()
         return count
     
-    def trigger(self, context: HookContext) -> None:
+    def trigger(self, event_or_context: Union[HookEvent, HookContext], 
+                context: Optional[HookContext] = None) -> None:
         """
         Trigger all hooks registered for an event.
         
-        Executes all callbacks registered for the event in context.event.
-        If a callback raises an exception, it's caught and logged without
-        interrupting other callbacks or the main execution.
+        Executes all callbacks registered for the event. If a callback raises
+        an exception, it's caught and logged without interrupting other 
+        callbacks or the main execution.
+        
+        Supports two calling conventions for convenience:
+        1. trigger(context) - Pass HookContext containing event info (preferred)
+        2. trigger(event, context) - Pass event and context separately (legacy)
         
         Args:
-            context: Context information for the event
+            event_or_context: Either a HookEvent or HookContext. If HookContext,
+                            context parameter should be None. If HookEvent, context
+                            parameter must be provided.
+            context: Optional HookContext when first parameter is HookEvent.
+                    Should be None when first parameter is HookContext.
+        
+        Examples:
+            >>> # Preferred style - pass context with embedded event
+            >>> ctx = HookContext(event=HookEvent.PRE_EXECUTE, n_jobs=4)
+            >>> manager.trigger(ctx)
+            
+            >>> # Legacy style - pass event and context separately
+            >>> ctx = HookContext(event=HookEvent.PRE_EXECUTE, n_jobs=4)
+            >>> manager.trigger(HookEvent.PRE_EXECUTE, ctx)
+        
+        Raises:
+            ValueError: If called with invalid parameter combination
         """
-        event = context.event
+        # Handle both calling conventions
+        if isinstance(event_or_context, HookContext):
+            # New preferred style: trigger(context)
+            if context is not None:
+                raise ValueError(
+                    "When passing HookContext as first parameter, "
+                    "context parameter must be None. "
+                    "Use: trigger(context) or trigger(event, context)"
+                )
+            hook_context = event_or_context
+            event = hook_context.event
+        elif isinstance(event_or_context, HookEvent):
+            # Legacy style: trigger(event, context)
+            if context is None:
+                raise ValueError(
+                    "When passing HookEvent as first parameter, "
+                    "context parameter must be provided. "
+                    "Use: trigger(event, context) or trigger(context)"
+                )
+            event = event_or_context
+            hook_context = context
+            # Update context's event to match (in case it's different)
+            if hook_context.event != event:
+                # Create a new context with corrected event to avoid mutation
+                import dataclasses
+                hook_context = dataclasses.replace(hook_context, event=event)
+        else:
+            raise TypeError(
+                f"First parameter must be HookEvent or HookContext, "
+                f"got {type(event_or_context).__name__}"
+            )
         
         # Get callbacks while holding lock (quick operation)
         with self._lock:
@@ -206,7 +257,7 @@ class HookManager:
         # Execute callbacks without holding lock (allows concurrent triggers)
         for callback in callbacks:
             try:
-                callback(context)
+                callback(hook_context)
             except Exception as e:
                 # Isolate hook errors to prevent cascade failures
                 with self._lock:
