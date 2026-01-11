@@ -27,22 +27,21 @@ Example:
 """
 
 import json
-import time
 import threading
-from typing import Any, Callable, Dict, Optional, Tuple
+import time
 import warnings
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from .cache import (
-    CacheEntry,
     CACHE_VERSION,
     DEFAULT_TTL_SECONDS,
+    CacheEntry,
     compute_cache_key,
-    _compute_function_hash
 )
 from .system_info import (
-    get_physical_cores,
     get_available_memory,
-    get_multiprocessing_start_method
+    get_multiprocessing_start_method,
+    get_physical_cores,
 )
 
 # Try to import redis
@@ -72,7 +71,7 @@ class DistributedCacheConfig:
         retry_on_timeout: Retry operations on timeout (default: True)
         max_connections: Maximum connections in pool (default: 50)
     """
-    
+
     def __init__(
         self,
         redis_url: str = "redis://localhost:6379/0",
@@ -120,7 +119,7 @@ def configure_distributed_cache(
         If Redis is unavailable, falls back to local file cache.
     """
     global _redis_client
-    
+
     if not HAS_REDIS:
         warnings.warn(
             "redis-py library not installed. Distributed caching disabled. "
@@ -128,7 +127,7 @@ def configure_distributed_cache(
             RuntimeWarning
         )
         return False
-    
+
     with _redis_client_lock:
         try:
             # Create Redis client with connection pool
@@ -140,16 +139,16 @@ def configure_distributed_cache(
                 max_connections=kwargs.get('max_connections', 50),
                 decode_responses=False  # We'll handle encoding ourselves
             )
-            
+
             # Test connection with ping
             _redis_client.ping()
-            
+
             # Store configuration in client
             _redis_client.key_prefix = key_prefix
             _redis_client.cache_ttl = ttl_seconds
-            
+
             return True
-            
+
         except Exception as e:
             warnings.warn(
                 f"Failed to configure Redis: {e}. Falling back to local cache.",
@@ -167,7 +166,7 @@ def disable_distributed_cache() -> None:
     distributed caching without changing configuration.
     """
     global _redis_client
-    
+
     with _redis_client_lock:
         if _redis_client is not None:
             try:
@@ -186,7 +185,7 @@ def is_distributed_cache_enabled() -> bool:
     """
     if _redis_client is None:
         return False
-    
+
     try:
         _redis_client.ping()
         return True
@@ -234,7 +233,7 @@ def save_to_distributed_cache(
     """
     if _redis_client is None:
         return False
-    
+
     try:
         # Create cache entry
         entry = CacheEntry(
@@ -252,19 +251,19 @@ def save_to_distributed_cache(
             },
             cache_version=CACHE_VERSION
         )
-        
+
         # Serialize to JSON
         entry_json = json.dumps(entry.to_dict())
-        
+
         # Get TTL
         ttl = getattr(_redis_client, 'cache_ttl', DEFAULT_TTL_SECONDS)
-        
+
         # Save to Redis with TTL
         redis_key = _make_redis_key(cache_key)
         _redis_client.setex(redis_key, ttl, entry_json)
-        
+
         return True
-        
+
     except Exception as e:
         warnings.warn(
             f"Failed to save to distributed cache: {e}",
@@ -288,33 +287,33 @@ def load_from_distributed_cache(cache_key: str) -> Tuple[Optional[CacheEntry], s
     """
     if _redis_client is None:
         return None, "distributed cache not configured"
-    
+
     try:
         # Get from Redis
         redis_key = _make_redis_key(cache_key)
         entry_json = _redis_client.get(redis_key)
-        
+
         if entry_json is None:
             return None, "key not found in distributed cache"
-        
+
         # Deserialize from JSON
         entry_dict = json.loads(entry_json)
         entry = CacheEntry.from_dict(entry_dict)
-        
+
         # Check if expired (shouldn't happen with Redis TTL, but check anyway)
         ttl = getattr(_redis_client, 'cache_ttl', DEFAULT_TTL_SECONDS)
         if entry.is_expired(ttl):
             # Delete expired entry
             _redis_client.delete(redis_key)
             return None, "cache entry expired"
-        
+
         # Check system compatibility
         is_compatible, reason = entry.is_system_compatible()
         if not is_compatible:
             return None, f"system incompatible: {reason}"
-        
+
         return entry, ""
-        
+
     except Exception as e:
         warnings.warn(
             f"Failed to load from distributed cache: {e}",
@@ -345,20 +344,20 @@ def clear_distributed_cache(pattern: str = "*") -> int:
     """
     if _redis_client is None:
         return 0
-    
+
     try:
         prefix = getattr(_redis_client, 'key_prefix', 'amorsize:')
         full_pattern = f"{prefix}{pattern}"
-        
+
         # Find matching keys
         keys = _redis_client.keys(full_pattern)
-        
+
         if not keys:
             return 0
-        
+
         # Delete keys
         return _redis_client.delete(*keys)
-        
+
     except Exception as e:
         warnings.warn(
             f"Failed to clear distributed cache: {e}",
@@ -385,14 +384,14 @@ def get_distributed_cache_stats() -> Dict[str, Any]:
             "memory_used": 0,
             "redis_info": None
         }
-    
+
     try:
         prefix = getattr(_redis_client, 'key_prefix', 'amorsize:')
         keys = _redis_client.keys(f"{prefix}*")
-        
+
         # Get Redis info
         info = _redis_client.info("memory")
-        
+
         return {
             "enabled": True,
             "total_keys": len(keys),
@@ -403,7 +402,7 @@ def get_distributed_cache_stats() -> Dict[str, Any]:
                 "uptime_seconds": _redis_client.info().get("uptime_in_seconds", 0)
             }
         }
-        
+
     except Exception as e:
         warnings.warn(
             f"Failed to get distributed cache stats: {e}",
@@ -452,26 +451,26 @@ def prewarm_distributed_cache(
             RuntimeWarning
         )
         return 0
-    
+
     count = 0
     for config in workload_configs:
         data_size = config['data_size']
         avg_time = config['avg_time_per_item']
-        
+
         # Check if already cached (unless force_refresh)
         if not force_refresh:
             cache_key = compute_cache_key(func, data_size, avg_time)
             entry, _ = load_from_distributed_cache(cache_key)
             if entry is not None:
                 continue  # Already cached
-        
+
         # Generate sample data
         data = range(min(data_size, 100))  # Use smaller sample for prewarming
-        
+
         # Run optimization (will cache result)
         # Import here to avoid circular dependency
         from .optimizer import optimize
-        
+
         try:
             optimize(func, data, use_cache=True)
             count += 1
@@ -480,5 +479,5 @@ def prewarm_distributed_cache(
                 f"Failed to prewarm for config {config}: {e}",
                 RuntimeWarning
             )
-    
+
     return count

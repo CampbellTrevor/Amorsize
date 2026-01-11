@@ -7,13 +7,12 @@ benchmarking.
 """
 
 import time
-from typing import Any, Callable, List, Union, Iterator, Optional, Tuple, Dict
-from multiprocessing import Pool
-from concurrent.futures import ThreadPoolExecutor
-import itertools
 import warnings
+from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Pool
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
-from .optimizer import optimize, OptimizationResult
+from .optimizer import OptimizationResult, optimize
 from .system_info import get_physical_cores
 
 # Check for scikit-optimize availability
@@ -42,7 +41,7 @@ class TuningResult:
         search_strategy: Strategy used for search ("grid", "adaptive", etc.)
         executor_type: Type of executor used ("process" or "thread")
     """
-    
+
     def __init__(
         self,
         best_n_jobs: int,
@@ -66,40 +65,40 @@ class TuningResult:
         self.optimization_hint = optimization_hint
         self.search_strategy = search_strategy
         self.executor_type = executor_type
-    
+
     def __repr__(self):
         return (f"TuningResult(best_n_jobs={self.best_n_jobs}, "
                 f"best_chunksize={self.best_chunksize}, "
                 f"best_speedup={self.best_speedup:.2f}x, "
                 f"tested={self.configurations_tested})")
-    
+
     def __str__(self):
         result = "=== Auto-Tuning Results ===\n\n"
         result += f"Search Strategy: {self.search_strategy}\n"
         result += f"Executor Type: {self.executor_type}\n"
         result += f"Configurations Tested: {self.configurations_tested}\n\n"
-        
+
         result += "Performance:\n"
         result += f"  Serial execution time:   {self.serial_time:.4f}s\n"
         result += f"  Best parallel time:      {self.best_time:.4f}s\n"
         result += f"  Best speedup:            {self.best_speedup:.2f}x\n\n"
-        
+
         result += "Optimal Configuration:\n"
         result += f"  n_jobs:     {self.best_n_jobs}\n"
         result += f"  chunksize:  {self.best_chunksize}\n\n"
-        
+
         if self.optimization_hint:
             result += "Comparison with Optimizer Hint:\n"
             result += f"  Optimizer suggested: n_jobs={self.optimization_hint.n_jobs}, "
             result += f"chunksize={self.optimization_hint.chunksize}\n"
-            
-            hint_match = (self.best_n_jobs == self.optimization_hint.n_jobs and 
+
+            hint_match = (self.best_n_jobs == self.optimization_hint.n_jobs and
                          self.best_chunksize == self.optimization_hint.chunksize)
             if hint_match:
                 result += "  ✅ Auto-tuning confirmed optimizer recommendation!\n"
             else:
-                result += f"  ℹ️ Auto-tuning found different optimal configuration\n"
-        
+                result += "  ℹ️ Auto-tuning found different optimal configuration\n"
+
         # Show top 3 configurations
         if len(self.all_results) > 1:
             result += "\nTop Configurations:\n"
@@ -108,9 +107,9 @@ class TuningResult:
                 speedup = self.serial_time / exec_time if exec_time > 0 else 0
                 result += f"  {i}. n_jobs={n_jobs:2d}, chunksize={chunksize:4d} -> "
                 result += f"{exec_time:.4f}s ({speedup:.2f}x)\n"
-        
+
         return result
-    
+
     def get_top_configurations(self, n: int = 5) -> List[Tuple[int, int, float, float]]:
         """
         Get the top N configurations by execution time.
@@ -126,7 +125,7 @@ class TuningResult:
             (n_jobs, chunksize, exec_time, self.serial_time / exec_time if exec_time > 0 else 0)
             for (n_jobs, chunksize), exec_time in sorted_results[:n]
         ]
-    
+
     def save_config(
         self,
         filepath: str,
@@ -147,17 +146,17 @@ class TuningResult:
             >>> result = tune_parameters(my_func, data)
             >>> result.save_config('my_tuned_config.json', function_name='my_func')
         """
-        from .config import save_config, ConfigData
-        
+        from .config import ConfigData, save_config
+
         # Estimate data size from serial time and best time
         # This is approximate since we don't store the exact data size
         data_size = None  # Unknown from tuning alone
-        
+
         # Calculate average execution time per item (approximate)
         avg_execution_time = None
         if data_size and data_size > 0:
             avg_execution_time = self.serial_time / data_size
-        
+
         config = ConfigData(
             n_jobs=self.best_n_jobs,
             chunksize=self.best_chunksize,
@@ -169,7 +168,7 @@ class TuningResult:
             notes=notes,
             source="tune"
         )
-        
+
         save_config(config, filepath, overwrite=overwrite)
 
 
@@ -197,7 +196,7 @@ def _benchmark_configuration(
     """
     try:
         start = time.perf_counter()
-        
+
         if executor_type == "thread":
             with ThreadPoolExecutor(max_workers=n_jobs) as executor:
                 # ThreadPoolExecutor.map doesn't have chunksize parameter
@@ -206,11 +205,11 @@ def _benchmark_configuration(
         else:
             with Pool(processes=n_jobs) as pool:
                 list(pool.map(func, data, chunksize=chunksize))
-        
+
         end = time.perf_counter()
         return end - start
-    
-    except (Exception, KeyboardInterrupt) as e:
+
+    except (Exception, KeyboardInterrupt):
         # Return infinity on error so this config is never selected
         return float('inf')
 
@@ -261,16 +260,16 @@ def tune_parameters(
     # Convert iterator to list if needed
     if hasattr(data, '__iter__') and not isinstance(data, (list, range)):
         data = list(data)
-    
+
     data_list = list(data)
     n_items = len(data_list)
-    
+
     if n_items == 0:
         raise ValueError("Cannot tune on empty dataset")
-    
+
     # Determine executor type
     executor_type = "thread" if prefer_threads_for_io else "process"
-    
+
     # Get optimizer hint if requested
     optimization_hint = None
     if use_optimizer_hint:
@@ -286,7 +285,7 @@ def tune_parameters(
         except Exception as e:
             if verbose:
                 print(f"Warning: Could not get optimizer hint: {e}")
-    
+
     # Determine search space for n_jobs
     if n_jobs_range is None:
         physical_cores = get_physical_cores()
@@ -295,7 +294,7 @@ def tune_parameters(
         if optimization_hint and optimization_hint.n_jobs not in n_jobs_range:
             n_jobs_range.append(optimization_hint.n_jobs)
         n_jobs_range = sorted(set(n_jobs_range))
-    
+
     # Determine search space for chunksize
     if chunksize_range is None:
         # Smart defaults based on data size
@@ -312,27 +311,27 @@ def tune_parameters(
                 max(1, n_items // 20),
                 max(1, n_items // 10)
             ]
-        
+
         # Add optimizer hint
         if optimization_hint and optimization_hint.chunksize not in chunksize_range:
             chunksize_range.append(optimization_hint.chunksize)
-        
+
         chunksize_range = sorted(set(chunksize_range))
-    
+
     if verbose:
-        print(f"\n=== Auto-Tuning Configuration ===")
+        print("\n=== Auto-Tuning Configuration ===")
         print(f"Function: {func.__name__}")
         print(f"Data items: {n_items}")
         print(f"Executor: {executor_type}")
         print(f"Testing n_jobs: {n_jobs_range}")
         print(f"Testing chunksizes: {chunksize_range}")
         print(f"Total configurations: {len(n_jobs_range) * len(chunksize_range) + 1}")
-        print(f"\nStarting benchmark...\n")
-    
+        print("\nStarting benchmark...\n")
+
     # Benchmark serial execution
     if verbose:
         print("Benchmarking serial execution...")
-    
+
     serial_start = time.perf_counter()
     try:
         list(map(func, data_list))
@@ -340,35 +339,35 @@ def tune_parameters(
         raise RuntimeError(f"Serial execution failed: {e}")
     serial_end = time.perf_counter()
     serial_time = serial_end - serial_start
-    
+
     if verbose:
         print(f"  Serial time: {serial_time:.4f}s\n")
-    
+
     # Grid search over all configurations
     all_results: Dict[Tuple[int, int], float] = {}
     best_time = float('inf')
     best_n_jobs = n_jobs_range[0] if n_jobs_range else 1
     best_chunksize = chunksize_range[0] if chunksize_range else 1
-    
+
     total_configs = len(n_jobs_range) * len(chunksize_range)
     current_config = 0
-    
+
     for n_jobs in n_jobs_range:
         for chunksize in chunksize_range:
             current_config += 1
-            
+
             if verbose:
                 print(f"[{current_config}/{total_configs}] Testing n_jobs={n_jobs}, "
                       f"chunksize={chunksize}...", end=" ")
-            
+
             exec_time = _benchmark_configuration(
                 func, data_list, n_jobs, chunksize,
                 executor_type=executor_type,
                 timeout=timeout_per_config
             )
-            
+
             all_results[(n_jobs, chunksize)] = exec_time
-            
+
             if exec_time < best_time:
                 best_time = exec_time
                 best_n_jobs = n_jobs
@@ -380,20 +379,20 @@ def tune_parameters(
                 if verbose:
                     speedup = serial_time / exec_time if exec_time > 0 and exec_time != float('inf') else 0
                     print(f"{exec_time:.4f}s ({speedup:.2f}x)")
-    
+
     # If serial is still faster than any parallel config, use serial
     if serial_time < best_time:
         best_time = serial_time
         best_n_jobs = 1
         best_chunksize = 1
-    
+
     best_speedup = serial_time / best_time if best_time > 0 else 0
-    
+
     if verbose:
-        print(f"\n=== Tuning Complete ===")
+        print("\n=== Tuning Complete ===")
         print(f"Best configuration: n_jobs={best_n_jobs}, chunksize={best_chunksize}")
         print(f"Best time: {best_time:.4f}s ({best_speedup:.2f}x speedup)\n")
-    
+
     return TuningResult(
         best_n_jobs=best_n_jobs,
         best_chunksize=best_chunksize,
@@ -436,21 +435,21 @@ def quick_tune(
     # Convert to list if needed
     if hasattr(data, '__iter__') and not isinstance(data, (list, range)):
         data = list(data)
-    
+
     data_list = list(data)
     n_items = len(data_list)
-    
+
     physical_cores = get_physical_cores()
-    
+
     # Minimal search space: serial, half cores, full cores
     n_jobs_range = [1, max(1, physical_cores // 2), physical_cores]
-    
+
     # Minimal chunksize space
     if n_items < 20:
         chunksize_range = [1]
     else:
         chunksize_range = [1, max(1, n_items // 20), max(1, n_items // 10)]
-    
+
     return tune_parameters(
         func, data_list,
         n_jobs_range=n_jobs_range,
@@ -539,11 +538,11 @@ def bayesian_tune_parameters(
         # Fall back to grid search with reasonable defaults
         physical_cores = get_physical_cores()
         n_jobs_range = [1, max(1, physical_cores // 2), physical_cores]
-        
+
         data_list = list(data) if hasattr(data, '__iter__') and not isinstance(data, (list, range)) else data
         n_items = len(list(data_list))
         chunksize_range = [1, max(1, n_items // 20), max(1, n_items // 10)]
-        
+
         return tune_parameters(
             func, data,
             n_jobs_range=n_jobs_range,
@@ -553,30 +552,30 @@ def bayesian_tune_parameters(
             timeout_per_config=timeout_per_config,
             prefer_threads_for_io=prefer_threads_for_io
         )
-    
+
     # Convert iterator to list if needed
     if hasattr(data, '__iter__') and not isinstance(data, (list, range)):
         data = list(data)
-    
+
     data_list = list(data)
     n_items = len(data_list)
-    
+
     if n_items == 0:
         raise ValueError("Cannot tune on empty dataset")
-    
+
     if n_iterations < 5:
         raise ValueError("n_iterations must be at least 5 for Bayesian optimization")
-    
+
     # Determine executor type
     executor_type = "thread" if prefer_threads_for_io else "process"
-    
+
     # Set default bounds
     if n_jobs_max is None:
         n_jobs_max = get_physical_cores()
-    
+
     if chunksize_max is None:
         chunksize_max = max(1, n_items // 2)
-    
+
     # Validate bounds
     if n_jobs_min < 1:
         raise ValueError("n_jobs_min must be at least 1")
@@ -586,7 +585,7 @@ def bayesian_tune_parameters(
         raise ValueError("chunksize_min must be at least 1")
     if chunksize_max < chunksize_min:
         raise ValueError("chunksize_max must be >= chunksize_min")
-    
+
     # Get optimizer hint if requested
     optimization_hint = None
     initial_x = None
@@ -600,7 +599,7 @@ def bayesian_tune_parameters(
             if verbose:
                 print(f"Optimizer hint: n_jobs={optimization_hint.n_jobs}, "
                       f"chunksize={optimization_hint.chunksize}")
-            
+
             # Use optimizer hint as initial point (if within bounds)
             hint_n_jobs = max(n_jobs_min, min(n_jobs_max, optimization_hint.n_jobs))
             hint_chunksize = max(chunksize_min, min(chunksize_max, optimization_hint.chunksize))
@@ -608,26 +607,26 @@ def bayesian_tune_parameters(
         except Exception as e:
             if verbose:
                 print(f"Warning: Could not get optimizer hint: {e}")
-    
+
     if verbose:
-        print(f"\n=== Bayesian Optimization Configuration ===")
+        print("\n=== Bayesian Optimization Configuration ===")
         print(f"Function: {func.__name__}")
         print(f"Data items: {n_items}")
         print(f"Executor: {executor_type}")
         print(f"Search space: n_jobs=[{n_jobs_min}, {n_jobs_max}], chunksize=[{chunksize_min}, {chunksize_max}]")
         print(f"Iterations: {n_iterations}")
-        print(f"\nStarting optimization...\n")
-    
+        print("\nStarting optimization...\n")
+
     # Check if search space is too small for Bayesian optimization
     # If n_jobs range is 1 or chunksize range is 1, fall back to grid search
     if n_jobs_max == n_jobs_min or chunksize_max == chunksize_min:
         if verbose:
             print("Search space too small for Bayesian optimization. Using grid search...")
-        
+
         # Fall back to grid search for tiny search spaces
         n_jobs_range = [n_jobs_min, n_jobs_max] if n_jobs_max != n_jobs_min else [n_jobs_min]
         chunksize_range = [chunksize_min, chunksize_max] if chunksize_max != chunksize_min else [chunksize_min]
-        
+
         return tune_parameters(
             func, data_list,
             n_jobs_range=n_jobs_range,
@@ -637,11 +636,11 @@ def bayesian_tune_parameters(
             timeout_per_config=timeout_per_config,
             prefer_threads_for_io=prefer_threads_for_io
         )
-    
+
     # Benchmark serial execution first
     if verbose:
         print("Benchmarking serial execution...")
-    
+
     serial_start = time.perf_counter()
     try:
         list(map(func, data_list))
@@ -649,47 +648,47 @@ def bayesian_tune_parameters(
         raise RuntimeError(f"Serial execution failed: {e}")
     serial_end = time.perf_counter()
     serial_time = serial_end - serial_start
-    
+
     if verbose:
         print(f"  Serial time: {serial_time:.4f}s\n")
-    
+
     # Define search space
     search_space = [
         Integer(n_jobs_min, n_jobs_max, name='n_jobs'),
         Integer(chunksize_min, chunksize_max, name='chunksize')
     ]
-    
+
     # Track all results
     all_results: Dict[Tuple[int, int], float] = {}
     iteration_counter = [0]  # Use list to allow modification in nested function
-    
+
     # Define objective function for optimization
     @use_named_args(search_space)
     def objective(n_jobs, chunksize):
         """Objective function to minimize: execution time."""
         iteration_counter[0] += 1
-        
+
         if verbose:
             print(f"[{iteration_counter[0]}/{n_iterations}] Testing n_jobs={n_jobs}, "
                   f"chunksize={chunksize}...", end=" ")
-        
+
         exec_time = _benchmark_configuration(
             func, data_list, n_jobs, chunksize,
             executor_type=executor_type,
             timeout=timeout_per_config
         )
-        
+
         all_results[(n_jobs, chunksize)] = exec_time
-        
+
         if verbose:
             if exec_time == float('inf'):
                 print("FAILED")
             else:
                 speedup = serial_time / exec_time if exec_time > 0 else 0
                 print(f"{exec_time:.4f}s ({speedup:.2f}x)")
-        
+
         return exec_time
-    
+
     # Run Bayesian optimization
     try:
         result = gp_minimize(
@@ -702,7 +701,7 @@ def bayesian_tune_parameters(
             random_state=random_state,
             verbose=False  # We handle our own verbosity
         )
-        
+
         best_n_jobs = int(result.x[0])
         best_chunksize = int(result.x[1])
         best_time = result.fun
@@ -710,7 +709,7 @@ def bayesian_tune_parameters(
         if verbose:
             print(f"\nWarning: Bayesian optimization failed: {e}")
             print("Using best result from completed iterations...")
-        
+
         # If optimization fails, use best from what we have
         if all_results:
             best_config = min(all_results.items(), key=lambda x: x[1])
@@ -721,21 +720,21 @@ def bayesian_tune_parameters(
             best_n_jobs = 1
             best_chunksize = 1
             best_time = serial_time
-    
+
     # If serial is still faster, use serial
     if serial_time < best_time:
         best_time = serial_time
         best_n_jobs = 1
         best_chunksize = 1
-    
+
     best_speedup = serial_time / best_time if best_time > 0 else 0
-    
+
     if verbose:
-        print(f"\n=== Optimization Complete ===")
+        print("\n=== Optimization Complete ===")
         print(f"Best configuration: n_jobs={best_n_jobs}, chunksize={best_chunksize}")
         print(f"Best time: {best_time:.4f}s ({best_speedup:.2f}x speedup)")
         print(f"Configurations tested: {len(all_results) + 1}\n")
-    
+
     return TuningResult(
         best_n_jobs=best_n_jobs,
         best_chunksize=best_chunksize,

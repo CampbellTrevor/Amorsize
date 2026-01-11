@@ -17,8 +17,8 @@ import json
 import logging
 import sys
 import time
-from typing import Any, Dict, Optional
 from enum import Enum
+from typing import Any, Dict, Optional
 
 
 class LogLevel(Enum):
@@ -39,7 +39,7 @@ class StructuredLogger:
     Thread-safe: Uses Python's logging module which is thread-safe.
     Multiprocessing-safe: Each process gets its own logger instance.
     """
-    
+
     def __init__(self, name: str = "amorsize", level: str = "INFO"):
         """
         Initialize structured logger.
@@ -50,10 +50,10 @@ class StructuredLogger:
         """
         self.logger = logging.getLogger(name)
         self.enabled = False  # Disabled by default for backward compatibility
-        
+
         # Set log level
         self._set_level(level)
-    
+
     def _set_level(self, level: str):
         """Set the log level."""
         level_map = {
@@ -63,7 +63,7 @@ class StructuredLogger:
             "ERROR": logging.ERROR
         }
         self.logger.setLevel(level_map.get(level.upper(), logging.INFO))
-    
+
     def enable(self, output: str = "stderr", format_json: bool = True, level: str = "INFO"):
         """
         Enable structured logging.
@@ -75,10 +75,10 @@ class StructuredLogger:
         """
         self.enabled = True
         self._set_level(level)
-        
+
         # Remove existing handlers
         self.logger.handlers.clear()
-        
+
         # Add handler based on output destination
         if output == "stderr":
             handler = logging.StreamHandler(sys.stderr)
@@ -87,7 +87,7 @@ class StructuredLogger:
         else:
             # File output
             handler = logging.FileHandler(output)
-        
+
         # Set formatter
         if format_json:
             handler.setFormatter(JSONFormatter())
@@ -95,14 +95,14 @@ class StructuredLogger:
             handler.setFormatter(logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             ))
-        
+
         self.logger.addHandler(handler)
-    
+
     def disable(self):
         """Disable structured logging."""
         self.enabled = False
         self.logger.handlers.clear()
-    
+
     def _log(self, level: LogLevel, event: str, data: Optional[Dict[str, Any]] = None):
         """
         Internal logging method with lazy evaluation.
@@ -114,28 +114,28 @@ class StructuredLogger:
         """
         if not self.enabled:
             return
-        
+
         # Build structured log entry
         log_entry = {
             "timestamp": time.time(),
             "event": event,
         }
-        
+
         if data:
             log_entry.update(data)
-        
+
         # Log at appropriate level
         level_method = getattr(self.logger, level.value.lower())
         level_method(json.dumps(log_entry))
-    
+
     def log_optimization_start(self, func_name: Optional[str] = None, data_size: Optional[int] = None):
         """Log the start of an optimization."""
         self._log(LogLevel.INFO, "optimization_start", {
             "function": func_name or "unknown",
             "data_size": data_size
         })
-    
-    def log_optimization_complete(self, n_jobs: int, chunksize: int, speedup: float, 
+
+    def log_optimization_complete(self, n_jobs: int, chunksize: int, speedup: float,
                                    executor_type: str, cache_hit: bool = False):
         """Log successful optimization completion."""
         self._log(LogLevel.INFO, "optimization_complete", {
@@ -145,8 +145,8 @@ class StructuredLogger:
             "executor_type": executor_type,
             "cache_hit": cache_hit
         })
-    
-    def log_sampling_complete(self, sample_count: int, avg_time: float, 
+
+    def log_sampling_complete(self, sample_count: int, avg_time: float,
                               is_picklable: bool, workload_type: str):
         """Log completion of dry run sampling."""
         self._log(LogLevel.INFO, "sampling_complete", {
@@ -155,8 +155,8 @@ class StructuredLogger:
             "is_picklable": is_picklable,
             "workload_type": workload_type
         })
-    
-    def log_system_info(self, physical_cores: int, logical_cores: int, 
+
+    def log_system_info(self, physical_cores: int, logical_cores: int,
                         available_memory_bytes: int, start_method: str):
         """Log system information."""
         self._log(LogLevel.DEBUG, "system_info", {
@@ -166,15 +166,15 @@ class StructuredLogger:
             "available_memory_gb": available_memory_bytes / (1024**3),
             "multiprocessing_start_method": start_method
         })
-    
+
     def log_rejection(self, reason: str, details: Optional[Dict[str, Any]] = None):
         """Log parallelization rejection."""
         log_data = {"reason": reason}
         if details:
             log_data.update(details)
         self._log(LogLevel.WARNING, "parallelization_rejected", log_data)
-    
-    def log_constraint(self, constraint_type: str, message: str, 
+
+    def log_constraint(self, constraint_type: str, message: str,
                        details: Optional[Dict[str, Any]] = None):
         """Log optimization constraint."""
         log_data = {
@@ -184,11 +184,11 @@ class StructuredLogger:
         if details:
             log_data.update(details)
         self._log(LogLevel.WARNING, "optimization_constraint", log_data)
-    
+
     def log_performance_metrics(self, metrics: Dict[str, Any]):
         """Log performance metrics."""
         self._log(LogLevel.DEBUG, "performance_metrics", metrics)
-    
+
     def log_error(self, error_type: str, message: str, details: Optional[Dict[str, Any]] = None):
         """Log an error."""
         log_data = {
@@ -207,7 +207,7 @@ class JSONFormatter(logging.Formatter):
     This enables easy parsing by log aggregation systems and
     structured log analysis.
     """
-    
+
     def format(self, record: logging.LogRecord) -> str:
         """
         Format log record as JSON.
@@ -226,18 +226,18 @@ class JSONFormatter(logging.Formatter):
         except (json.JSONDecodeError, ValueError):
             # If it's not JSON, treat it as a plain message
             message_data = {"message": record.getMessage()}
-        
+
         log_entry = {
             "timestamp": record.created,
             "level": record.levelname,
             "logger": record.name,
             **message_data
         }
-        
+
         # Add exception info if present
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
-        
+
         return json.dumps(log_entry)
 
 
@@ -258,7 +258,7 @@ def get_logger() -> StructuredLogger:
     return _global_logger
 
 
-def configure_logging(enabled: bool = True, output: str = "stderr", 
+def configure_logging(enabled: bool = True, output: str = "stderr",
                       format_json: bool = True, level: str = "INFO"):
     """
     Configure structured logging for Amorsize.
@@ -284,7 +284,7 @@ def configure_logging(enabled: bool = True, output: str = "stderr",
         >>> configure_logging(enabled=False)
     """
     logger = get_logger()
-    
+
     if enabled:
         logger.enable(output=output, format_json=format_json, level=level)
     else:

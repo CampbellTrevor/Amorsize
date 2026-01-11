@@ -5,17 +5,17 @@ This module provides optimization for streaming scenarios where results
 are processed incrementally without accumulating all results in memory.
 """
 
-from typing import Any, Callable, Iterator, Union, Optional, List
-from .optimizer import OptimizationResult, DiagnosticProfile, calculate_amdahl_speedup
-from .sampling import perform_dry_run, estimate_total_items
+from typing import Any, Callable, Iterator, List, Optional, Union
+
+from .optimizer import DiagnosticProfile, calculate_amdahl_speedup
+from .sampling import estimate_total_items, perform_dry_run
 from .system_info import (
+    check_start_method_mismatch,
+    get_available_memory,
+    get_chunking_overhead,
+    get_multiprocessing_start_method,
     get_physical_cores,
     get_spawn_cost,
-    get_chunking_overhead,
-    check_start_method_mismatch,
-    get_multiprocessing_start_method,
-    get_available_memory,
-    get_memory_pressure
 )
 
 # Streaming optimization constants
@@ -39,7 +39,7 @@ class StreamingOptimizationResult:
     Contains optimal parameters for imap/imap_unordered usage along with
     detailed rationale and performance estimates.
     """
-    
+
     def __init__(
         self,
         n_jobs: int,
@@ -75,20 +75,20 @@ class StreamingOptimizationResult:
         self.estimated_item_time = estimated_item_time
         self.pickle_size = pickle_size
         self.coefficient_of_variation = coefficient_of_variation
-    
+
     def __repr__(self):
         method = "imap" if self.use_ordered else "imap_unordered"
         return (f"StreamingOptimizationResult(n_jobs={self.n_jobs}, "
                 f"chunksize={self.chunksize}, method={method}, "
                 f"estimated_speedup={self.estimated_speedup:.2f}x)")
-    
+
     def __str__(self):
         method = "imap" if self.use_ordered else "imap_unordered"
         return (f"Recommended: n_jobs={self.n_jobs}, chunksize={self.chunksize}, "
                 f"use pool.{method}()\n"
                 f"Reason: {self.reason}\n"
                 f"Estimated speedup: {self.estimated_speedup:.2f}x")
-    
+
     def explain(self) -> str:
         """
         Return detailed explanation of streaming optimization.
@@ -123,49 +123,49 @@ def _validate_streaming_parameters(
     """
     if not callable(func):
         raise ValueError("Invalid func: must be a callable function")
-    
+
     if data is None:
         raise ValueError("Invalid data: cannot be None")
-    
+
     if not isinstance(sample_size, int):
         raise ValueError(f"Invalid sample_size: must be int, got {type(sample_size).__name__}")
     if sample_size < 1:
         raise ValueError(f"Invalid sample_size: must be >= 1, got {sample_size}")
     if sample_size > 10000:
         raise ValueError(f"Invalid sample_size: must be <= 10000, got {sample_size}")
-    
+
     if not isinstance(target_chunk_duration, (int, float)):
         raise ValueError(f"Invalid target_chunk_duration: must be numeric, got {type(target_chunk_duration).__name__}")
     if target_chunk_duration <= 0:
         raise ValueError(f"Invalid target_chunk_duration: must be > 0, got {target_chunk_duration}")
     if target_chunk_duration > 3600:
         raise ValueError(f"Invalid target_chunk_duration: must be <= 3600, got {target_chunk_duration}")
-    
+
     if prefer_ordered is not None and not isinstance(prefer_ordered, bool):
         raise ValueError(f"Invalid prefer_ordered: must be bool or None, got {type(prefer_ordered).__name__}")
-    
+
     if buffer_size is not None:
         if not isinstance(buffer_size, int):
             raise ValueError(f"Invalid buffer_size: must be int or None, got {type(buffer_size).__name__}")
         if buffer_size < 1:
             raise ValueError(f"Invalid buffer_size: must be >= 1 or None, got {buffer_size}")
-    
+
     if not isinstance(enable_adaptive_chunking, bool):
         raise ValueError(f"Invalid enable_adaptive_chunking: must be bool, got {type(enable_adaptive_chunking).__name__}")
-    
+
     if not isinstance(adaptation_rate, (int, float)):
         raise ValueError(f"Invalid adaptation_rate: must be numeric, got {type(adaptation_rate).__name__}")
     if not (0.0 <= adaptation_rate <= 1.0):
         raise ValueError(f"Invalid adaptation_rate: must be 0.0-1.0, got {adaptation_rate}")
-    
+
     if not isinstance(enable_memory_backpressure, bool):
         raise ValueError(f"Invalid enable_memory_backpressure: must be bool, got {type(enable_memory_backpressure).__name__}")
-    
+
     if not isinstance(memory_threshold, (int, float)):
         raise ValueError(f"Invalid memory_threshold: must be numeric, got {type(memory_threshold).__name__}")
     if not (0.0 <= memory_threshold <= 1.0):
         raise ValueError(f"Invalid memory_threshold: must be 0.0-1.0, got {memory_threshold}")
-    
+
     # pool_manager validation (if provided)
     if pool_manager is not None:
         # Check if it has the required methods
@@ -298,26 +298,25 @@ def optimize_streaming(
     # Validate all parameters
     _validate_streaming_parameters(
         func, data, sample_size, target_chunk_duration,
-        prefer_ordered, buffer_size, enable_adaptive_chunking, 
-        adaptation_rate, pool_manager, enable_memory_backpressure, 
+        prefer_ordered, buffer_size, enable_adaptive_chunking,
+        adaptation_rate, pool_manager, enable_memory_backpressure,
         memory_threshold
     )
-    
+
     # Try ML prediction first if enabled
     if enable_ml_prediction:
         try:
             from .ml_prediction import predict_streaming_parameters
             from .sampling import estimate_total_items as est_total
-            
+
             # Estimate data size for ML prediction
             # Note: For generators, we can't know size without consuming
             # For lists and other sized iterables, we can get the length
-            is_generator = hasattr(data, '__iter__') and not hasattr(data, '__len__')
             data_size = est_total(data, sample_consumed=False)  # Don't assume consumed yet
-            
+
             # Use provided estimate or default
             item_time = estimated_item_time if estimated_item_time is not None else 0.01
-            
+
             if data_size > 0:
                 ml_result = predict_streaming_parameters(
                     func=func,
@@ -327,7 +326,7 @@ def optimize_streaming(
                     verbose=verbose,
                     prefer_ordered=prefer_ordered
                 )
-                
+
                 if ml_result is not None:
                     # ML prediction succeeded with high confidence
                     if verbose:
@@ -341,17 +340,17 @@ def optimize_streaming(
                         method = "imap" if ml_result.use_ordered else "imap_unordered"
                         print(f"  Method: {method}")
                         print(f"  Training samples: {ml_result.training_samples}")
-                        print(f"\n→ Using ML prediction (10-100x faster than dry-run)")
+                        print("\n→ Using ML prediction (10-100x faster than dry-run)")
                         print(f"{'='*60}\n")
-                    
+
                     # Determine buffer size (prefer user override)
                     final_buffer_size = buffer_size if buffer_size is not None else ml_result.buffer_size
-                    
+
                     # Determine adaptive chunking parameters
                     # Use ML recommendations if available, otherwise user settings
                     adaptive_params = {}
                     use_adaptive = enable_adaptive_chunking
-                    
+
                     # ML can recommend adaptive chunking for heterogeneous workloads
                     if ml_result.adaptive_chunking_enabled:
                         use_adaptive = True
@@ -373,7 +372,7 @@ def optimize_streaming(
                             'min_chunksize': max(1, ml_result.chunksize // 4),
                             'max_chunksize': ml_result.chunksize * 4
                         }
-                    
+
                     # Return ML-based result
                     return StreamingOptimizationResult(
                         n_jobs=ml_result.n_jobs,
@@ -397,28 +396,28 @@ def optimize_streaming(
                     print(f"\n{'='*60}")
                     print("ML PREDICTION CONFIDENCE TOO LOW")
                     print(f"{'='*60}")
-                    print(f"→ Falling back to dry-run sampling for accurate analysis")
+                    print("→ Falling back to dry-run sampling for accurate analysis")
                     print(f"{'='*60}\n")
             elif verbose:
-                print(f"\nℹ Cannot estimate data size - skipping ML prediction\n")
-                
+                print("\nℹ Cannot estimate data size - skipping ML prediction\n")
+
         except ImportError:
             if verbose:
-                print(f"\n⚠ ML prediction module not available - using dry-run sampling\n")
+                print("\n⚠ ML prediction module not available - using dry-run sampling\n")
         except Exception as e:
             if verbose:
                 print(f"\n⚠ ML prediction error: {e} - falling back to dry-run\n")
-    
+
     # Initialize diagnostic profile if requested
     diag = DiagnosticProfile() if profile else None
-    
+
     # Get system information
     physical_cores = get_physical_cores()
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
     start_method = get_multiprocessing_start_method()
     available_memory = get_available_memory()
-    
+
     if verbose:
         print(f"\n{'='*60}")
         print("AMORSIZE STREAMING OPTIMIZATION")
@@ -428,7 +427,7 @@ def optimize_streaming(
         print(f"Chunking overhead: {chunking_overhead*1000:.3f}ms per chunk")
         print(f"Available memory: {available_memory / (1024**3):.2f}GB")
         print()
-    
+
     # Populate diagnostic profile
     if diag:
         diag.physical_cores = physical_cores
@@ -438,13 +437,13 @@ def optimize_streaming(
         diag.available_memory = available_memory
         diag.multiprocessing_start_method = start_method
         diag.target_chunk_duration = target_chunk_duration
-    
+
     # Perform dry run sampling
     if verbose:
         print(f"Sampling function with {sample_size} items...")
-    
+
     sampling_result = perform_dry_run(func, data, sample_size=sample_size)
-    
+
     # Reconstruct data for generators
     from .sampling import reconstruct_iterator
     if sampling_result.is_generator:
@@ -454,13 +453,13 @@ def optimize_streaming(
         )
     else:
         reconstructed_data = data
-    
+
     # Check for sampling errors
     if sampling_result.error:
         if verbose:
             print(f"✗ Sampling failed: {sampling_result.error}")
-            print(f"→ Falling back to serial execution (n_jobs=1)")
-        
+            print("→ Falling back to serial execution (n_jobs=1)")
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -477,7 +476,7 @@ def optimize_streaming(
             pickle_size=None,
             coefficient_of_variation=None
         )
-    
+
     # Populate sampling results in diagnostic profile
     if diag:
         diag.avg_execution_time = sampling_result.avg_time
@@ -488,7 +487,7 @@ def optimize_streaming(
         diag.is_picklable = sampling_result.is_picklable
         diag.coefficient_of_variation = sampling_result.coefficient_of_variation
         diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
-    
+
     if verbose:
         print(f"✓ Sampling complete: {sampling_result.sample_count} items")
         print(f"  Avg execution time: {sampling_result.avg_time*1000:.3f}ms per item")
@@ -497,13 +496,13 @@ def optimize_streaming(
         if sampling_result.coefficient_of_variation > 0:
             print(f"  Workload variability: CV={sampling_result.coefficient_of_variation:.2f}")
         print()
-    
+
     # Check if function is picklable
     if not sampling_result.is_picklable:
         if verbose:
             print("✗ Function is not picklable")
             print("→ Cannot use multiprocessing (serial execution only)")
-        
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -520,17 +519,17 @@ def optimize_streaming(
             pickle_size=None,
             coefficient_of_variation=sampling_result.coefficient_of_variation
         )
-    
+
     # Check if data items are picklable
     if not sampling_result.data_items_picklable:
         if verbose:
-            print(f"✗ Data items are not picklable")
+            print("✗ Data items are not picklable")
             if sampling_result.unpicklable_data_index is not None:
                 print(f"  First unpicklable item at index: {sampling_result.unpicklable_data_index}")
             if sampling_result.data_pickle_error:
                 print(f"  Error: {sampling_result.data_pickle_error}")
             print("→ Cannot use multiprocessing (serial execution only)")
-        
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=1,
@@ -538,8 +537,8 @@ def optimize_streaming(
             reason=f"Data items are not picklable - Data item at index {sampling_result.unpicklable_data_index} is not picklable",
             estimated_speedup=1.0,
             warnings=[
-                f"Data items contain unpicklable objects. "
-                f"Ensure data items don't contain thread locks, file handles, or other unpicklable objects."
+                "Data items contain unpicklable objects. "
+                "Ensure data items don't contain thread locks, file handles, or other unpicklable objects."
             ],
             data=reconstructed_data,
             profile=diag,
@@ -550,10 +549,10 @@ def optimize_streaming(
             pickle_size=sampling_result.return_size,
             coefficient_of_variation=sampling_result.coefficient_of_variation
         )
-    
+
     # Fast-fail checks for streaming optimization
     warnings = []
-    
+
     # Check for nested parallelism
     if sampling_result.nested_parallelism_detected:
         warning_msg = (
@@ -565,20 +564,20 @@ def optimize_streaming(
         warnings.append(warning_msg)
         if verbose:
             print(f"⚠ {warning_msg}")
-    
+
     # Check start method mismatch
     is_mismatch, mismatch_warning = check_start_method_mismatch()
     if is_mismatch:
         warnings.append(mismatch_warning)
         if verbose:
             print(f"⚠ {mismatch_warning}")
-    
+
     # Estimate total items (for known-size datasets)
     total_items = estimate_total_items(reconstructed_data, sampling_result.is_generator)
-    
+
     if diag:
         diag.total_items = total_items if total_items > 0 else -1
-    
+
     # Calculate optimal chunksize based on target duration
     # For streaming, we want chunks that take target_chunk_duration seconds
     if sampling_result.avg_time > 0:
@@ -586,45 +585,45 @@ def optimize_streaming(
     else:
         # If avg_time is zero or negative (error), use conservative default
         optimal_chunksize = 1
-    
+
     # Adaptive chunking for heterogeneous workloads
     if sampling_result.coefficient_of_variation > 0.5:
         # Reduce chunksize for better load balancing
         cv = sampling_result.coefficient_of_variation
         scale_factor = max(0.25, 1.0 - cv * 0.5)
         optimal_chunksize = max(1, int(optimal_chunksize * scale_factor))
-        
+
         if verbose:
             print(f"ℹ Heterogeneous workload (CV={cv:.2f}) - using smaller chunks for load balancing")
             print(f"  Adjusted chunksize: {optimal_chunksize}")
-    
+
     if diag:
         diag.optimal_chunksize = optimal_chunksize
-    
+
     # Calculate optimal n_jobs
     # For streaming, we don't have result memory accumulation constraint
     # So n_jobs is primarily limited by CPU cores and spawn cost
-    
+
     # Check if function is fast enough to benefit from parallelization
     min_duration_for_parallel = spawn_cost / physical_cores
     if sampling_result.avg_time < min_duration_for_parallel:
         if verbose:
             print(f"✗ Function too fast ({sampling_result.avg_time*1000:.3f}ms per item)")
             print(f"  Spawn overhead ({spawn_cost*1000:.2f}ms) dominates execution time")
-            print(f"→ Serial execution recommended")
+            print("→ Serial execution recommended")
             print(f"\n{'='*60}")
             print("OPTIMIZATION RESULTS")
             print(f"{'='*60}")
-            print(f"Recommended: Serial execution (n_jobs=1)")
-            print(f"Reason: Function too fast - spawn overhead dominates")
-        
+            print("Recommended: Serial execution (n_jobs=1)")
+            print("Reason: Function too fast - spawn overhead dominates")
+
         if diag:
             diag.estimated_speedup = 1.0
             diag.rejection_reasons.append(
                 f"Function too fast ({sampling_result.avg_time*1000:.3f}ms) - "
                 f"spawn overhead ({spawn_cost*1000:.2f}ms) would dominate"
             )
-        
+
         return StreamingOptimizationResult(
             n_jobs=1,
             chunksize=optimal_chunksize,
@@ -641,13 +640,13 @@ def optimize_streaming(
             pickle_size=sampling_result.return_size,
             coefficient_of_variation=sampling_result.coefficient_of_variation
         )
-    
+
     # Calculate max workers based on CPU
     max_workers_cpu = physical_cores
-    
+
     # Adjust for nested parallelism if detected
     if sampling_result.nested_parallelism_detected:
-        from .sampling import estimate_internal_threads, check_parallel_environment_vars
+        from .sampling import check_parallel_environment_vars, estimate_internal_threads
         env_vars = check_parallel_environment_vars()
         estimated_threads = estimate_internal_threads(
             sampling_result.parallel_libraries,
@@ -655,7 +654,7 @@ def optimize_streaming(
             env_vars
         )
         adjusted_max_workers = max(1, physical_cores // estimated_threads)
-        
+
         if adjusted_max_workers < max_workers_cpu:
             if verbose:
                 print(f"ℹ Adjusting n_jobs from {max_workers_cpu} to {adjusted_max_workers}")
@@ -665,30 +664,27 @@ def optimize_streaming(
                 f"Reduced n_jobs to {adjusted_max_workers} to prevent thread oversubscription "
                 f"(function uses ~{estimated_threads} threads internally)"
             )
-    
+
     if diag:
         diag.max_workers_cpu = max_workers_cpu
         diag.max_workers_memory = max_workers_cpu  # No result accumulation for streaming
-    
+
     # Calculate speedup using Amdahl's Law (without result memory overhead)
     # For streaming, we process items incrementally, so no result accumulation
     if total_items > 0 and sampling_result.avg_time > 0:
         serial_time = total_items * sampling_result.avg_time
-        
+
         if diag:
             diag.estimated_serial_time = serial_time
-        
-        # Calculate number of chunks
-        num_chunks = (total_items + optimal_chunksize - 1) // optimal_chunksize
-        
+
         # Calculate speedup for different worker counts
         best_speedup = 1.0
         optimal_n_jobs = 1
-        
+
         for n in range(1, max_workers_cpu + 1):
             # Calculate total compute time for this worker count
             total_compute_time = total_items * sampling_result.avg_time
-            
+
             speedup = calculate_amdahl_speedup(
                 total_compute_time=total_compute_time,
                 pickle_overhead_per_item=sampling_result.avg_pickle_time,
@@ -699,36 +695,36 @@ def optimize_streaming(
                 total_items=total_items,
                 data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
             )
-            
+
             if speedup > best_speedup:
                 best_speedup = speedup
                 optimal_n_jobs = n
-        
+
         # Require at least 1.2x speedup for parallelization
         if best_speedup < 1.2:
             if verbose:
                 print(f"✗ Insufficient speedup: {best_speedup:.2f}x (threshold: 1.2x)")
-                print(f"→ Serial execution recommended")
+                print("→ Serial execution recommended")
                 print(f"\n{'='*60}")
                 print("OPTIMIZATION RESULTS")
                 print(f"{'='*60}")
-                print(f"Recommended: Serial execution (n_jobs=1)")
-                print(f"Reason: Insufficient speedup")
+                print("Recommended: Serial execution (n_jobs=1)")
+                print("Reason: Insufficient speedup")
                 if warnings:
-                    print(f"\nWarnings:")
+                    print("\nWarnings:")
                     for w in warnings:
                         print(f"  ⚠ {w}")
                 print(f"{'='*60}\n")
-            
+
             if diag:
                 diag.estimated_speedup = 1.0
                 diag.rejection_reasons.append(
                     f"Insufficient speedup: {best_speedup:.2f}x < 1.2x threshold"
                 )
-            
+
             # Respect user preference even for serial execution
             use_ordered_for_rejection = prefer_ordered if prefer_ordered is not None else True
-            
+
             return StreamingOptimizationResult(
                 n_jobs=1,
                 chunksize=optimal_chunksize,
@@ -751,15 +747,15 @@ def optimize_streaming(
         # Assume 80% efficiency for heuristic (conservative estimate)
         HEURISTIC_EFFICIENCY = 0.8
         best_speedup = float(optimal_n_jobs) * HEURISTIC_EFFICIENCY
-        
+
         if verbose:
             print("ℹ Dataset size unknown - using heuristic estimation")
-    
+
     if diag:
         diag.estimated_speedup = best_speedup
         diag.theoretical_max_speedup = float(optimal_n_jobs)
         diag.speedup_efficiency = best_speedup / optimal_n_jobs if optimal_n_jobs > 0 else 1.0
-    
+
     # Decide between ordered (imap) vs unordered (imap_unordered)
     if prefer_ordered is not None:
         # User explicitly specified preference
@@ -770,7 +766,7 @@ def optimize_streaming(
         # imap_unordered is faster because it doesn't maintain result order
         # Use imap_unordered if overhead is significant relative to execution time
         order_overhead_fraction = (spawn_cost + sampling_result.avg_pickle_time) / sampling_result.avg_time
-        
+
         if order_overhead_fraction > 0.2:
             # Overhead > 20% of execution time - use unordered for better performance
             use_ordered = False
@@ -779,30 +775,30 @@ def optimize_streaming(
             # Overhead < 20% - ordered is fine, provides better UX
             use_ordered = True
             order_reason = "overhead is minimal, ordered results preferred for usability"
-    
+
     if verbose:
         print(f"\n{'='*60}")
         print("OPTIMIZATION RESULTS")
         print(f"{'='*60}")
-        print(f"Recommended configuration:")
+        print("Recommended configuration:")
         print(f"  n_jobs: {optimal_n_jobs} workers")
         print(f"  chunksize: {optimal_chunksize} items")
         print(f"  method: pool.{'imap' if use_ordered else 'imap_unordered'}()")
         print(f"  reason: {order_reason}")
         print(f"  estimated speedup: {best_speedup:.2f}x")
         if warnings:
-            print(f"\nWarnings:")
+            print("\nWarnings:")
             for w in warnings:
                 print(f"  ⚠ {w}")
         print(f"{'='*60}\n")
-    
+
     # Build recommendation message
     method_name = "imap" if use_ordered else "imap_unordered"
     reason = (
         f"Streaming parallelization beneficial: {optimal_n_jobs} workers with chunks of {optimal_chunksize}. "
         f"Use pool.{method_name}() ({order_reason})."
     )
-    
+
     if diag:
         diag.recommendations.append(
             f"Use pool.{method_name}() with n_jobs={optimal_n_jobs}, chunksize={optimal_chunksize}"
@@ -812,7 +808,7 @@ def optimize_streaming(
             diag.recommendations.append(
                 "Using imap_unordered() for better performance (results may arrive out of order)"
             )
-    
+
     # Calculate adaptive chunking parameters if enabled
     adaptive_chunking_params = {}
     if enable_adaptive_chunking and sampling_result.coefficient_of_variation > 0.3:
@@ -833,14 +829,14 @@ def optimize_streaming(
         if verbose:
             print(f"ℹ Adaptive chunking disabled (workload is homogeneous, CV={sampling_result.coefficient_of_variation:.2f})")
         enable_adaptive_chunking = False
-    
+
     # Calculate buffer size if not provided
     calculated_buffer_size = buffer_size
     if calculated_buffer_size is None:
         # Auto-calculate buffer size based on memory and parallelism
         # Buffer should be large enough for good parallelism but not waste memory
         calculated_buffer_size = optimal_n_jobs * BUFFER_SIZE_MULTIPLIER
-        
+
         # Adjust for memory constraints if backpressure is enabled
         if enable_memory_backpressure:
             # Estimate memory per result item
@@ -853,7 +849,7 @@ def optimize_streaming(
                 calculated_buffer_size = min(calculated_buffer_size, max(optimal_n_jobs, max_results_in_memory))
                 if verbose and calculated_buffer_size < optimal_n_jobs * 3:
                     print(f"ℹ Buffer size limited to {calculated_buffer_size} due to memory constraints")
-    
+
     # Add memory backpressure information to recommendations
     if enable_memory_backpressure and diag:
         diag.recommendations.append(
@@ -862,7 +858,7 @@ def optimize_streaming(
         diag.recommendations.append(
             f"Buffer size: {calculated_buffer_size} items"
         )
-    
+
     return StreamingOptimizationResult(
         n_jobs=optimal_n_jobs,
         chunksize=optimal_chunksize,

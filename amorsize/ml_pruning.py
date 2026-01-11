@@ -20,8 +20,8 @@ Pruning Strategy:
 
 import math
 import time
-from typing import List, Tuple, Optional, Set
 from dataclasses import dataclass
+from typing import List, Set
 
 # Import from ml_prediction module
 try:
@@ -100,7 +100,7 @@ class PruningResult:
     avg_cluster_size: float
     memory_saved_estimate: int
     pruning_time: float
-    
+
     def __repr__(self):
         return (
             f"PruningResult(removed={self.removed_count}/{self.original_count} samples, "
@@ -133,21 +133,21 @@ def _calculate_sample_importance(
     """
     # Base importance (all samples start equal)
     base_importance = 1.0
-    
+
     # Age component: Exponential decay based on sample age
     # Samples from 1 year ago have weight exp(-1) ≈ 0.37
     # Samples from 6 months ago have weight exp(-0.5) ≈ 0.61
     age_seconds = current_time - sample.timestamp
     age_years = age_seconds / (365.25 * 24 * 3600)
     age_score = math.exp(-age_years) if age_years > 0 else 1.0
-    
+
     # Performance component: Normalize speedup to [0, 1] range
     # Speedup of 8x → score = 1.0 (excellent)
     # Speedup of 4x → score = 0.5 (good)
     # Speedup of 1x → score = 0.0 (poor)
     max_expected_speedup = 8.0
     performance_score = min(1.0, max(0.0, sample.speedup / max_expected_speedup))
-    
+
     # Weighted combination
     total_weight = 1.0 + age_weight + performance_weight
     importance = (
@@ -155,7 +155,7 @@ def _calculate_sample_importance(
         age_weight * age_score +
         performance_weight * performance_score
     ) / total_weight
-    
+
     return importance
 
 
@@ -180,36 +180,36 @@ def _find_similar_samples(
         List of sets, where each set contains indices of similar samples
     """
     n = len(training_data)
-    
+
     if n == 0:
         return []
-    
+
     clusters: List[Set[int]] = []
     assigned = set()
-    
+
     for i in range(n):
         if i in assigned:
             continue
-        
+
         # Start a new cluster with sample i
         cluster = {i}
         assigned.add(i)
-        
+
         # Find all samples similar to sample i
         # Use transitive closure: if j is similar to anything in cluster, add j
         for j in range(i + 1, n):
             if j in assigned:
                 continue
-            
+
             # Calculate distance to cluster representative (sample i)
             distance = training_data[i].features.distance(training_data[j].features)
-            
+
             if distance < similarity_threshold:
                 cluster.add(j)
                 assigned.add(j)
-        
+
         clusters.append(cluster)
-    
+
     return clusters
 
 
@@ -237,20 +237,20 @@ def _select_representative_samples(
     if len(cluster_indices) <= max_samples:
         # Cluster is small enough, keep all samples
         return list(cluster_indices)
-    
+
     # Calculate importance scores for all samples in cluster
     scored_samples = []
     for idx in cluster_indices:
         sample = training_data[idx]
         importance = _calculate_sample_importance(sample, current_time)
         scored_samples.append((idx, importance))
-    
+
     # Sort by importance (descending)
     scored_samples.sort(key=lambda x: x[1], reverse=True)
-    
+
     # Keep top-K most important samples
     kept_indices = [idx for idx, _ in scored_samples[:max_samples]]
-    
+
     # Ensure diversity: Check inter-sample distances
     # If kept samples are too similar, replace some with diverse samples
     diverse_kept = []
@@ -264,14 +264,14 @@ def _select_representative_samples(
             if distance < MIN_INTER_SAMPLE_DISTANCE:
                 is_diverse = False
                 break
-        
+
         # Keep sample if: diverse, or needed to reach MIN_SAMPLES_PER_CLUSTER, or needed to reach max_samples
         if is_diverse or len(diverse_kept) < MIN_SAMPLES_PER_CLUSTER or len(diverse_kept) < max_samples:
             diverse_kept.append(idx)
-            
+
             if len(diverse_kept) >= max_samples:
                 break
-    
+
     # If we didn't get enough diverse samples, add highest-scoring remaining ones
     # to meet MIN_SAMPLES_PER_CLUSTER requirement
     if len(diverse_kept) < MIN_SAMPLES_PER_CLUSTER:
@@ -280,7 +280,7 @@ def _select_representative_samples(
                 diverse_kept.append(idx)
                 if len(diverse_kept) >= MIN_SAMPLES_PER_CLUSTER:
                     break
-    
+
     # Ensure we always return at least MIN_SAMPLES_PER_CLUSTER if cluster has enough
     if len(diverse_kept) < MIN_SAMPLES_PER_CLUSTER and len(cluster_indices) >= MIN_SAMPLES_PER_CLUSTER:
         # Fill up to MIN_SAMPLES_PER_CLUSTER from scored_samples
@@ -289,7 +289,7 @@ def _select_representative_samples(
                 diverse_kept.append(idx)
                 if len(diverse_kept) >= MIN_SAMPLES_PER_CLUSTER:
                     break
-    
+
     return diverse_kept
 
 
@@ -341,7 +341,7 @@ def prune_training_data(
         Maintained by: Diversity preservation, importance scoring
     """
     start_time = time.perf_counter()
-    
+
     # Check if pruning is needed
     if len(training_data) < min_samples:
         # Too few samples, don't prune
@@ -358,53 +358,53 @@ def prune_training_data(
             memory_saved_estimate=0,
             pruning_time=0.0
         )
-    
+
     if verbose:
         print(f"Pruning {len(training_data)} training samples...")
         print(f"  Similarity threshold: {similarity_threshold:.3f}")
         print(f"  Target pruning ratio: {target_pruning_ratio:.1%}")
-    
+
     # Step 1: Find similarity clusters
     current_time = time.time()
     clusters = _find_similar_samples(training_data, similarity_threshold)
-    
+
     if verbose:
         print(f"  Found {len(clusters)} similarity clusters")
         cluster_sizes = [len(c) for c in clusters]
         print(f"  Cluster sizes: min={min(cluster_sizes)}, "
               f"max={max(cluster_sizes)}, "
               f"avg={sum(cluster_sizes) / len(cluster_sizes):.1f}")
-    
+
     # Step 2: Calculate max samples per cluster based on target pruning ratio
     total_samples = len(training_data)
     target_kept_samples = int(total_samples * (1.0 - target_pruning_ratio))
-    
+
     # Apply absolute minimum constraint to prevent over-pruning
     # This ensures we never drop below a reasonable dataset size,
     # even if clustering produces a single mega-cluster
     target_kept_samples = max(target_kept_samples, MIN_TOTAL_SAMPLES_TO_KEEP)
-    
+
     # Distribute target across clusters (proportional to cluster size)
     # But ensure we don't under-budget due to minimums
     cluster_budgets = []
     total_min_budget = len(clusters) * MIN_SAMPLES_PER_CLUSTER
-    
+
     if total_min_budget > target_kept_samples:
         # Minimum requirements exceed target - adjust upward
         target_kept_samples = total_min_budget
-    
+
     for cluster in clusters:
         # Each cluster gets budget proportional to its size
         cluster_fraction = len(cluster) / total_samples
         base_budget = max(1, int(target_kept_samples * cluster_fraction))
-        
+
         # Apply min/max constraints
         cluster_budget = max(
             MIN_SAMPLES_PER_CLUSTER,
             min(MAX_SAMPLES_PER_CLUSTER, base_budget)
         )
         cluster_budgets.append(cluster_budget)
-    
+
     # Step 3: Select representative samples from each cluster
     kept_indices = set()
     for cluster, max_samples in zip(clusters, cluster_budgets):
@@ -415,29 +415,29 @@ def prune_training_data(
             current_time
         )
         kept_indices.update(representatives)
-    
+
     # Step 4: Build pruned dataset
     pruned_data = [training_data[i] for i in sorted(kept_indices)]
-    
+
     # Calculate statistics
     original_count = len(training_data)
     pruned_count = len(pruned_data)
     removed_count = original_count - pruned_count
     pruning_ratio = removed_count / original_count if original_count > 0 else 0.0
-    
+
     # Estimate memory saved (rough estimate: 1KB per sample)
     bytes_per_sample = 1024
     memory_saved = removed_count * bytes_per_sample
-    
+
     pruning_time = time.perf_counter() - start_time
-    
+
     if verbose:
         print(f"✓ Pruning complete in {pruning_time:.3f}s")
         print(f"  Original: {original_count} samples")
         print(f"  Pruned: {pruned_count} samples")
         print(f"  Removed: {removed_count} samples ({pruning_ratio:.1%})")
         print(f"  Memory saved: ~{memory_saved // 1024}KB")
-    
+
     return PruningResult(
         pruned_data=pruned_data,
         original_count=original_count,
@@ -477,7 +477,7 @@ def auto_prune_training_data(
     """
     # Adjust parameters based on dataset size and aggressiveness
     data_size = len(training_data)
-    
+
     if aggressive:
         # More aggressive pruning for very large datasets
         target_ratio = 0.50  # Remove 50%
@@ -496,7 +496,7 @@ def auto_prune_training_data(
             # Small dataset: Very conservative pruning
             target_ratio = 0.25  # Remove 25%
             similarity = 0.8
-    
+
     return prune_training_data(
         training_data,
         similarity_threshold=similarity,

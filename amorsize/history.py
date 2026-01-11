@@ -8,16 +8,19 @@ This module provides functionality to:
 - Track performance trends and detect regressions
 """
 
-import json
-import os
-import platform
 import hashlib
+import json
+import platform
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from .comparison import ComparisonResult, ComparisonConfig
-from .system_info import get_physical_cores, get_available_memory, get_multiprocessing_start_method
+from .comparison import ComparisonConfig, ComparisonResult
+from .system_info import (
+    get_available_memory,
+    get_multiprocessing_start_method,
+    get_physical_cores,
+)
 
 
 class HistoryEntry:
@@ -34,7 +37,7 @@ class HistoryEntry:
         system_info: System information at time of measurement
         metadata: Additional user-provided metadata
     """
-    
+
     def __init__(
         self,
         id: str,
@@ -54,7 +57,7 @@ class HistoryEntry:
         self.data_size = data_size
         self.system_info = system_info
         self.metadata = metadata or {}
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert entry to dictionary for JSON serialization."""
         return {
@@ -67,7 +70,7 @@ class HistoryEntry:
             "metadata": self.metadata,
             "result": self._serialize_result()
         }
-    
+
     def _serialize_result(self) -> Dict[str, Any]:
         """Serialize ComparisonResult to dictionary."""
         return {
@@ -85,7 +88,7 @@ class HistoryEntry:
             "best_config_index": self.result.best_config_index,
             "recommendations": self.result.recommendations
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "HistoryEntry":
         """Create HistoryEntry from dictionary."""
@@ -100,7 +103,7 @@ class HistoryEntry:
             )
             for c in result_data["configs"]
         ]
-        
+
         result = ComparisonResult(
             configs=configs,
             execution_times=result_data["execution_times"],
@@ -108,7 +111,7 @@ class HistoryEntry:
             best_config_index=result_data["best_config_index"],
             recommendations=result_data.get("recommendations", [])
         )
-        
+
         return cls(
             id=data["id"],
             name=data["name"],
@@ -188,7 +191,7 @@ def save_result(
     timestamp = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
     entry_id = _generate_id(name, timestamp)
     system_info = get_system_fingerprint()
-    
+
     entry = HistoryEntry(
         id=entry_id,
         name=name,
@@ -199,15 +202,15 @@ def save_result(
         system_info=system_info,
         metadata=metadata
     )
-    
+
     # Save to file
     history_dir = get_history_dir()
     filename = f"{entry_id}.json"
     filepath = history_dir / filename
-    
+
     with open(filepath, 'w') as f:
         json.dump(entry.to_dict(), f, indent=2)
-    
+
     return entry_id
 
 
@@ -228,13 +231,13 @@ def load_result(entry_id: str) -> Optional[HistoryEntry]:
     """
     history_dir = get_history_dir()
     filepath = history_dir / f"{entry_id}.json"
-    
+
     if not filepath.exists():
         return None
-    
+
     with open(filepath, 'r') as f:
         data = json.load(f)
-    
+
     return HistoryEntry.from_dict(data)
 
 
@@ -259,28 +262,28 @@ def list_results(
     """
     history_dir = get_history_dir()
     entries = []
-    
+
     # Load all JSON files in history directory
     for filepath in history_dir.glob("*.json"):
         try:
             with open(filepath, 'r') as f:
                 data = json.load(f)
             entry = HistoryEntry.from_dict(data)
-            
+
             # Apply name filter if provided
             if name_filter is None or name_filter.lower() in entry.name.lower():
                 entries.append(entry)
         except (json.JSONDecodeError, KeyError, ValueError):
             # Skip malformed files
             continue
-    
+
     # Sort by timestamp (newest first)
     entries.sort(key=lambda e: e.timestamp, reverse=True)
-    
+
     # Apply limit if provided
     if limit is not None:
         entries = entries[:limit]
-    
+
     return entries
 
 
@@ -300,11 +303,11 @@ def delete_result(entry_id: str) -> bool:
     """
     history_dir = get_history_dir()
     filepath = history_dir / f"{entry_id}.json"
-    
+
     if filepath.exists():
         filepath.unlink()
         return True
-    
+
     return False
 
 
@@ -329,28 +332,28 @@ def compare_entries(
     """
     entry1 = load_result(entry_id1)
     entry2 = load_result(entry_id2)
-    
+
     if entry1 is None or entry2 is None:
         return None
-    
+
     # Get best configurations from each result
     best_time1 = entry1.result.best_time
     best_speedup1 = entry1.result.speedups[entry1.result.best_config_index]
-    
+
     best_time2 = entry2.result.best_time
     best_speedup2 = entry2.result.speedups[entry2.result.best_config_index]
-    
+
     # Calculate deltas
     speedup_delta = best_speedup2 - best_speedup1
     time_delta = best_time2 - best_time1
     time_delta_percent = ((best_time2 - best_time1) / best_time1) * 100 if best_time1 > 0 else 0.0
-    
+
     # Check if systems are the same
     same_system = (
         entry1.system_info.get("platform") == entry2.system_info.get("platform") and
         entry1.system_info.get("physical_cores") == entry2.system_info.get("physical_cores")
     )
-    
+
     return {
         "entry1": {
             "id": entry1.id,
@@ -396,7 +399,7 @@ def clear_history() -> int:
     """
     history_dir = get_history_dir()
     count = 0
-    
+
     for filepath in history_dir.glob("*.json"):
         try:
             filepath.unlink()
@@ -404,5 +407,5 @@ def clear_history() -> int:
         except OSError:
             # Skip files that can't be deleted
             continue
-    
+
     return count

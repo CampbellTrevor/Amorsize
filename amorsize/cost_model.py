@@ -14,8 +14,8 @@ These models provide more accurate speedup predictions for multi-core workloads.
 import os
 import platform
 import re
-from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
 
 
 @dataclass
@@ -25,7 +25,7 @@ class CacheInfo:
     l2_size: int  # L2 cache size in bytes
     l3_size: int  # L3 cache size in bytes
     cache_line_size: int  # Cache line size in bytes (typically 64)
-    
+
 
 @dataclass
 class NUMAInfo:
@@ -33,7 +33,7 @@ class NUMAInfo:
     numa_nodes: int  # Number of NUMA nodes
     cores_per_node: int  # Cores per NUMA node
     has_numa: bool  # Whether system has NUMA architecture
-    
+
 
 @dataclass
 class MemoryBandwidthInfo:
@@ -49,7 +49,7 @@ class SystemTopology:
     numa_info: NUMAInfo
     memory_bandwidth: MemoryBandwidthInfo
     physical_cores: int
-    
+
 
 def _parse_size_string(size_str: str) -> int:
     """
@@ -66,10 +66,10 @@ def _parse_size_string(size_str: str) -> int:
     match = re.match(r'^\s*([\d.]+)\s*([KMG])?', size_str.upper())
     if not match:
         return 0
-    
+
     value = float(match.group(1))
     unit = match.group(2)
-    
+
     if unit == 'K':
         return int(value * 1024)
     elif unit == 'M':
@@ -95,36 +95,36 @@ def _parse_lscpu_cache() -> Optional[CacheInfo]:
             text=True,
             timeout=1.0
         )
-        
+
         if result.returncode != 0:
             return None
-        
+
         # Parse lscpu cache output
         # Format: NAME ONE-SIZE ALL-SIZE WAYS TYPE LEVEL
         l1_size = 0
         l2_size = 0
         l3_size = 0
         cache_line_size = 64  # Default
-        
+
         for line in result.stdout.split('\n'):
             if not line.strip() or line.startswith('NAME'):
                 continue
-            
+
             parts = line.split()
             if len(parts) >= 6:
                 level = parts[5]
                 all_size_str = parts[2]
-                
+
                 # Parse size using helper function
                 size_bytes = _parse_size_string(all_size_str)
-                
+
                 if level == '1':
                     l1_size = size_bytes
                 elif level == '2':
                     l2_size = size_bytes
                 elif level == '3':
                     l3_size = size_bytes
-        
+
         if l1_size > 0:
             return CacheInfo(
                 l1_size=l1_size,
@@ -132,7 +132,7 @@ def _parse_lscpu_cache() -> Optional[CacheInfo]:
                 l3_size=l3_size,
                 cache_line_size=cache_line_size
             )
-        
+
         return None
     except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError):
         return None
@@ -150,43 +150,43 @@ def _parse_sysfs_cache() -> Optional[CacheInfo]:
         cache_base = "/sys/devices/system/cpu/cpu0/cache"
         if not os.path.exists(cache_base):
             return None
-        
+
         l1_size = 0
         l2_size = 0
         l3_size = 0
         cache_line_size = 64  # Default
-        
+
         # Iterate through cache indices
         for i in range(4):  # Usually index0-index3
             index_path = os.path.join(cache_base, f"index{i}")
             if not os.path.exists(index_path):
                 continue
-            
+
             # Read level
             level_path = os.path.join(index_path, "level")
             if not os.path.exists(level_path):
                 continue
-            
+
             with open(level_path, 'r') as f:
                 level = int(f.read().strip())
-            
+
             # Read size
             size_path = os.path.join(index_path, "size")
             if not os.path.exists(size_path):
                 continue
-            
+
             with open(size_path, 'r') as f:
                 size_str = f.read().strip()
-            
+
             # Parse size using helper function
             size_bytes = _parse_size_string(size_str)
-            
+
             # Read coherency_line_size if available
             coherency_path = os.path.join(index_path, "coherency_line_size")
             if os.path.exists(coherency_path):
                 with open(coherency_path, 'r') as f:
                     cache_line_size = int(f.read().strip())
-            
+
             # Assign to appropriate level
             if level == 1:
                 l1_size = max(l1_size, size_bytes)  # Take max if we see L1D and L1I
@@ -194,7 +194,7 @@ def _parse_sysfs_cache() -> Optional[CacheInfo]:
                 l2_size = max(l2_size, size_bytes)
             elif level == 3:
                 l3_size = max(l3_size, size_bytes)
-        
+
         if l1_size > 0:
             return CacheInfo(
                 l1_size=l1_size,
@@ -202,7 +202,7 @@ def _parse_sysfs_cache() -> Optional[CacheInfo]:
                 l3_size=l3_size,
                 cache_line_size=cache_line_size
             )
-        
+
         return None
     except (IOError, ValueError):
         return None
@@ -224,12 +224,12 @@ def detect_cache_info() -> CacheInfo:
     cache_info = _parse_lscpu_cache()
     if cache_info is not None:
         return cache_info
-    
+
     # Try sysfs
     cache_info = _parse_sysfs_cache()
     if cache_info is not None:
         return cache_info
-    
+
     # Fall back to conservative estimates
     # Modern CPUs typically have:
     # - L1: 32-64KB per core
@@ -259,7 +259,7 @@ def _detect_numa_linux() -> Optional[NUMAInfo]:
             text=True,
             timeout=1.0
         )
-        
+
         if result.returncode == 0:
             # Parse numactl output
             numa_nodes = 0
@@ -270,7 +270,7 @@ def _detect_numa_linux() -> Optional[NUMAInfo]:
                     if match:
                         numa_nodes = int(match.group(1))
                         break
-            
+
             if numa_nodes > 1:
                 # Estimate cores per node (will be refined by caller)
                 return NUMAInfo(
@@ -280,7 +280,7 @@ def _detect_numa_linux() -> Optional[NUMAInfo]:
                 )
     except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
         pass
-    
+
     # Try /sys/devices/system/node
     try:
         node_path = "/sys/devices/system/node"
@@ -290,7 +290,7 @@ def _detect_numa_linux() -> Optional[NUMAInfo]:
             for entry in os.listdir(node_path):
                 if entry.startswith('node') and entry[4:].isdigit():
                     numa_nodes += 1
-            
+
             if numa_nodes > 1:
                 return NUMAInfo(
                     numa_nodes=numa_nodes,
@@ -299,7 +299,7 @@ def _detect_numa_linux() -> Optional[NUMAInfo]:
                 )
     except (IOError, OSError):
         pass
-    
+
     return None
 
 
@@ -319,14 +319,14 @@ def detect_numa_info(physical_cores: int) -> NUMAInfo:
         3. Assume single NUMA node (most common for consumer hardware)
     """
     system = platform.system()
-    
+
     if system == "Linux":
         numa_info = _detect_numa_linux()
         if numa_info is not None:
             # Calculate cores per node
             numa_info.cores_per_node = physical_cores // numa_info.numa_nodes
             return numa_info
-    
+
     # Default: single NUMA node (no NUMA)
     return NUMAInfo(
         numa_nodes=1,
@@ -356,7 +356,7 @@ def estimate_memory_bandwidth() -> MemoryBandwidthInfo:
     # Most consumer systems have 2 channels × ~20 GB/s = 40 GB/s
     # Server systems can have much more
     bandwidth_gb_s = 40.0
-    
+
     # Try to detect if this is a server system (more bandwidth)
     try:
         # Server CPUs often have "Xeon" or "EPYC" in the name
@@ -367,7 +367,7 @@ def estimate_memory_bandwidth() -> MemoryBandwidthInfo:
                 bandwidth_gb_s = 100.0  # Conservative server estimate
     except (IOError, OSError):
         pass
-    
+
     return MemoryBandwidthInfo(
         bandwidth_gb_per_sec=bandwidth_gb_s,
         is_estimated=True
@@ -430,16 +430,16 @@ def estimate_cache_coherency_overhead(
     """
     if n_jobs <= 1:
         return 1.0  # No overhead with single worker
-    
+
     # Base coherency overhead per core (2-5% typical)
     base_coherency_overhead = 0.03  # 3% per additional core
-    
+
     # Calculate cache pressure
     # If working set exceeds L3, coherency overhead increases
     l3_size = cache_info.l3_size
     working_set_per_core = data_size_per_item
     total_working_set = working_set_per_core * n_jobs
-    
+
     # Cache pressure multiplier (1.0 if fits in L3, higher if spills to RAM)
     if total_working_set <= l3_size:
         cache_pressure = 1.0
@@ -447,19 +447,19 @@ def estimate_cache_coherency_overhead(
         # Linear increase in overhead as working set exceeds cache
         cache_pressure = 1.0 + (total_working_set - l3_size) / l3_size * 0.5
         cache_pressure = min(cache_pressure, 2.0)  # Cap at 2x
-    
+
     # NUMA multiplier (cross-node access adds overhead)
     numa_multiplier = 1.0
     if numa_info.has_numa and n_jobs > numa_info.cores_per_node:
         # Overhead increases when workers span NUMA nodes
         # Typical NUMA penalty: 20-40% for remote access
         numa_multiplier = 1.2
-    
+
     # Calculate total overhead
     # Overhead scales sub-linearly with core count (not all cores contend equally)
     scale_factor = (n_jobs - 1) ** 0.8  # Sub-linear scaling
     overhead_factor = 1.0 + (base_coherency_overhead * scale_factor * cache_pressure * numa_multiplier)
-    
+
     return overhead_factor
 
 
@@ -495,31 +495,31 @@ def estimate_memory_bandwidth_impact(
     """
     if n_jobs <= 1:
         return 1.0  # No bandwidth contention with single core
-    
+
     # Calculate memory bandwidth demand
     # Assume data is read once and written once per item (read + write)
     bytes_per_item = data_size_per_item * 2  # Read + write
     bandwidth_demand_per_core = bytes_per_item * items_per_second_per_core
     total_bandwidth_demand_gb_s = (bandwidth_demand_per_core * n_jobs) / (1024 ** 3)
-    
+
     available_bandwidth_gb_s = memory_bandwidth.bandwidth_gb_per_sec
-    
+
     # Calculate saturation ratio
     if total_bandwidth_demand_gb_s <= available_bandwidth_gb_s:
         # No saturation - cores get full bandwidth
         return 1.0
-    
+
     # Bandwidth saturated - cores must share
     # Slowdown is proportional to over-subscription
     saturation_ratio = total_bandwidth_demand_gb_s / available_bandwidth_gb_s
-    
+
     # Each core gets reduced bandwidth
     # slowdown_factor = available / demanded = 1 / saturation_ratio
     slowdown_factor = 1.0 / saturation_ratio
-    
+
     # But we don't slow down more than 50% (other factors dominate beyond that)
     slowdown_factor = max(slowdown_factor, 0.5)
-    
+
     return slowdown_factor
 
 
@@ -554,15 +554,15 @@ def estimate_false_sharing_overhead(
     """
     if n_jobs <= 1:
         return 1.0  # No false sharing with single core
-    
+
     # If return objects are large (> cache line), false sharing unlikely
     if return_size >= cache_line_size:
         return 1.0
-    
+
     # For small objects, estimate false sharing probability
     # Multiple small objects might share cache lines
     objects_per_cache_line = cache_line_size / max(return_size, 1)
-    
+
     # If multiple objects fit in cache line, false sharing more likely
     if objects_per_cache_line > 1:
         # Base overhead per core (1-3% typical for false sharing)
@@ -570,7 +570,7 @@ def estimate_false_sharing_overhead(
         # Scale with core count (more cores = more contention)
         overhead_factor = 1.0 + (base_overhead * (n_jobs - 1) ** 0.5)
         return overhead_factor
-    
+
     return 1.0
 
 
@@ -616,10 +616,10 @@ def calculate_advanced_amdahl_speedup(
     """
     if n_jobs <= 0 or total_compute_time <= 0:
         return 1.0, {}
-    
+
     # Serial execution time (baseline)
     serial_time = total_compute_time
-    
+
     # Basic parallel execution breakdown (from basic Amdahl's Law)
     spawn_overhead = spawn_cost_per_worker * n_jobs
     parallel_compute_time = total_compute_time / n_jobs
@@ -627,9 +627,9 @@ def calculate_advanced_amdahl_speedup(
     result_ipc_overhead = pickle_overhead_per_item * total_items
     num_chunks = max(1, (total_items + chunksize - 1) // chunksize)
     chunking_overhead = chunking_overhead_per_chunk * num_chunks
-    
+
     # Advanced cost factors
-    
+
     # 1. Cache coherency overhead
     cache_coherency_factor = estimate_cache_coherency_overhead(
         n_jobs=n_jobs,
@@ -637,34 +637,34 @@ def calculate_advanced_amdahl_speedup(
         cache_info=system_topology.cache_info,
         numa_info=system_topology.numa_info
     )
-    
+
     # 2. Memory bandwidth impact
     # Estimate items per second per core
     avg_time_per_item = total_compute_time / total_items if total_items > 0 else 0.01
     items_per_second_per_core = 1.0 / avg_time_per_item if avg_time_per_item > 0 else 100.0
-    
+
     bandwidth_slowdown = estimate_memory_bandwidth_impact(
         n_jobs=n_jobs,
         data_size_per_item=data_size_per_item,
         items_per_second_per_core=items_per_second_per_core,
         memory_bandwidth=system_topology.memory_bandwidth
     )
-    
+
     # 3. False sharing overhead
     false_sharing_factor = estimate_false_sharing_overhead(
         n_jobs=n_jobs,
         return_size=return_size_per_item,
         cache_line_size=system_topology.cache_info.cache_line_size
     )
-    
+
     # Apply advanced cost factors to parallel compute time
     # Cache coherency and false sharing are multiplicative overheads
     adjusted_parallel_compute = parallel_compute_time * cache_coherency_factor * false_sharing_factor
-    
+
     # Bandwidth slowdown reduces effective parallelism
     # If bandwidth is 50% saturated, effective cores = n_jobs * 0.5
     adjusted_parallel_compute = adjusted_parallel_compute / bandwidth_slowdown
-    
+
     # Total parallel execution time with advanced costs
     parallel_time = (
         spawn_overhead +
@@ -673,7 +673,7 @@ def calculate_advanced_amdahl_speedup(
         result_ipc_overhead +
         chunking_overhead
     )
-    
+
     # Calculate speedup
     if parallel_time > 0:
         speedup = serial_time / parallel_time
@@ -681,7 +681,7 @@ def calculate_advanced_amdahl_speedup(
         speedup = min(speedup, float(n_jobs))
     else:
         speedup = 1.0
-    
+
     # Detailed overhead breakdown
     overhead_breakdown = {
         'spawn_overhead': spawn_overhead,
@@ -694,5 +694,5 @@ def calculate_advanced_amdahl_speedup(
         'false_sharing_factor': false_sharing_factor,
         'basic_parallel_compute': parallel_compute_time,  # For comparison
     }
-    
+
     return speedup, overhead_breakdown

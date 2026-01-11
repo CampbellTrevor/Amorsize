@@ -6,10 +6,10 @@ memory constraints prevent processing everything at once. This is particularly
 useful when optimize() warns about result memory exceeding safety thresholds.
 """
 
-from typing import Any, Callable, Iterator, List, Union, Optional
 from multiprocessing import Pool
+from typing import Any, Callable, Iterator, List, Optional, Union
 
-from .optimizer import optimize, OptimizationResult
+from .optimizer import optimize
 from .system_info import get_available_memory
 
 
@@ -99,43 +99,43 @@ def process_in_batches(
     # Validate parameters
     if not callable(func):
         raise ValueError("func must be callable")
-    
+
     if batch_size is not None:
         if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size must be a positive integer")
-    
+
     if not isinstance(max_memory_percent, (int, float)) or max_memory_percent <= 0 or max_memory_percent > 1:
         raise ValueError("max_memory_percent must be between 0 and 1")
-    
+
     if not isinstance(sample_size, int) or sample_size <= 0:
         raise ValueError("sample_size must be a positive integer")
-    
+
     if not isinstance(verbose, bool):
         raise ValueError("verbose must be a boolean")
-    
+
     # Convert data to list if it's an iterator (required for batching)
     # Note: For very large iterators, consider using imap/imap_unordered instead
     if not isinstance(data, list):
         if verbose:
             print("Converting iterator to list for batching...")
         data = list(data)
-    
+
     total_items = len(data)
-    
+
     if total_items == 0:
         if verbose:
             print("No items to process")
         return []
-    
+
     # Calculate batch size if not provided
     if batch_size is None:
         # Run optimize on sample to estimate result size
         sample_data = data[:min(sample_size, total_items)]
         sample_result = optimize(func, sample_data, sample_size=sample_size, **optimize_kwargs)
-        
+
         # Get available memory
         available_memory = get_available_memory()
-        
+
         # Calculate safe batch size
         # Estimate: each result is sample_result.return_size bytes
         # We want: batch_size * result_size <= max_memory_percent * available_memory
@@ -151,7 +151,7 @@ def process_in_batches(
             except (TypeError, pickle.PicklingError, AttributeError, MemoryError):
                 import sys
                 avg_result_size = sys.getsizeof(test_result)
-        
+
         if avg_result_size > 0:
             safe_batch_size = int((max_memory_percent * available_memory) / avg_result_size)
             # Ensure at least 1 item per batch, at most total_items
@@ -159,36 +159,36 @@ def process_in_batches(
         else:
             # Fallback if we can't estimate size
             batch_size = max(1, total_items // 10)  # Conservative: 10 batches
-        
+
         if verbose:
             print(f"Auto-calculated batch_size: {batch_size} items")
             print(f"  (based on {max_memory_percent*100:.0f}% of {available_memory / (1024**3):.2f} GB available memory)")
-    
+
     # Calculate number of batches
     num_batches = (total_items + batch_size - 1) // batch_size  # Ceiling division
-    
+
     if verbose:
         print(f"\nProcessing {total_items} items in {num_batches} batches")
         print(f"Batch size: {batch_size} items\n")
-    
+
     # Process each batch
     all_results = []
-    
+
     for batch_idx in range(num_batches):
         start_idx = batch_idx * batch_size
         end_idx = min(start_idx + batch_size, total_items)
         batch_data = data[start_idx:end_idx]
         batch_items = len(batch_data)
-        
+
         if verbose:
             print(f"Batch {batch_idx + 1}/{num_batches}: Processing {batch_items} items (indices {start_idx}-{end_idx-1})...")
-        
+
         # Optimize this batch
         opt_result = optimize(func, batch_data, sample_size=min(sample_size, batch_items), **optimize_kwargs)
-        
+
         if verbose:
             print(f"  Optimization: n_jobs={opt_result.n_jobs}, chunksize={opt_result.chunksize}, speedup={opt_result.estimated_speedup:.2f}x")
-        
+
         # Process this batch
         if opt_result.n_jobs == 1:
             # Serial execution
@@ -197,15 +197,15 @@ def process_in_batches(
             # Parallel execution
             with Pool(opt_result.n_jobs) as pool:
                 batch_results = pool.map(func, opt_result.data, chunksize=opt_result.chunksize)
-        
+
         all_results.extend(batch_results)
-        
+
         if verbose:
             print(f"  Completed batch {batch_idx + 1}/{num_batches} ({len(all_results)}/{total_items} items processed)\n")
-    
+
     if verbose:
         print(f"All batches complete. Processed {len(all_results)} items total.")
-    
+
     return all_results
 
 
@@ -239,12 +239,12 @@ def estimate_safe_batch_size(
     """
     if result_size_bytes <= 0:
         raise ValueError("result_size_bytes must be positive")
-    
+
     if not isinstance(max_memory_percent, (int, float)) or max_memory_percent <= 0 or max_memory_percent > 1:
         raise ValueError("max_memory_percent must be between 0 and 1")
-    
+
     available_memory = get_available_memory()
     safe_batch_size = int((max_memory_percent * available_memory) / result_size_bytes)
-    
+
     # Ensure at least 1 item
     return max(1, safe_batch_size)

@@ -10,22 +10,23 @@ and workload characteristics to determine cache hits.
 import hashlib
 import json
 import os
-import pickle
 import platform
 import random
 import sys
-import time
 import threading
+import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from .system_info import (
-    get_physical_cores,
     get_available_memory,
     get_multiprocessing_start_method,
-    get_spawn_cost_estimate
+    get_physical_cores,
+    get_spawn_cost_estimate,
 )
 
+if TYPE_CHECKING:
+    from .optimizer import OptimizationResult
 
 # Cache version - increment when cache format changes
 CACHE_VERSION = 1
@@ -84,17 +85,17 @@ def _compute_function_hash(func: Callable) -> str:
         so the total speedup is lower than raw hash computation speedup.
     """
     func_id = id(func)
-    
+
     # Quick check without lock (optimization for common case)
     if func_id in _function_hash_cache:
         return _function_hash_cache[func_id]
-    
+
     # Compute hash with lock protection
     with _function_hash_cache_lock:
         # Double-check after acquiring lock (another thread may have computed)
         if func_id in _function_hash_cache:
             return _function_hash_cache[func_id]
-        
+
         # Compute the hash
         try:
             func_code = func.__code__.co_code
@@ -102,7 +103,7 @@ def _compute_function_hash(func: Callable) -> str:
         except AttributeError:
             # For built-in functions or methods without __code__
             func_hash = hashlib.sha256(str(func).encode()).hexdigest()[:16]
-        
+
         # Cache for future use
         _function_hash_cache[func_id] = func_hash
         return func_hash
@@ -126,7 +127,7 @@ class CacheEntry:
         coefficient_of_variation: Workload heterogeneity metric (for ML)
         function_complexity: Function bytecode size (for ML)
     """
-    
+
     def __init__(
         self,
         n_jobs: int,
@@ -154,7 +155,7 @@ class CacheEntry:
         self.pickle_size = pickle_size
         self.coefficient_of_variation = coefficient_of_variation
         self.function_complexity = function_complexity
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
@@ -176,7 +177,7 @@ class CacheEntry:
         if self.function_complexity is not None:
             result["function_complexity"] = self.function_complexity
         return result
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CacheEntry":
         """Create CacheEntry from dictionary."""
@@ -194,12 +195,12 @@ class CacheEntry:
             coefficient_of_variation=data.get("coefficient_of_variation"),
             function_complexity=data.get("function_complexity")
         )
-    
+
     def is_expired(self, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
         """Check if this cache entry has expired."""
         age = time.time() - self.timestamp
         return age > ttl_seconds
-    
+
     def is_system_compatible(self) -> Tuple[bool, str]:
         """
         Check if cached result is compatible with current system.
@@ -216,19 +217,19 @@ class CacheEntry:
         current_cores = get_physical_cores()
         current_memory = get_available_memory()
         current_start_method = get_multiprocessing_start_method()
-        
+
         cached_cores = self.system_info.get("physical_cores", 0)
         cached_memory = self.system_info.get("available_memory", 0)
         cached_start_method = self.system_info.get("start_method", "")
-        
+
         # Check core count match
         if cached_cores != current_cores:
             return False, f"Physical core count changed (cached: {cached_cores}, current: {current_cores})"
-        
+
         # Check start method match
         if cached_start_method != current_start_method:
             return False, f"Multiprocessing start method changed (cached: {cached_start_method}, current: {current_start_method})"
-        
+
         # Check memory within 20% tolerance
         if cached_memory > 0:
             memory_ratio = current_memory / cached_memory
@@ -236,7 +237,7 @@ class CacheEntry:
                 cached_gb = cached_memory / (1024**3)
                 current_gb = current_memory / (1024**3)
                 return False, f"Available memory changed significantly (cached: {cached_gb:.2f}GB, current: {current_gb:.2f}GB)"
-        
+
         return True, ""
 
 
@@ -254,7 +255,7 @@ def get_cache_dir() -> Path:
         cache_base = Path.home() / "Library" / "Caches"
     else:  # Linux and others
         cache_base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    
+
     cache_dir = cache_base / "amorsize" / "optimization_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
@@ -284,7 +285,7 @@ def compute_cache_key(func: Callable, data_size: int, avg_time_per_item: float) 
     """
     # Use cached function hash for performance
     func_hash = _compute_function_hash(func)
-    
+
     # Create workload signature (bucketed to avoid over-specific keys)
     # Bucket data size into ranges (powers of 10)
     if data_size < 10:
@@ -297,7 +298,7 @@ def compute_cache_key(func: Callable, data_size: int, avg_time_per_item: float) 
         size_bucket = "large"
     else:
         size_bucket = "xlarge"
-    
+
     # Bucket execution time into ranges (log scale)
     if avg_time_per_item < 0.0001:  # < 0.1ms
         time_bucket = "instant"
@@ -309,7 +310,7 @@ def compute_cache_key(func: Callable, data_size: int, avg_time_per_item: float) 
         time_bucket = "slow"
     else:  # >= 100ms
         time_bucket = "very_slow"
-    
+
     # Combine into cache key
     key_components = [
         f"func:{func_hash}",
@@ -317,7 +318,7 @@ def compute_cache_key(func: Callable, data_size: int, avg_time_per_item: float) 
         f"time:{time_bucket}",
         f"v:{CACHE_VERSION}"
     ]
-    
+
     cache_key = "_".join(key_components)
     return cache_key
 
@@ -353,9 +354,12 @@ def save_cache_entry(
     """
     # Try distributed cache first
     try:
-        from .distributed_cache import save_to_distributed_cache, is_distributed_cache_enabled
+        from .distributed_cache import (
+            is_distributed_cache_enabled,
+            save_to_distributed_cache,
+        )
         if is_distributed_cache_enabled():
-            if save_to_distributed_cache(cache_key, n_jobs, chunksize, executor_type, 
+            if save_to_distributed_cache(cache_key, n_jobs, chunksize, executor_type,
                                         estimated_speedup, reason, warnings):
                 # Successfully saved to distributed cache
                 # Still save to local cache as backup
@@ -363,12 +367,12 @@ def save_cache_entry(
     except ImportError:
         # distributed_cache module not available
         pass
-    
+
     # Save to local file cache (always, as backup or primary)
     try:
         cache_dir = get_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
-        
+
         # Gather current system info
         system_info = {
             "physical_cores": get_physical_cores(),
@@ -377,7 +381,7 @@ def save_cache_entry(
             "platform": platform.system(),
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}"
         }
-        
+
         # Create cache entry with ML features
         entry = CacheEntry(
             n_jobs=n_jobs,
@@ -392,13 +396,13 @@ def save_cache_entry(
             coefficient_of_variation=coefficient_of_variation,
             function_complexity=function_complexity
         )
-        
+
         # Write to file atomically
         temp_file = cache_file.with_suffix(".tmp")
         with open(temp_file, 'w') as f:
             json.dump(entry.to_dict(), f, indent=2)
         temp_file.replace(cache_file)
-        
+
     except (OSError, IOError, PermissionError):
         # Silently fail if cache cannot be written
         # This ensures caching never breaks the main functionality
@@ -427,7 +431,10 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
     """
     # Try distributed cache first
     try:
-        from .distributed_cache import load_from_distributed_cache, is_distributed_cache_enabled
+        from .distributed_cache import (
+            is_distributed_cache_enabled,
+            load_from_distributed_cache,
+        )
         if is_distributed_cache_enabled():
             entry, miss_reason = load_from_distributed_cache(cache_key)
             if entry is not None:
@@ -437,31 +444,31 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
     except ImportError:
         # distributed_cache module not available
         pass
-    
+
     # Try local file cache
     try:
         cache_dir = get_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
-        
+
         if not cache_file.exists():
             # Trigger auto-prune before returning (only if file doesn't exist)
             # This ensures we clean up other expired entries
             _maybe_auto_prune_cache(get_cache_dir, ttl_seconds=ttl_seconds)
             return None, "No cached entry found for this workload"
-        
+
         # Load cache entry
         with open(cache_file, 'r') as f:
             data = json.load(f)
-        
+
         entry = CacheEntry.from_dict(data)
-        
+
         # Validate cache entry
         if entry.cache_version != CACHE_VERSION:
             # Cache format changed, invalidate
             # Trigger auto-prune after checking this entry
             _maybe_auto_prune_cache(get_cache_dir, ttl_seconds=ttl_seconds)
             return None, f"Cache format version mismatch (cached: v{entry.cache_version}, current: v{CACHE_VERSION})"
-        
+
         if entry.is_expired(ttl_seconds):
             # Cache entry too old, invalidate
             age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
@@ -470,18 +477,18 @@ def load_cache_entry(cache_key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> 
             # This ensures we return correct miss reason before potentially deleting the file
             _maybe_auto_prune_cache(get_cache_dir, ttl_seconds=ttl_seconds)
             return None, f"Cache entry expired (age: {age_days:.1f} days, TTL: {ttl_days:.1f} days)"
-        
+
         is_compatible, incompatibility_reason = entry.is_system_compatible()
         if not is_compatible:
             # System configuration changed, invalidate
             # Trigger auto-prune after checking compatibility
             _maybe_auto_prune_cache(get_cache_dir, ttl_seconds=ttl_seconds)
             return None, incompatibility_reason
-        
+
         # Valid cache hit - trigger auto-prune to clean up other entries
         _maybe_auto_prune_cache(get_cache_dir, ttl_seconds=ttl_seconds)
         return entry, ""
-        
+
     except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
         # Silently fail - caching should never break functionality
         # Trigger auto-prune even on errors
@@ -499,16 +506,16 @@ def clear_cache() -> int:
     try:
         cache_dir = get_cache_dir()
         count = 0
-        
+
         for cache_file in cache_dir.glob("*.json"):
             try:
                 cache_file.unlink()
                 count += 1
             except OSError:
                 pass
-        
+
         return count
-        
+
     except (OSError, IOError):
         return 0
 
@@ -526,18 +533,18 @@ def prune_expired_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> int:
     try:
         cache_dir = get_cache_dir()
         count = 0
-        
+
         for cache_file in cache_dir.glob("*.json"):
             try:
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
-                
+
                 entry = CacheEntry.from_dict(data)
-                
+
                 if entry.is_expired(ttl_seconds) or not entry.is_system_compatible():
                     cache_file.unlink()
                     count += 1
-                    
+
             except (OSError, IOError, json.JSONDecodeError, KeyError):
                 # Invalid cache file, delete it
                 try:
@@ -545,9 +552,9 @@ def prune_expired_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> int:
                     count += 1
                 except OSError:
                     pass
-        
+
         return count
-        
+
     except (OSError, IOError):
         return 0
 
@@ -582,10 +589,10 @@ def _maybe_auto_prune_cache(cache_dir_func, probability: float = AUTO_PRUNE_PROB
     # Probabilistic trigger
     if random.random() > probability:
         return
-    
+
     try:
         cache_dir = cache_dir_func()
-        
+
         # Quick pruning pass - check files and remove expired/corrupted ones
         # This keeps the operation fast even with large cache directories
         for cache_file in cache_dir.glob("*.json"):
@@ -593,27 +600,27 @@ def _maybe_auto_prune_cache(cache_dir_func, probability: float = AUTO_PRUNE_PROB
                 # Try to load and validate the JSON structure
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
-                
+
                 # Check if entry has required timestamp field
                 if 'timestamp' not in data:
                     # Missing timestamp = corrupted, delete it
                     cache_file.unlink()
                     continue
-                
+
                 # Check if entry is expired based on timestamp
                 entry_timestamp = data.get('timestamp', 0)
                 entry_age = time.time() - entry_timestamp
-                
+
                 if entry_age > ttl_seconds:
                     cache_file.unlink()
-                    
+
             except (OSError, IOError, json.JSONDecodeError, KeyError, TypeError, ValueError):
                 # Invalid or corrupted cache file, try to delete it
                 try:
                     cache_file.unlink()
                 except OSError:
                     pass
-    
+
     except (OSError, IOError, AttributeError):
         # Silently ignore failures - auto-pruning is a best-effort optimization
         pass
@@ -633,7 +640,7 @@ class BenchmarkCacheEntry:
         system_info: System configuration at cache time
         cache_version: Version of cache format
     """
-    
+
     def __init__(
         self,
         serial_time: float,
@@ -653,7 +660,7 @@ class BenchmarkCacheEntry:
         self.timestamp = timestamp
         self.system_info = system_info
         self.cache_version = cache_version
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -666,7 +673,7 @@ class BenchmarkCacheEntry:
             "system_info": self.system_info,
             "cache_version": self.cache_version
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BenchmarkCacheEntry":
         """Create BenchmarkCacheEntry from dictionary."""
@@ -680,12 +687,12 @@ class BenchmarkCacheEntry:
             system_info=data["system_info"],
             cache_version=data.get("cache_version", 1)
         )
-    
+
     def is_expired(self, ttl_seconds: int = DEFAULT_TTL_SECONDS) -> bool:
         """Check if this cache entry has expired."""
         age = time.time() - self.timestamp
         return age > ttl_seconds
-    
+
     def is_system_compatible(self) -> Tuple[bool, str]:
         """
         Check if cached benchmark is compatible with current system.
@@ -699,18 +706,18 @@ class BenchmarkCacheEntry:
         current_cores = get_physical_cores()
         current_memory = get_available_memory()
         current_start_method = get_multiprocessing_start_method()
-        
+
         cached_cores = self.system_info.get("physical_cores", 0)
         cached_memory = self.system_info.get("available_memory", 0)
         cached_start_method = self.system_info.get("start_method", "")
-        
+
         # Benchmark results are system-specific - require exact match
         if cached_cores != current_cores:
             return False, f"Physical core count changed (cached: {cached_cores}, current: {current_cores})"
-        
+
         if cached_start_method != current_start_method:
             return False, f"Multiprocessing start method changed (cached: {cached_start_method}, current: {current_start_method})"
-        
+
         # Memory within 10% tolerance (stricter than optimization cache)
         if cached_memory > 0:
             memory_ratio = current_memory / cached_memory
@@ -718,7 +725,7 @@ class BenchmarkCacheEntry:
                 cached_gb = cached_memory / (1024**3)
                 current_gb = current_memory / (1024**3)
                 return False, f"Available memory changed significantly (cached: {cached_gb:.2f}GB, current: {current_gb:.2f}GB)"
-        
+
         return True, ""
 
 
@@ -736,7 +743,7 @@ def get_benchmark_cache_dir() -> Path:
         cache_base = Path.home() / "Library" / "Caches"
     else:  # Linux and others
         cache_base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    
+
     cache_dir = cache_base / "amorsize" / "benchmark_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
@@ -764,7 +771,7 @@ def compute_benchmark_cache_key(func: Callable, data_size: int) -> str:
     except AttributeError:
         # For built-in functions or methods without __code__
         func_hash = hashlib.sha256(str(func).encode()).hexdigest()[:16]
-    
+
     # For benchmarks, we need exact data size (no bucketing)
     # Benchmarks are repeatable only with same workload size
     cache_key = f"benchmark_{func_hash}_{data_size}_v{CACHE_VERSION}"
@@ -793,7 +800,7 @@ def save_benchmark_cache_entry(
     try:
         cache_dir = get_benchmark_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
-        
+
         # Gather current system info
         system_info = {
             "physical_cores": get_physical_cores(),
@@ -802,7 +809,7 @@ def save_benchmark_cache_entry(
             "platform": platform.system(),
             "python_version": f"{sys.version_info.major}.{sys.version_info.minor}"
         }
-        
+
         # Create cache entry
         entry = BenchmarkCacheEntry(
             serial_time=serial_time,
@@ -813,13 +820,13 @@ def save_benchmark_cache_entry(
             timestamp=time.time(),
             system_info=system_info
         )
-        
+
         # Write to file atomically
         temp_file = cache_file.with_suffix(".tmp")
         with open(temp_file, 'w') as f:
             json.dump(entry.to_dict(), f, indent=2)
         temp_file.replace(cache_file)
-        
+
     except (OSError, IOError, PermissionError):
         # Silently fail if cache cannot be written
         pass
@@ -849,26 +856,26 @@ def load_benchmark_cache_entry(
     try:
         cache_dir = get_benchmark_cache_dir()
         cache_file = cache_dir / f"{cache_key}.json"
-        
+
         if not cache_file.exists():
             # Trigger auto-prune before returning (only if file doesn't exist)
             # This ensures we clean up other expired entries
             _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, "No cached benchmark result found for this workload"
-        
+
         # Load cache entry
         with open(cache_file, 'r') as f:
             data = json.load(f)
-        
+
         entry = BenchmarkCacheEntry.from_dict(data)
-        
+
         # Validate cache entry
         if entry.cache_version != CACHE_VERSION:
             # Cache format changed, invalidate
             # Trigger auto-prune after checking this entry
             _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, f"Cache format version mismatch (cached: v{entry.cache_version}, current: v{CACHE_VERSION})"
-        
+
         if entry.is_expired(ttl_seconds):
             # Cache entry too old, invalidate
             age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
@@ -877,18 +884,18 @@ def load_benchmark_cache_entry(
             # This ensures we return correct miss reason before potentially deleting the file
             _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, f"Cache entry expired (age: {age_days:.1f} days, TTL: {ttl_days:.1f} days)"
-        
+
         is_compatible, incompatibility_reason = entry.is_system_compatible()
         if not is_compatible:
             # System configuration changed, invalidate
             # Trigger auto-prune after checking compatibility
             _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
             return None, incompatibility_reason
-        
+
         # Valid cache hit - trigger auto-prune to clean up other entries
         _maybe_auto_prune_cache(get_benchmark_cache_dir, ttl_seconds=ttl_seconds)
         return entry, ""
-        
+
     except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError) as e:
         # Silently fail - caching should never break functionality
         # Trigger auto-prune even on errors
@@ -906,16 +913,16 @@ def clear_benchmark_cache() -> int:
     try:
         cache_dir = get_benchmark_cache_dir()
         count = 0
-        
+
         for cache_file in cache_dir.glob("*.json"):
             try:
                 cache_file.unlink()
                 count += 1
             except OSError:
                 pass
-        
+
         return count
-        
+
     except (OSError, IOError):
         return 0
 
@@ -934,7 +941,7 @@ class CacheStats:
         newest_entry_age: Age of newest entry (seconds), None if no entries
         cache_dir: Path to cache directory
     """
-    
+
     def __init__(
         self,
         total_entries: int = 0,
@@ -954,12 +961,12 @@ class CacheStats:
         self.oldest_entry_age = oldest_entry_age
         self.newest_entry_age = newest_entry_age
         self.cache_dir = cache_dir
-    
+
     def __repr__(self):
         return (f"CacheStats(total={self.total_entries}, valid={self.valid_entries}, "
                 f"expired={self.expired_entries}, incompatible={self.incompatible_entries}, "
                 f"size={self._format_bytes(self.total_size_bytes)})")
-    
+
     def __str__(self):
         lines = [
             "=== Cache Statistics ===",
@@ -970,14 +977,14 @@ class CacheStats:
             f"  Incompatible entries: {self.incompatible_entries}",
             f"Total cache size: {self._format_bytes(self.total_size_bytes)}",
         ]
-        
+
         if self.oldest_entry_age is not None:
             lines.append(f"Oldest entry age: {self._format_age(self.oldest_entry_age)}")
         if self.newest_entry_age is not None:
             lines.append(f"Newest entry age: {self._format_age(self.newest_entry_age)}")
-        
+
         return "\n".join(lines)
-    
+
     def _format_bytes(self, bytes_val: int) -> str:
         """Format bytes in human-readable form."""
         if bytes_val < 1024:
@@ -988,7 +995,7 @@ class CacheStats:
             return f"{bytes_val / (1024**2):.2f}MB"
         else:
             return f"{bytes_val / (1024**3):.2f}GB"
-    
+
     def _format_age(self, seconds: float) -> str:
         """Format age in human-readable form."""
         if seconds < 60:
@@ -1030,7 +1037,7 @@ def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
     """
     try:
         cache_dir = get_cache_dir()
-        
+
         total_entries = 0
         valid_entries = 0
         expired_entries = 0
@@ -1039,26 +1046,26 @@ def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
         oldest_timestamp = None
         newest_timestamp = None
         current_time = time.time()
-        
+
         for cache_file in cache_dir.glob("*.json"):
             try:
                 # Count file and get size
                 total_entries += 1
                 total_size_bytes += cache_file.stat().st_size
-                
+
                 # Load and validate entry
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
-                
+
                 entry = CacheEntry.from_dict(data)
-                
+
                 # Track timestamps
                 entry_timestamp = entry.timestamp
                 if oldest_timestamp is None or entry_timestamp < oldest_timestamp:
                     oldest_timestamp = entry_timestamp
                 if newest_timestamp is None or entry_timestamp > newest_timestamp:
                     newest_timestamp = entry_timestamp
-                
+
                 # Categorize entry
                 if entry.cache_version != CACHE_VERSION:
                     incompatible_entries += 1
@@ -1068,15 +1075,15 @@ def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
                     incompatible_entries += 1
                 else:
                     valid_entries += 1
-                    
+
             except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
                 # Corrupted entry - count as incompatible
                 incompatible_entries += 1
-        
+
         # Calculate ages
         oldest_age = None if oldest_timestamp is None else (current_time - oldest_timestamp)
         newest_age = None if newest_timestamp is None else (current_time - newest_timestamp)
-        
+
         return CacheStats(
             total_entries=total_entries,
             valid_entries=valid_entries,
@@ -1087,7 +1094,7 @@ def get_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheStats:
             newest_entry_age=newest_age,
             cache_dir=str(cache_dir)
         )
-        
+
     except (OSError, IOError):
         # Cache directory doesn't exist or isn't accessible
         return CacheStats(cache_dir=str(get_cache_dir()))
@@ -1122,7 +1129,7 @@ def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheSt
     """
     try:
         cache_dir = get_benchmark_cache_dir()
-        
+
         total_entries = 0
         valid_entries = 0
         expired_entries = 0
@@ -1131,26 +1138,26 @@ def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheSt
         oldest_timestamp = None
         newest_timestamp = None
         current_time = time.time()
-        
+
         for cache_file in cache_dir.glob("*.json"):
             try:
                 # Count file and get size
                 total_entries += 1
                 total_size_bytes += cache_file.stat().st_size
-                
+
                 # Load and validate entry
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
-                
+
                 entry = BenchmarkCacheEntry.from_dict(data)
-                
+
                 # Track timestamps
                 entry_timestamp = entry.timestamp
                 if oldest_timestamp is None or entry_timestamp < oldest_timestamp:
                     oldest_timestamp = entry_timestamp
                 if newest_timestamp is None or entry_timestamp > newest_timestamp:
                     newest_timestamp = entry_timestamp
-                
+
                 # Categorize entry
                 if entry.cache_version != CACHE_VERSION:
                     incompatible_entries += 1
@@ -1160,15 +1167,15 @@ def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheSt
                     incompatible_entries += 1
                 else:
                     valid_entries += 1
-                    
+
             except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
                 # Corrupted entry - count as incompatible
                 incompatible_entries += 1
-        
+
         # Calculate ages
         oldest_age = None if oldest_timestamp is None else (current_time - oldest_timestamp)
         newest_age = None if newest_timestamp is None else (current_time - newest_timestamp)
-        
+
         return CacheStats(
             total_entries=total_entries,
             valid_entries=valid_entries,
@@ -1179,7 +1186,7 @@ def get_benchmark_cache_stats(ttl_seconds: int = DEFAULT_TTL_SECONDS) -> CacheSt
             newest_entry_age=newest_age,
             cache_dir=str(cache_dir)
         )
-        
+
     except (OSError, IOError):
         # Cache directory doesn't exist or isn't accessible
         return CacheStats(cache_dir=str(get_benchmark_cache_dir()))
@@ -1277,15 +1284,15 @@ def prewarm_cache(
     if optimization_result is None and workload_profiles is None:
         # Use default workload profiles for common patterns
         workload_profiles = _get_default_workload_profiles()
-    
+
     entries_created = 0
-    
+
     # Mode 1: Prewarm from optimization result
     if optimization_result is not None:
         # Extract workload characteristics from the result
         # We need to estimate data_size and avg_time from the result
         # Use the cache key from the result if available, or create one
-        
+
         try:
             # Try to get data size from the result
             if hasattr(optimization_result, 'data') and hasattr(optimization_result.data, '__len__'):
@@ -1297,24 +1304,24 @@ def prewarm_cache(
                 else:
                     # Default to medium size if unknown
                     data_size = 1000
-            
+
             # Estimate avg time from profile
             if hasattr(optimization_result, 'profile') and optimization_result.profile is not None:
                 avg_time = optimization_result.profile.avg_execution_time
             else:
                 # Default to moderate time if unknown
                 avg_time = 0.01
-            
+
             # Compute cache key
             cache_key = compute_cache_key(func, data_size, avg_time)
-            
+
             # Check if entry already exists
             if not force:
                 existing_entry, _ = load_cache_entry(cache_key)
                 if existing_entry is not None:
                     # Entry already exists, skip
                     return 0
-            
+
             # Save to cache
             save_cache_entry(
                 cache_key=cache_key,
@@ -1326,11 +1333,11 @@ def prewarm_cache(
                 warnings=optimization_result.warnings
             )
             entries_created = 1
-            
+
         except (AttributeError, TypeError, ValueError):
             # Invalid optimization result, skip
             pass
-    
+
     # Mode 2: Prewarm from workload profiles
     else:
         for profile in workload_profiles:
@@ -1340,31 +1347,31 @@ def prewarm_cache(
                     continue
                 if "data_size" not in profile or "avg_time" not in profile:
                     continue
-                
+
                 data_size = profile["data_size"]
                 avg_time = profile["avg_time"]
-                
+
                 # Validate values
                 if not isinstance(data_size, int) or data_size <= 0:
                     continue
                 if not isinstance(avg_time, (int, float)) or avg_time <= 0:
                     continue
-                
+
                 # Compute cache key
                 cache_key = compute_cache_key(func, data_size, avg_time)
-                
+
                 # Check if entry already exists
                 if not force:
                     existing_entry, _ = load_cache_entry(cache_key)
                     if existing_entry is not None:
                         # Entry already exists, skip
                         continue
-                
+
                 # Compute reasonable optimization parameters based on workload
                 # This is a simplified heuristic - real optimization would be more sophisticated
                 n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings = \
                     _estimate_optimization_parameters(data_size, avg_time)
-                
+
                 # Save to cache
                 save_cache_entry(
                     cache_key=cache_key,
@@ -1376,11 +1383,11 @@ def prewarm_cache(
                     warnings=warnings
                 )
                 entries_created += 1
-                
+
             except (TypeError, ValueError, KeyError):
                 # Invalid profile, skip
                 continue
-    
+
     return entries_created
 
 
@@ -1401,22 +1408,22 @@ def _get_default_workload_profiles() -> list:
     return [
         # Tiny/instant: data_size < 10, avg_time < 0.0001
         {"data_size": 5, "avg_time": 0.00005},
-        
+
         # Small/fast: data_size 10-100, avg_time 0.0001-0.001
         {"data_size": 50, "avg_time": 0.0005},
-        
+
         # Medium/moderate: data_size 100-1000, avg_time 0.001-0.01
         {"data_size": 500, "avg_time": 0.003},
-        
+
         # Large/moderate: data_size 1000-10000, avg_time 0.001-0.01
         {"data_size": 2000, "avg_time": 0.007},
-        
+
         # Large/slow: data_size 1000-10000, avg_time 0.01-0.1
         {"data_size": 5000, "avg_time": 0.03},
-        
+
         # XLarge/slow: data_size >= 10000, avg_time 0.01-0.1
         {"data_size": 15000, "avg_time": 0.07},
-        
+
         # XLarge/very_slow: data_size >= 10000, avg_time >= 0.1
         {"data_size": 20000, "avg_time": 0.15},
     ]
@@ -1442,10 +1449,10 @@ def _estimate_optimization_parameters(
     """
     physical_cores = get_physical_cores()
     spawn_cost_estimate = get_spawn_cost_estimate()
-    
+
     # Estimate total serial time
     total_time = data_size * avg_time
-    
+
     # Heuristic: If total time is very short (< spawn cost), use serial
     if total_time < spawn_cost_estimate:
         return (
@@ -1454,10 +1461,10 @@ def _estimate_optimization_parameters(
             "Function too fast - overhead dominates (prewarmed estimate)",
             ["This is a prewarmed cache entry with estimated parameters"]
         )
-    
+
     # Heuristic: Use physical cores for parallelization
     n_jobs = min(physical_cores, data_size)
-    
+
     # Heuristic: Target ~0.2s per chunk
     target_chunk_duration = 0.2
     if avg_time > 0:
@@ -1465,7 +1472,7 @@ def _estimate_optimization_parameters(
         chunksize = min(ideal_chunksize, max(1, data_size // n_jobs))
     else:
         chunksize = max(1, data_size // n_jobs)
-    
+
     # Estimate speedup (simplified Amdahl's Law)
     # Assume 95% parallelizable (conservative estimate)
     parallel_fraction = 0.95
@@ -1473,19 +1480,19 @@ def _estimate_optimization_parameters(
     theoretical_speedup = n_jobs * parallel_fraction
     estimated_speedup = theoretical_speedup * (1 - overhead_fraction)
     estimated_speedup = max(1.0, min(estimated_speedup, n_jobs * 0.8))
-    
+
     # Determine executor type (always use process for prewarming)
     executor_type = "process"
-    
+
     # Create reason
     reason = f"Prewarmed: {n_jobs} workers with chunks of {chunksize} (estimated parameters)"
-    
+
     # Add warning
     warnings = [
         "This is a prewarmed cache entry with estimated parameters",
         "For accurate optimization, run optimize() once to replace this entry"
     ]
-    
+
     return (n_jobs, chunksize, executor_type, estimated_speedup, reason, warnings)
 
 
@@ -1528,37 +1535,37 @@ def export_cache(
     try:
         cache_dir = get_cache_dir()
         entries = []
-        
+
         for cache_file in cache_dir.glob("*.json"):
             try:
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
-                
+
                 entry = CacheEntry.from_dict(data)
-                
+
                 # Filter based on parameters
                 if not include_expired and entry.is_expired(ttl_seconds):
                     continue
-                
+
                 if not include_incompatible:
                     is_compatible, _ = entry.is_system_compatible()
                     if not is_compatible:
                         continue
-                
+
                 # Include cache key in export for reimport
                 cache_key = cache_file.stem
                 entry_data = data.copy()
                 entry_data['cache_key'] = cache_key
                 entries.append(entry_data)
-                
+
             except (OSError, IOError, json.JSONDecodeError, KeyError, ValueError):
                 # Skip corrupted entries
                 continue
-        
+
         # Write to output file
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         export_data = {
             'version': CACHE_VERSION,
             'export_timestamp': time.time(),
@@ -1570,12 +1577,12 @@ def export_cache(
             },
             'entries': entries
         }
-        
+
         with open(output_path, 'w') as f:
             json.dump(export_data, f, indent=2)
-        
+
         return len(entries)
-        
+
     except (OSError, IOError) as e:
         raise IOError(f"Failed to export cache: {e}")
 
@@ -1621,32 +1628,32 @@ def import_cache(
     """
     if merge_strategy not in ("skip", "overwrite", "update"):
         raise ValueError(f"Invalid merge_strategy: {merge_strategy}. Must be 'skip', 'overwrite', or 'update'")
-    
+
     try:
         # Load export file
         input_path = Path(input_file)
         if not input_path.exists():
             raise IOError(f"Import file not found: {input_file}")
-        
+
         with open(input_path, 'r') as f:
             export_data = json.load(f)
-        
+
         # Validate export format
         if 'version' not in export_data or 'entries' not in export_data:
             raise IOError("Invalid export file format: missing required fields")
-        
+
         # Check version compatibility
         export_version = export_data['version']
         if export_version != CACHE_VERSION:
             raise IOError(f"Incompatible cache version: export={export_version}, current={CACHE_VERSION}")
-        
+
         cache_dir = get_cache_dir()
         current_time = time.time()
-        
+
         imported_count = 0
         skipped_count = 0
         incompatible_count = 0
-        
+
         for entry_data in export_data['entries']:
             try:
                 # Extract cache key
@@ -1654,21 +1661,21 @@ def import_cache(
                 if not cache_key:
                     skipped_count += 1
                     continue
-                
+
                 # Create entry for validation
                 entry = CacheEntry.from_dict(entry_data)
-                
+
                 # Validate compatibility if requested
                 if validate_compatibility:
                     is_compatible, reason = entry.is_system_compatible()
                     if not is_compatible:
                         incompatible_count += 1
                         continue
-                
+
                 # Check if entry already exists
                 cache_file = cache_dir / f"{cache_key}.json"
                 entry_exists = cache_file.exists()
-                
+
                 # Apply merge strategy
                 should_import = False
                 if not entry_exists:
@@ -1689,27 +1696,27 @@ def import_cache(
                         should_import = True  # Corrupted existing entry
                 else:  # merge_strategy == "skip"
                     skipped_count += 1
-                
+
                 if should_import:
                     # Update timestamp if requested
                     if update_timestamps:
                         entry_data['timestamp'] = current_time
-                    
+
                     # Remove cache_key from data before saving
                     save_data = {k: v for k, v in entry_data.items() if k != 'cache_key'}
-                    
+
                     # Write to cache
                     with open(cache_file, 'w') as f:
                         json.dump(save_data, f, indent=2)
-                    
+
                     imported_count += 1
-                    
+
             except (KeyError, ValueError, json.JSONDecodeError):
                 # Skip malformed entries
                 skipped_count += 1
-        
+
         return (imported_count, skipped_count, incompatible_count)
-        
+
     except (OSError, IOError) as e:
         raise IOError(f"Failed to import cache: {e}")
     except json.JSONDecodeError as e:
@@ -1728,7 +1735,7 @@ class CacheValidationResult:
         issues: List of validation issues found
         health_score: Overall cache health (0-100)
     """
-    
+
     def __init__(
         self,
         is_valid: bool,
@@ -1744,7 +1751,7 @@ class CacheValidationResult:
         self.invalid_entries = invalid_entries
         self.issues = issues
         self.health_score = health_score
-    
+
     def __str__(self) -> str:
         """Human-readable validation report."""
         lines = [
@@ -1755,14 +1762,14 @@ class CacheValidationResult:
             f"Health score: {self.health_score:.1f}/100",
             f"Status: {'✓ HEALTHY' if self.is_valid else '✗ ISSUES FOUND'}",
         ]
-        
+
         if self.issues:
             lines.append("\nIssues found:")
             for issue in self.issues:
                 lines.append(f"  • {issue}")
-        
+
         return "\n".join(lines)
-    
+
     def __repr__(self) -> str:
         return f"CacheValidationResult(valid={self.valid_entries}/{self.total_entries}, health={self.health_score:.1f})"
 
@@ -1796,12 +1803,12 @@ def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECOND
         ...     print(f"Issues: {issues}")
     """
     issues = []
-    
+
     # Check file exists
     if not cache_file.exists():
         issues.append(f"File does not exist: {cache_file}")
         return False, issues
-    
+
     # Check file is readable
     try:
         with open(cache_file, 'r') as f:
@@ -1812,7 +1819,7 @@ def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECOND
     except json.JSONDecodeError as e:
         issues.append(f"Invalid JSON: {e}")
         return False, issues
-    
+
     # Check required fields
     required_fields = {
         "n_jobs": int,
@@ -1825,47 +1832,47 @@ def validate_cache_entry(cache_file: Path, ttl_seconds: int = DEFAULT_TTL_SECOND
         "system_info": dict,
         "cache_version": int
     }
-    
+
     for field, expected_type in required_fields.items():
         if field not in data:
             issues.append(f"Missing required field: {field}")
         elif not isinstance(data[field], expected_type):
             issues.append(f"Invalid type for {field}: expected {expected_type}, got {type(data[field])}")
-    
+
     # If critical fields are missing, return early
     if issues:
         return False, issues
-    
+
     # Validate value ranges
     if data["n_jobs"] < 1:
         issues.append(f"Invalid n_jobs: {data['n_jobs']} (must be >= 1)")
-    
+
     if data["chunksize"] < 1:
         issues.append(f"Invalid chunksize: {data['chunksize']} (must be >= 1)")
-    
+
     if data["executor_type"] not in ["process", "thread"]:
         issues.append(f"Invalid executor_type: {data['executor_type']} (must be 'process' or 'thread')")
-    
+
     if data["estimated_speedup"] < 0:
         issues.append(f"Invalid speedup: {data['estimated_speedup']} (must be >= 0)")
-    
+
     if data["cache_version"] != CACHE_VERSION:
         issues.append(f"Cache version mismatch: {data['cache_version']} (current: {CACHE_VERSION})")
-    
+
     # Check expiration
     try:
         entry = CacheEntry.from_dict(data)
         if entry.is_expired(ttl_seconds):
             age_days = (time.time() - entry.timestamp) / (24 * 60 * 60)
             issues.append(f"Entry expired: age={age_days:.1f} days, TTL={ttl_seconds / (24*60*60):.1f} days")
-        
+
         # Check system compatibility
         is_compatible, reason = entry.is_system_compatible()
         if not is_compatible:
             issues.append(f"System incompatible: {reason}")
     except Exception as e:
         issues.append(f"Failed to validate entry: {e}")
-    
+
     return len(issues) == 0, issues
 
 
@@ -1906,12 +1913,12 @@ def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "op
         cache_dir = get_benchmark_cache_dir()
     else:
         raise ValueError(f"Invalid cache_type: {cache_type} (must be 'optimization' or 'benchmark')")
-    
+
     total_entries = 0
     valid_entries = 0
     invalid_entries = 0
     all_issues = []
-    
+
     try:
         # Scan all cache files
         if not cache_dir.exists():
@@ -1923,13 +1930,13 @@ def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "op
                 issues=[],
                 health_score=100.0
             )
-        
+
         cache_files = list(cache_dir.glob("*.json"))
         total_entries = len(cache_files)
-        
+
         for cache_file in cache_files:
             is_valid, issues = validate_cache_entry(cache_file, ttl_seconds)
-            
+
             if is_valid:
                 valid_entries += 1
             else:
@@ -1937,25 +1944,25 @@ def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "op
                 # Add filename to issues
                 for issue in issues:
                     all_issues.append(f"{cache_file.name}: {issue}")
-        
+
         # Calculate health score (0-100)
         if total_entries == 0:
             health_score = 100.0
         else:
             # Base score on percentage of valid entries
             base_score = (valid_entries / total_entries) * 100
-            
+
             # Penalize for critical issues (corrupted files, missing fields)
             critical_issues = sum(1 for issue in all_issues if any(
                 keyword in issue.lower() for keyword in ["invalid json", "missing required", "cannot read"]
             ))
             penalty = min(critical_issues * 5, 20)  # Max 20 point penalty
-            
+
             health_score = max(0, base_score - penalty)
-        
+
         # Consider healthy if >= 90% valid and no critical corruption
         is_overall_valid = health_score >= 90.0
-        
+
         return CacheValidationResult(
             is_valid=is_overall_valid,
             total_entries=total_entries,
@@ -1964,7 +1971,7 @@ def validate_cache(ttl_seconds: int = DEFAULT_TTL_SECONDS, cache_type: str = "op
             issues=all_issues,
             health_score=health_score
         )
-        
+
     except (OSError, IOError) as e:
         return CacheValidationResult(
             is_valid=False,
@@ -2013,21 +2020,21 @@ def repair_cache(dry_run: bool = True, cache_type: str = "optimization") -> Dict
         cache_dir = get_benchmark_cache_dir()
     else:
         raise ValueError(f"Invalid cache_type: {cache_type} (must be 'optimization' or 'benchmark')")
-    
+
     examined = 0
     deleted = 0
     kept = 0
-    
+
     try:
         if not cache_dir.exists():
             return {"examined": 0, "deleted": 0, "kept": 0}
-        
+
         cache_files = list(cache_dir.glob("*.json"))
-        
+
         for cache_file in cache_files:
             examined += 1
             is_valid, issues = validate_cache_entry(cache_file)
-            
+
             if not is_valid:
                 if not dry_run:
                     try:
@@ -2037,12 +2044,12 @@ def repair_cache(dry_run: bool = True, cache_type: str = "optimization") -> Dict
                 deleted += 1
             else:
                 kept += 1
-        
+
         return {
             "examined": examined,
             "deleted": deleted,
             "kept": kept
         }
-        
+
     except (OSError, IOError):
         return {"examined": 0, "deleted": 0, "kept": 0}

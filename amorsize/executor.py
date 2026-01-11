@@ -5,10 +5,10 @@ This module provides convenience functions that combine optimization
 and execution in a single call, making it easier to use Amorsize.
 """
 
-from typing import Any, Callable, Iterator, List, Union, Optional
 from multiprocessing import Pool
-from .optimizer import optimize
+from typing import Any, Callable, Iterator, List, Optional, Union
 
+from .optimizer import optimize
 
 # Default estimated item time when not available from optimization result
 DEFAULT_ESTIMATED_ITEM_TIME = 0.01
@@ -121,11 +121,11 @@ def execute(
         progress_callback=progress_callback,
         prefer_threads_for_io=prefer_threads_for_io
     )
-    
+
     if verbose:
         print(f"\nExecuting with n_jobs={opt_result.n_jobs}, chunksize={opt_result.chunksize}, executor={opt_result.executor_type}")
         print(f"Estimated speedup: {opt_result.estimated_speedup}")
-    
+
     # Step 2: Execute with optimal parameters
     if opt_result.n_jobs == 1:
         # Serial execution - don't create any executor
@@ -146,32 +146,31 @@ def execute(
             print(f"Creating multiprocessing.Pool with {opt_result.n_jobs} workers")
         with Pool(opt_result.n_jobs) as pool:
             results = pool.map(func, opt_result.data, chunksize=opt_result.chunksize)
-    
+
     if verbose:
         print(f"Execution complete: processed {len(results)} items")
-    
+
     # Step 3: Update ML model with actual results if online learning is enabled
     if enable_online_learning:
         try:
-            import time
             # Import online learning function
             from .ml_prediction import update_model_from_execution
-            
+
             # Calculate data size from results (avoids consuming iterator)
             data_size = len(results)
-            
+
             # Estimate actual per-item time from optimization result
             # This is approximate but useful for training
             estimated_item_time = getattr(opt_result, 'avg_execution_time', DEFAULT_ESTIMATED_ITEM_TIME)
-            
+
             # Get additional features if available from optimization result
             pickle_size = getattr(opt_result, 'pickle_size', None)
             coefficient_of_variation = getattr(opt_result, 'coefficient_of_variation', None)
-            
+
             # Actual speedup is estimated_speedup (we don't measure actual time here for simplicity)
             # In a production system, you could measure actual time and calculate true speedup
             actual_speedup = opt_result.estimated_speedup
-            
+
             # Update model
             success = update_model_from_execution(
                 func=func,
@@ -184,14 +183,14 @@ def execute(
                 coefficient_of_variation=coefficient_of_variation,
                 verbose=verbose
             )
-            
+
             if verbose and success:
                 print("✓ ML model updated with execution results (online learning)")
-        
+
         except Exception as e:
             if verbose:
                 print(f"⚠ Online learning update failed: {e}")
-    
+
     # Step 4: Return results (and optionally optimization details)
     if return_optimization_result:
         return results, opt_result

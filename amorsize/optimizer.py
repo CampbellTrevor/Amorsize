@@ -2,36 +2,42 @@
 Main optimizer module that coordinates the analysis and returns optimal parameters.
 """
 
-from typing import Any, Callable, Iterator, List, Union, Tuple, Optional, Dict
 import time
-import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
-from .system_info import (
-    get_physical_cores,
-    get_logical_cores,
-    get_spawn_cost,
-    get_chunking_overhead,
-    calculate_max_workers,
-    calculate_load_aware_workers,
-    get_current_cpu_load,
-    get_memory_pressure,
-    check_start_method_mismatch,
-    get_multiprocessing_start_method,
-    get_available_memory,
-    get_swap_usage
-)
-from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator, estimate_internal_threads, check_parallel_environment_vars
-from .structured_logging import get_logger
+if TYPE_CHECKING:
+    import pstats
+
 from .error_messages import (
-    get_picklability_error_message,
     get_data_picklability_error_message,
     get_memory_constraint_message,
     get_no_speedup_benefit_message,
-    get_workload_too_small_message,
+    get_picklability_error_message,
     get_sampling_failure_message,
-    format_warning_with_guidance
+    get_workload_too_small_message,
 )
-
+from .sampling import (
+    check_parallel_environment_vars,
+    estimate_internal_threads,
+    estimate_total_items,
+    perform_dry_run,
+    reconstruct_iterator,
+)
+from .structured_logging import get_logger
+from .system_info import (
+    calculate_load_aware_workers,
+    calculate_max_workers,
+    check_start_method_mismatch,
+    get_available_memory,
+    get_chunking_overhead,
+    get_current_cpu_load,
+    get_logical_cores,
+    get_memory_pressure,
+    get_multiprocessing_start_method,
+    get_physical_cores,
+    get_spawn_cost,
+    get_swap_usage,
+)
 
 # Common recommendation messages for picklability issues
 _RECOMMENDATION_USE_CLOUDPICKLE = "Use cloudpickle or dill for more flexible serialization"
@@ -45,7 +51,7 @@ class DiagnosticProfile:
     This class captures all the factors that influenced the optimizer's
     decision, providing transparency into the decision-making process.
     """
-    
+
     def __init__(self):
         # Sampling results
         self.avg_execution_time: float = 0.0
@@ -60,7 +66,7 @@ class DiagnosticProfile:
         self.is_heterogeneous: bool = False
         self.workload_type: str = "cpu_bound"
         self.cpu_time_ratio: float = 1.0
-        
+
         # System information
         self.physical_cores: int = 1
         self.logical_cores: int = 1
@@ -68,34 +74,34 @@ class DiagnosticProfile:
         self.chunking_overhead: float = 0.0
         self.available_memory: int = 0
         self.multiprocessing_start_method: str = ""
-        
+
         # Workload characteristics
         self.total_items: int = 0
         self.estimated_serial_time: float = 0.0
         self.estimated_result_memory: int = 0
-        
+
         # Decision factors
         self.max_workers_cpu: int = 1
         self.max_workers_memory: int = 1
         self.optimal_chunksize: int = 1
         self.target_chunk_duration: float = 0.2
-        
+
         # Overhead breakdown for recommended configuration
         self.overhead_spawn: float = 0.0
         self.overhead_ipc: float = 0.0
         self.overhead_chunking: float = 0.0
         self.parallel_compute_time: float = 0.0
-        
+
         # Speedup analysis
         self.theoretical_max_speedup: float = 1.0
         self.estimated_speedup: float = 1.0
         self.speedup_efficiency: float = 1.0  # actual / theoretical
-        
+
         # Decision path
         self.rejection_reasons: List[str] = []
         self.constraints: List[str] = []
         self.recommendations: List[str] = []
-    
+
     def format_time(self, seconds: float) -> str:
         """Format time in human-readable form."""
         if seconds < 0.001:
@@ -104,7 +110,7 @@ class DiagnosticProfile:
             return f"{seconds * 1000:.2f}ms"
         else:
             return f"{seconds:.3f}s"
-    
+
     def format_bytes(self, bytes_val: int) -> str:
         """Format bytes in human-readable form."""
         if bytes_val < 1024:
@@ -115,19 +121,19 @@ class DiagnosticProfile:
             return f"{bytes_val / (1024**2):.2f}MB"
         else:
             return f"{bytes_val / (1024**3):.2f}GB"
-    
+
     def get_overhead_breakdown(self) -> Dict[str, float]:
         """Get breakdown of overhead components as percentages."""
         total_overhead = self.overhead_spawn + self.overhead_ipc + self.overhead_chunking
         if total_overhead == 0:
             return {"spawn": 0.0, "ipc": 0.0, "chunking": 0.0}
-        
+
         return {
             "spawn": (self.overhead_spawn / total_overhead) * 100,
             "ipc": (self.overhead_ipc / total_overhead) * 100,
             "chunking": (self.overhead_chunking / total_overhead) * 100
         }
-    
+
     def explain_decision(self) -> str:
         """
         Generate a detailed human-readable explanation of the optimization decision.
@@ -139,7 +145,7 @@ class DiagnosticProfile:
         lines.append("=" * 70)
         lines.append("AMORSIZE DIAGNOSTIC PROFILE")
         lines.append("=" * 70)
-        
+
         # Section 1: Workload Analysis
         lines.append("\n[1] WORKLOAD ANALYSIS")
         lines.append("-" * 70)
@@ -157,7 +163,7 @@ class DiagnosticProfile:
             lines.append(f"  Estimated serial time:    {self.format_time(self.estimated_serial_time)}")
         if self.estimated_result_memory > 0:
             lines.append(f"  Total result memory:      {self.format_bytes(self.estimated_result_memory)}")
-        
+
         # Section 2: System Resources
         lines.append("\n[2] SYSTEM RESOURCES")
         lines.append("-" * 70)
@@ -167,7 +173,7 @@ class DiagnosticProfile:
         lines.append(f"  Start method:             {self.multiprocessing_start_method}")
         lines.append(f"  Process spawn cost:       {self.format_time(self.spawn_cost)} per worker")
         lines.append(f"  Chunking overhead:        {self.format_time(self.chunking_overhead)} per chunk")
-        
+
         # Section 3: Optimization Decision
         lines.append("\n[3] OPTIMIZATION DECISION")
         lines.append("-" * 70)
@@ -175,7 +181,7 @@ class DiagnosticProfile:
         lines.append(f"  Max workers (RAM limit):  {self.max_workers_memory}")
         lines.append(f"  Optimal chunksize:        {self.optimal_chunksize}")
         lines.append(f"  Target chunk duration:    {self.format_time(self.target_chunk_duration)}")
-        
+
         # Section 4: Performance Prediction
         if self.estimated_speedup > 1.0 or self.parallel_compute_time > 0:
             lines.append("\n[4] PERFORMANCE PREDICTION")
@@ -183,48 +189,48 @@ class DiagnosticProfile:
             lines.append(f"  Theoretical max speedup:  {self.theoretical_max_speedup:.2f}x")
             lines.append(f"  Estimated actual speedup: {self.estimated_speedup:.2f}x")
             lines.append(f"  Parallel efficiency:      {self.speedup_efficiency * 100:.1f}%")
-            
+
             if self.parallel_compute_time > 0:
-                lines.append(f"\n  Time breakdown (parallel execution):")
+                lines.append("\n  Time breakdown (parallel execution):")
                 lines.append(f"    Computation:            {self.format_time(self.parallel_compute_time)}")
                 lines.append(f"    Process spawn:          {self.format_time(self.overhead_spawn)}")
                 lines.append(f"    IPC/Pickle:             {self.format_time(self.overhead_ipc)}")
                 lines.append(f"    Task distribution:      {self.format_time(self.overhead_chunking)}")
-                
+
                 breakdown = self.get_overhead_breakdown()
-                lines.append(f"\n  Overhead distribution:")
+                lines.append("\n  Overhead distribution:")
                 lines.append(f"    Spawn:                  {breakdown['spawn']:.1f}%")
                 lines.append(f"    IPC:                    {breakdown['ipc']:.1f}%")
                 lines.append(f"    Chunking:               {breakdown['chunking']:.1f}%")
-        
+
         # Section 5: Constraints and Rejections
         if self.rejection_reasons:
             lines.append("\n[5] REJECTION REASONS")
             lines.append("-" * 70)
             for reason in self.rejection_reasons:
                 lines.append(f"  ✗ {reason}")
-        
+
         if self.constraints:
             lines.append("\n[6] ACTIVE CONSTRAINTS")
             lines.append("-" * 70)
             for constraint in self.constraints:
                 lines.append(f"  ⚠ {constraint}")
-        
+
         # Section 6: Recommendations
         if self.recommendations:
             lines.append("\n[7] RECOMMENDATIONS")
             lines.append("-" * 70)
             for rec in self.recommendations:
                 lines.append(f"  💡 {rec}")
-        
+
         lines.append("\n" + "=" * 70)
-        
+
         return "\n".join(lines)
 
 
 class OptimizationResult:
     """Container for optimization results."""
-    
+
     def __init__(
         self,
         n_jobs: int,
@@ -248,7 +254,7 @@ class OptimizationResult:
         self.executor_type = executor_type  # "process" or "thread"
         self.function_profiler_stats = function_profiler_stats  # cProfile stats
         self.cache_hit = cache_hit  # True if result came from cache
-    
+
     def __repr__(self):
         return (
             f"OptimizationResult(n_jobs={self.n_jobs}, "
@@ -256,7 +262,7 @@ class OptimizationResult:
             f"executor_type='{self.executor_type}', "
             f"estimated_speedup={self.estimated_speedup:.2f}x)"
         )
-    
+
     def __str__(self):
         result = f"Recommended: n_jobs={self.n_jobs}, chunksize={self.chunksize}, executor={self.executor_type}\n"
         result += f"Reason: {self.reason}\n"
@@ -266,7 +272,7 @@ class OptimizationResult:
         if self.warnings:
             result += "\nWarnings:\n" + "\n".join(f"  - {w}" for w in self.warnings)
         return result
-    
+
     def explain(self) -> str:
         """
         Get detailed diagnostic explanation of the optimization decision.
@@ -277,7 +283,7 @@ class OptimizationResult:
         if self.profile is None:
             return "Diagnostic profiling not enabled. Use optimize(..., profile=True) for detailed analysis."
         return self.profile.explain_decision()
-    
+
     def show_function_profile(self, sort_by: str = 'cumulative', limit: int = 20) -> None:
         """
         Display cProfile function profiling results showing where time is spent
@@ -304,17 +310,17 @@ class OptimizationResult:
         if self.function_profiler_stats is None:
             print("Function profiling not enabled. Use optimize(..., enable_function_profiling=True)")
             return
-        
+
         print("=" * 80)
         print("FUNCTION PERFORMANCE PROFILE")
         print("=" * 80)
         print("\nShowing where time is spent inside your function:")
         print(f"(Sorted by: {sort_by}, showing top {limit} entries)\n")
-        
+
         # Sort and print stats
         self.function_profiler_stats.sort_stats(sort_by)
         self.function_profiler_stats.print_stats(limit)
-    
+
     def save_function_profile(self, filepath: str, sort_by: str = 'cumulative', limit: int = 50) -> None:
         """
         Save cProfile function profiling results to a file.
@@ -330,16 +336,16 @@ class OptimizationResult:
         """
         if self.function_profiler_stats is None:
             raise ValueError("Function profiling not enabled. Use optimize(..., enable_function_profiling=True)")
-        
+
         # Import io for string capture
         import io
-        
+
         # Capture stats to string buffer
         string_buffer = io.StringIO()
         self.function_profiler_stats.stream = string_buffer
         self.function_profiler_stats.sort_stats(sort_by)
         self.function_profiler_stats.print_stats(limit)
-        
+
         # Write to file
         with open(filepath, 'w') as f:
             f.write("=" * 80 + "\n")
@@ -347,9 +353,9 @@ class OptimizationResult:
             f.write("=" * 80 + "\n\n")
             f.write(f"Sorted by: {sort_by}, showing top {limit} entries\n\n")
             f.write(string_buffer.getvalue())
-        
+
         print(f"Function profile saved to: {filepath}")
-    
+
     def save_config(
         self,
         filepath: str,
@@ -370,15 +376,15 @@ class OptimizationResult:
             >>> result = optimize(my_func, data)
             >>> result.save_config('my_config.json', function_name='my_func')
         """
-        from .config import save_config, ConfigData
-        
+        from .config import ConfigData, save_config
+
         # Extract metadata from profile if available
         data_size = None
         avg_execution_time = None
         if self.profile:
             data_size = self.profile.total_items if self.profile.total_items > 0 else None
             avg_execution_time = self.profile.avg_execution_time
-        
+
         config = ConfigData(
             n_jobs=self.n_jobs,
             chunksize=self.chunksize,
@@ -390,7 +396,7 @@ class OptimizationResult:
             notes=notes,
             source="optimize"
         )
-        
+
         save_config(config, filepath, overwrite=overwrite)
 
 
@@ -443,13 +449,13 @@ def _validate_optimize_parameters(
         return "func parameter cannot be None"
     if not callable(func):
         return f"func parameter must be callable, got {type(func).__name__}"
-    
+
     # Validate data is not None and is iterable
     if data is None:
         return "data parameter cannot be None"
     if not hasattr(data, '__iter__'):
         return f"data parameter must be iterable, got {type(data).__name__}"
-    
+
     # Validate sample_size
     if not isinstance(sample_size, int):
         return f"sample_size must be an integer, got {type(sample_size).__name__}"
@@ -457,7 +463,7 @@ def _validate_optimize_parameters(
         return f"sample_size must be positive, got {sample_size}"
     if sample_size > 10000:
         return f"sample_size is unreasonably large ({sample_size}), maximum is 10000"
-    
+
     # Validate target_chunk_duration
     if not isinstance(target_chunk_duration, (int, float)):
         return f"target_chunk_duration must be a number, got {type(target_chunk_duration).__name__}"
@@ -465,7 +471,7 @@ def _validate_optimize_parameters(
         return f"target_chunk_duration must be positive, got {target_chunk_duration}"
     if target_chunk_duration > 3600:
         return f"target_chunk_duration is unreasonably large ({target_chunk_duration}s), maximum is 3600s"
-    
+
     # Validate boolean parameters
     if not isinstance(verbose, bool):
         return f"verbose must be a boolean, got {type(verbose).__name__}"
@@ -487,25 +493,25 @@ def _validate_optimize_parameters(
         return f"enable_memory_tracking must be a boolean, got {type(enable_memory_tracking).__name__}"
     if not isinstance(use_ml_prediction, bool):
         return f"use_ml_prediction must be a boolean, got {type(use_ml_prediction).__name__}"
-    
+
     # Validate ml_confidence_threshold
     if not isinstance(ml_confidence_threshold, (int, float)):
         return f"ml_confidence_threshold must be a number, got {type(ml_confidence_threshold).__name__}"
     if not (0.0 <= ml_confidence_threshold <= 1.0):
         return f"ml_confidence_threshold must be between 0.0 and 1.0, got {ml_confidence_threshold}"
-    
+
     # Validate adjust_for_system_load
     if not isinstance(adjust_for_system_load, bool):
         return f"adjust_for_system_load must be a boolean, got {type(adjust_for_system_load).__name__}"
-    
+
     # Validate use_advanced_cost_model
     if not isinstance(use_advanced_cost_model, bool):
         return f"use_advanced_cost_model must be a boolean, got {type(use_advanced_cost_model).__name__}"
-    
+
     # Validate progress_callback
     if progress_callback is not None and not callable(progress_callback):
         return f"progress_callback must be callable or None, got {type(progress_callback).__name__}"
-    
+
     return None
 
 
@@ -570,50 +576,50 @@ def calculate_amdahl_speedup(
     """
     if n_jobs <= 0 or total_compute_time <= 0:
         return 1.0
-    
+
     # IPC overlap factor: accounts for pipelining in Pool.map()
     # Conservative estimate: 50% of IPC overhead can overlap with computation
     # This reflects that initial data distribution and final result collection
     # are serial, but middle chunks can overlap with ongoing computation
     IPC_OVERLAP_FACTOR = 0.5
-    
+
     # Serial execution time (baseline)
     serial_time = total_compute_time
-    
+
     # Parallel execution breakdown:
     # 1. Spawn overhead (one-time cost to start all workers)
     spawn_overhead = spawn_cost_per_worker * n_jobs
-    
+
     # 2. Parallel computation (ideal speedup)
     parallel_compute_time = total_compute_time / n_jobs
-    
+
     # 3. Input data IPC overhead (pickle data items to send to workers)
     # Apply overlap factor: not all data pickling is purely serial
     # Initial chunks must be sent before work begins (serial)
     # But subsequent chunks can be pickled while workers compute (overlapped)
     data_ipc_overhead = data_pickle_overhead_per_item * total_items * IPC_OVERLAP_FACTOR
-    
+
     # 4. Output result IPC overhead (pickle/unpickle for inter-process communication)
     # Apply overlap factor: not all result unpickling is purely serial
     # Early results can be unpickled while workers are still computing (overlapped)
     # But final results must be collected after all work completes (serial)
     result_ipc_overhead = pickle_overhead_per_item * total_items * IPC_OVERLAP_FACTOR
-    
+
     # 5. Chunking overhead (additional cost per chunk for task distribution)
     # Each chunk requires queue operations, context switches, etc.
     # This is now dynamically measured per-system
     num_chunks = max(1, (total_items + chunksize - 1) // chunksize)
     chunking_overhead = chunking_overhead_per_chunk * num_chunks
-    
+
     # Total parallel execution time
     parallel_time = spawn_overhead + parallel_compute_time + data_ipc_overhead + result_ipc_overhead + chunking_overhead
-    
+
     # Calculate speedup
     if parallel_time > 0:
         speedup = serial_time / parallel_time
         # Speedup cannot exceed n_jobs (theoretical maximum)
         return min(speedup, float(n_jobs))
-    
+
     return 1.0
 
 
@@ -629,10 +635,10 @@ def _get_unpicklable_data_info(sampling_result) -> Tuple[Optional[str], Optional
     """
     error_type = None
     item_type = None
-    
+
     if sampling_result.data_pickle_error:
         error_type = type(sampling_result.data_pickle_error).__name__
-    
+
     if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
         try:
             if sampling_result.unpicklable_data_index < len(sampling_result.sample):
@@ -640,7 +646,7 @@ def _get_unpicklable_data_info(sampling_result) -> Tuple[Optional[str], Optional
                 item_type = type(item).__name__
         except (IndexError, AttributeError, TypeError):
             pass
-    
+
     return error_type, item_type
 
 
@@ -830,15 +836,15 @@ def optimize(
         use_ml_prediction, ml_confidence_threshold, adjust_for_system_load,
         use_advanced_cost_model
     )
-    
+
     if validation_error:
         raise ValueError(f"Invalid parameter: {validation_error}")
-    
+
     result_warnings = []
-    
+
     # Initialize diagnostic profile if requested
     diag = DiagnosticProfile() if profile else None
-    
+
     # Helper function to invoke progress callback safely
     def _report_progress(phase: str, progress: float):
         """Safely invoke progress callback if provided."""
@@ -848,7 +854,7 @@ def optimize(
             except Exception:
                 # Silently ignore callback errors to avoid disrupting optimization
                 pass
-    
+
     # Helper function to save to cache and return result
     def _make_result_and_cache(
         n_jobs: int,
@@ -884,7 +890,7 @@ def optimize(
             except Exception:
                 # Silently fail if cache save fails
                 pass
-        
+
         return OptimizationResult(
             n_jobs=n_jobs,
             chunksize=chunksize,
@@ -896,10 +902,10 @@ def optimize(
             executor_type=executor,
             function_profiler_stats=profiler_stats
         )
-    
+
     # Report start
     _report_progress("Starting optimization", 0.0)
-    
+
     # Log optimization start
     logger = get_logger()
     func_name = getattr(func, '__name__', None)
@@ -908,7 +914,7 @@ def optimize(
     except (TypeError, AttributeError):
         data_size_for_log = None
     logger.log_optimization_start(func_name=func_name, data_size=data_size_for_log)
-    
+
     # Step 0.3: Try ML prediction if enabled (fastest path - before cache check)
     # ML prediction can provide 10-100x faster optimization than dry-run sampling
     ml_prediction = None
@@ -918,12 +924,12 @@ def optimize(
             data_size_for_ml = len(data) if hasattr(data, '__len__') else None
         except (TypeError, AttributeError):
             data_size_for_ml = None
-        
+
         if data_size_for_ml is not None and data_size_for_ml > 0:
             try:
                 # Import ML module lazily (only when needed)
                 from .ml_prediction import predict_parameters
-                
+
                 # Attempt prediction (with rough execution time estimate)
                 # Use default 10ms per item as a conservative estimate
                 ml_prediction = predict_parameters(
@@ -933,7 +939,7 @@ def optimize(
                     confidence_threshold=ml_confidence_threshold,
                     verbose=verbose
                 )
-                
+
                 if ml_prediction is not None:
                     if verbose:
                         print(f"✓ ML Prediction: n_jobs={ml_prediction.n_jobs}, "
@@ -941,7 +947,7 @@ def optimize(
                               f"confidence={ml_prediction.confidence:.1%}")
                         print(f"  Training samples: {ml_prediction.training_samples}, "
                               f"Feature match: {ml_prediction.feature_match_score:.1%}")
-                    
+
                     # Log ML prediction success
                     logger.log_optimization_complete(
                         n_jobs=ml_prediction.n_jobs,
@@ -950,7 +956,7 @@ def optimize(
                         executor_type="process",  # Default
                         cache_hit=False
                     )
-                    
+
                     # Return ML prediction result immediately (skip dry-run sampling)
                     return OptimizationResult(
                         n_jobs=ml_prediction.n_jobs,
@@ -966,7 +972,7 @@ def optimize(
                     )
                 elif verbose:
                     print("✗ ML Prediction: Confidence too low, falling back to traditional optimization")
-                    
+
             except ImportError:
                 # ML module not available (shouldn't happen since it's internal)
                 if verbose:
@@ -975,7 +981,7 @@ def optimize(
                 # ML prediction failed for some reason - fall back gracefully
                 if verbose:
                     print(f"✗ ML Prediction: Error - {str(e)}")
-    
+
     # Step 0.5: Check cache if enabled (but only if profile not requested)
     # We skip caching when profiling is requested because the cache doesn't
     # store full diagnostic profiles
@@ -990,20 +996,20 @@ def optimize(
             # For iterators/generators, we can't get size without consuming
             # Skip cache for now - will cache after first run
             data_size_estimate = None
-        
+
         if data_size_estimate is not None:
             # Import cache module lazily (only when needed)
-            from .cache import compute_cache_key, load_cache_entry, save_cache_entry
-            
+            from .cache import compute_cache_key, load_cache_entry
+
             # Use a very rough time estimate for cache key (will refine after dry run)
             # This is just for cache lookup - actual optimization will be more precise
             cache_key = compute_cache_key(func, data_size_estimate, 0.001)  # Assume 1ms per item
             cache_entry, cache_miss_reason = load_cache_entry(cache_key)
-            
+
             if cache_entry is not None:
                 if verbose:
                     print(f"✓ Cache hit! Using cached optimization result (saved {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cache_entry.timestamp))})")
-                
+
                 # Log cache hit
                 logger.log_optimization_complete(
                     n_jobs=cache_entry.n_jobs,
@@ -1012,7 +1018,7 @@ def optimize(
                     executor_type=cache_entry.executor_type,
                     cache_hit=True
                 )
-                
+
                 # Return cached result immediately
                 # Note: We still need to handle generator reconstruction
                 if hasattr(data, '__iter__') and not hasattr(data, '__len__'):
@@ -1020,7 +1026,7 @@ def optimize(
                     reconstructed_data = data
                 else:
                     reconstructed_data = data
-                
+
                 return OptimizationResult(
                     n_jobs=cache_entry.n_jobs,
                     chunksize=cache_entry.chunksize,
@@ -1032,27 +1038,27 @@ def optimize(
                     executor_type=cache_entry.executor_type,
                     cache_hit=True
                 )
-    
+
     # Step 1: Perform dry run sampling
     if verbose:
         # Indicate if we attempted cache lookup but missed
         if use_cache and not profile and cache_key is not None and cache_entry is None:
             print(f"✗ Cache miss - {cache_miss_reason}")
         print("Performing dry run sampling...")
-    
+
     _report_progress("Sampling function", 0.1)
-    
+
     sampling_result = perform_dry_run(func, data, sample_size, enable_function_profiling, enable_memory_tracking)
-    
+
     _report_progress("Sampling complete", 0.3)
-    
+
     # Reconstruct data for generators to preserve consumed items
     # For lists, use original data. For generators, chain sample with remaining.
     if sampling_result.is_generator and sampling_result.remaining_data is not None:
         reconstructed_data = reconstruct_iterator(sampling_result.sample, sampling_result.remaining_data)
     else:
         reconstructed_data = sampling_result.remaining_data if sampling_result.remaining_data is not None else data
-    
+
     # Populate diagnostic profile with sampling results
     if diag:
         diag.avg_execution_time = sampling_result.avg_time
@@ -1071,14 +1077,14 @@ def optimize(
         diag.is_heterogeneous = sampling_result.coefficient_of_variation > 0.5
         diag.workload_type = sampling_result.workload_type
         diag.cpu_time_ratio = sampling_result.cpu_time_ratio
-    
+
     # Compute ML features for cache (for ML training)
     # These features help improve ML prediction accuracy over time
     ml_pickle_size = sampling_result.return_size if sampling_result.return_size > 0 else None
     # CV of 0.0 is valid (perfectly homogeneous workload) - include if available
     ml_coefficient_of_variation = sampling_result.coefficient_of_variation if sampling_result.coefficient_of_variation >= 0 else None
     ml_function_complexity = None
-    
+
     # Compute function complexity (bytecode size)
     try:
         if hasattr(func, '__code__'):
@@ -1086,27 +1092,27 @@ def optimize(
     except (AttributeError, TypeError):
         # Built-in or special functions may not have __code__
         pass
-    
+
     # Get physical cores early for nested parallelism adjustment calculations
     physical_cores = get_physical_cores()
-    
+
     # Check for nested parallelism and add warnings
     estimated_internal_threads = 1  # Default: no internal parallelism
-    
+
     if sampling_result.nested_parallelism_detected:
         nested_warning = "Nested parallelism detected: Function uses internal threading/parallelism"
-        
+
         # Provide specific details - use .get() to safely access dict keys
         thread_delta = sampling_result.thread_activity.get('delta', 0)
         if thread_delta > 0:
             nested_warning += f" (thread count increased by {thread_delta})"
-        
+
         if sampling_result.parallel_libraries:
             libs = ", ".join(sampling_result.parallel_libraries)
             nested_warning += f". Detected libraries: {libs}"
-        
+
         result_warnings.append(nested_warning)
-        
+
         # Estimate internal threads used by the function
         env_vars = check_parallel_environment_vars()
         estimated_internal_threads = estimate_internal_threads(
@@ -1114,25 +1120,25 @@ def optimize(
             sampling_result.thread_activity,
             env_vars
         )
-        
+
         # Auto-adjust n_jobs if enabled
         if auto_adjust_for_nested_parallelism and estimated_internal_threads > 1:
             # Calculate what the adjusted value will be
             adjusted_max_workers = max(1, physical_cores // estimated_internal_threads)
-            
+
             adjustment_msg = (
                 f"Auto-adjusting n_jobs to account for {estimated_internal_threads} "
                 f"estimated internal threads per worker"
             )
             result_warnings.append(adjustment_msg)
-            
+
             if diag:
                 diag.constraints.append(adjustment_msg)
                 diag.recommendations.append(
                     f"n_jobs will be reduced to physical_cores/{estimated_internal_threads} "
                     f"= {adjusted_max_workers} to prevent thread oversubscription"
                 )
-            
+
             if verbose:
                 print(f"INFO: {adjustment_msg}")
         else:
@@ -1141,7 +1147,7 @@ def optimize(
                 "Consider setting thread limits (e.g., OMP_NUM_THREADS=1, MKL_NUM_THREADS=1) "
                 "to avoid thread oversubscription"
             )
-            
+
             if diag:
                 diag.recommendations.append(
                     "Set environment variables to limit internal threading: "
@@ -1151,10 +1157,10 @@ def optimize(
                     "Or reduce n_jobs to account for internal parallelism "
                     "(e.g., use n_jobs=cores/internal_threads)"
                 )
-        
+
         if diag:
             diag.constraints.append(nested_warning)
-        
+
         if verbose:
             print(f"WARNING: {nested_warning}")
             if sampling_result.parallel_libraries:
@@ -1175,7 +1181,7 @@ def optimize(
             f"CPU utilization is {sampling_result.cpu_time_ratio*100:.1f}%"
         )
         result_warnings.append(workload_warning)
-        
+
         if sampling_result.workload_type == "io_bound":
             # Strongly recommend threading for I/O-bound tasks
             recommendation = (
@@ -1191,13 +1197,13 @@ def optimize(
                 "(2) multiprocessing if CPU computation is significant. "
                 "Current recommendation uses multiprocessing but may be suboptimal."
             )
-        
+
         result_warnings.append(recommendation)
-        
+
         if diag:
             diag.constraints.append(workload_warning)
             diag.recommendations.append(recommendation)
-        
+
         if verbose:
             print(f"WARNING: {workload_warning}")
             print(f"  {recommendation}")
@@ -1211,7 +1217,7 @@ def optimize(
             print("Using ThreadPoolExecutor for I/O-bound workload")
         if diag:
             diag.recommendations.append("Using ThreadPoolExecutor instead of multiprocessing for I/O-bound workload")
-    
+
     # Check for errors during sampling
     if sampling_result.error:
         # Check if the error might be related to unpicklable data
@@ -1219,7 +1225,7 @@ def optimize(
         if not sampling_result.data_items_picklable:
             # Get data-specific error message with pickling guidance
             error_type, item_type = _get_unpicklable_data_info(sampling_result)
-            
+
             error_message = get_data_picklability_error_message(
                 sampling_result.unpicklable_data_index or 0,
                 error_type,
@@ -1239,7 +1245,7 @@ def optimize(
                 # Add basic troubleshooting recommendations
                 diag.recommendations.append("Test your function with sample data manually")
                 diag.recommendations.append("Validate data types and handle edge cases in your function")
-        
+
         logger.log_rejection("sampling_failed", {"error": str(sampling_result.error)})
         _report_progress("Optimization complete", 1.0)
         if verbose:
@@ -1257,7 +1263,7 @@ def optimize(
             executor_type=executor_type,  # Preserve I/O-bound threading decision
             function_profiler_stats=sampling_result.function_profiler_stats
         )
-    
+
     # Check picklability
     if not sampling_result.is_picklable:
         func_name = getattr(func, '__name__', None)
@@ -1285,24 +1291,24 @@ def optimize(
             executor_type=executor_type,  # Preserve I/O-bound threading decision
             function_profiler_stats=sampling_result.function_profiler_stats
         )
-    
+
     # Check if data items are picklable
     if not sampling_result.data_items_picklable:
         error_type, item_type = _get_unpicklable_data_info(sampling_result)
-        
+
         error_message = get_data_picklability_error_message(
             sampling_result.unpicklable_data_index or 0,
             error_type,
             item_type
         )
-        
+
         if diag:
-            diag.rejection_reasons.append(f"Data items are not picklable - multiprocessing requires picklable data")
+            diag.rejection_reasons.append("Data items are not picklable - multiprocessing requires picklable data")
             # Add actionable recommendations that match the error message content
             diag.recommendations.append(_RECOMMENDATION_USE_CLOUDPICKLE)
             diag.recommendations.append("Pass file paths/connection strings instead of file handles/connections")
             diag.recommendations.append(_RECOMMENDATION_EXTRACT_SERIALIZABLE)
-        
+
         _report_progress("Optimization complete", 1.0)
         if verbose:
             print("\n" + "="*70)
@@ -1311,7 +1317,7 @@ def optimize(
         return _make_result_and_cache(
             n_jobs=1,
             chunksize=1,
-            reason=f"Data items are not picklable",
+            reason="Data items are not picklable",
             estimated_speedup=1.0,
             warnings=[error_message],
             data=reconstructed_data,
@@ -1322,12 +1328,12 @@ def optimize(
             coefficient_of_variation=ml_coefficient_of_variation,
             function_complexity=ml_function_complexity
         )
-    
+
     avg_time = sampling_result.avg_time
     return_size = sampling_result.return_size
     peak_memory = sampling_result.peak_memory
     avg_pickle_time = sampling_result.avg_pickle_time
-    
+
     # Log sampling completion
     logger.log_sampling_complete(
         sample_count=sampling_result.sample_count,
@@ -1335,7 +1341,7 @@ def optimize(
         is_picklable=sampling_result.is_picklable,
         workload_type=sampling_result.workload_type
     )
-    
+
     if verbose:
         print(f"Average execution time: {avg_time:.4f}s")
         print(f"Average input data size: {sampling_result.data_size} bytes")
@@ -1346,31 +1352,31 @@ def optimize(
         if sampling_result.coefficient_of_variation > 0:
             cv_label = "heterogeneous" if sampling_result.coefficient_of_variation > 0.5 else "homogeneous"
             print(f"Workload variability: CV={sampling_result.coefficient_of_variation:.2f} ({cv_label})")
-    
+
     # Step 2: Estimate total workload and check for memory safety
     # This must happen BEFORE fast-fail checks because memory explosion
     # is a safety issue regardless of function speed
     total_items = estimate_total_items(data, False)
     available_memory = get_available_memory()
     memory_threshold = available_memory * 0.5
-    
+
     if total_items > 0:
         estimated_total_time = avg_time * total_items
-        
+
         # Estimate total memory for accumulated results
         # pool.map() keeps all results in memory until completion
         estimated_result_memory = return_size * total_items
-        
+
         if diag:
             diag.total_items = total_items
             diag.estimated_serial_time = estimated_total_time
             diag.estimated_result_memory = estimated_result_memory
-        
+
         if verbose:
             print(f"Estimated total items: {total_items}")
             print(f"Estimated serial execution time: {estimated_total_time:.2f}s")
             print(f"Estimated result memory accumulation: {estimated_result_memory / (1024**2):.2f} MB")
-        
+
         # Check if result accumulation might cause OOM
         if estimated_result_memory > memory_threshold:
             memory_gb = estimated_result_memory / (1024**3)
@@ -1381,12 +1387,12 @@ def optimize(
                 f"processing in batches to avoid memory exhaustion."
             )
             result_warnings.append(warning_message)
-            
+
             if diag:
                 diag.constraints.append(f"Result memory ({memory_gb:.2f}GB) exceeds safety threshold ({available_gb * 0.5:.2f}GB)")
                 diag.recommendations.append("Consider using pool.imap_unordered() for memory-efficient streaming")
                 diag.recommendations.append("Or process data in batches to control memory consumption")
-            
+
             if verbose:
                 print(f"WARNING: Result memory ({memory_gb:.2f}GB) exceeds safety threshold "
                       f"({available_gb * 0.5:.2f}GB). Risk of OOM!")
@@ -1396,15 +1402,15 @@ def optimize(
         result_warnings.append("Cannot determine data size - using heuristics")
         if diag:
             diag.constraints.append("Generator size unknown - using conservative estimates")
-    
+
     # Step 3: Get system information (physical_cores already retrieved earlier for nested parallelism)
     # Note: We need spawn_cost for intelligent fast-fail decisions, so get system info before checking
     _report_progress("Analyzing system", 0.5)
-    
+
     logical_cores = get_logical_cores()
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
-    
+
     # Log system info
     logger.log_system_info(
         physical_cores=physical_cores,
@@ -1412,7 +1418,7 @@ def optimize(
         available_memory_bytes=available_memory,
         start_method=get_multiprocessing_start_method()
     )
-    
+
     # Populate diagnostic profile with system info
     if diag:
         diag.physical_cores = physical_cores
@@ -1422,14 +1428,14 @@ def optimize(
         diag.available_memory = available_memory
         diag.multiprocessing_start_method = get_multiprocessing_start_method()
         diag.target_chunk_duration = target_chunk_duration
-    
+
     # Check for non-default start method
     is_mismatch, mismatch_warning = check_start_method_mismatch()
     if is_mismatch:
         result_warnings.append(mismatch_warning)
         if diag:
             diag.constraints.append(mismatch_warning)
-    
+
     if verbose:
         print(f"Physical cores: {physical_cores}")
         print(f"Multiprocessing start method: {get_multiprocessing_start_method()}")
@@ -1437,7 +1443,7 @@ def optimize(
         print(f"Estimated chunking overhead: {chunking_overhead * 1000:.3f}ms per chunk")
         if is_mismatch:
             print(f"Warning: {mismatch_warning}")
-    
+
     # Step 5: Early rejection for very small workloads
     # Only reject if even with 2 workers we can't get 1.2x speedup
     # This is more intelligent than a fixed threshold and uses actual overhead measurements
@@ -1455,7 +1461,7 @@ def optimize(
             total_items=total_items,
             data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
         )
-        
+
         if test_speedup < 1.2:
             # Even with 2 workers, can't achieve minimum speedup threshold
             if diag:
@@ -1467,10 +1473,10 @@ def optimize(
                     f"(spawn: {spawn_cost*2:.3f}s, pickle: {sampling_result.avg_pickle_time*total_items:.3f}s)"
                 )
                 diag.estimated_speedup = 1.0
-            
+
             # Calculate min items recommended
             min_items_recommended = max(50, total_items * 2)
-            
+
             # Create enhanced workload too small message
             workload_message = get_workload_too_small_message(
                 total_items,
@@ -1478,16 +1484,16 @@ def optimize(
                 min_items_recommended
             )
             result_warnings.append(workload_message)
-            
+
             if verbose:
-                print(f"Workload too small for parallelization:")
+                print("Workload too small for parallelization:")
                 print(f"  Total work: {estimated_total_time:.3f}s")
                 print(f"  Best speedup (2 workers): {test_speedup:.2f}x")
-                print(f"  Threshold: 1.2x")
+                print("  Threshold: 1.2x")
                 print("\n" + "="*70)
                 print(workload_message)
                 print("="*70)
-            
+
             _report_progress("Optimization complete", 1.0)
             # For serial execution (n_jobs=1), cap chunksize at total_items to avoid nonsensical values
             serial_chunksize = min(test_chunksize, total_items) if total_items > 0 else test_chunksize
@@ -1505,10 +1511,10 @@ def optimize(
                 coefficient_of_variation=ml_coefficient_of_variation,
                 function_complexity=ml_function_complexity
             )
-    
+
     # Step 6: Calculate optimal chunksize
     _report_progress("Calculating optimal parameters", 0.7)
-    
+
     # Target: each chunk should take at least target_chunk_duration seconds
     # For heterogeneous workloads (high variance in execution times),
     # use smaller chunks to enable better load balancing
@@ -1516,7 +1522,7 @@ def optimize(
         optimal_chunksize = max(1, int(target_chunk_duration / avg_time))
     else:
         optimal_chunksize = 1
-    
+
     # Adaptive chunking: adjust for workload heterogeneity
     # High CV (coefficient of variation) means execution times vary significantly
     # Smaller chunks enable work-stealing and better load balance
@@ -1527,46 +1533,46 @@ def optimize(
         # Scale factor ranges from 0.5 (CV=0.5) to 0.25 (CV=1.5+)
         scale_factor = max(0.25, 1.0 - (cv * 0.5))
         optimal_chunksize = max(1, int(optimal_chunksize * scale_factor))
-        
+
         if verbose:
             print(f"Heterogeneous workload detected (CV={cv:.2f})")
             print(f"Reducing chunksize by {(1-scale_factor)*100:.0f}% for better load balancing")
-        
+
         if diag:
             diag.constraints.append(f"Heterogeneous workload (CV={cv:.2f}) - using smaller chunks for load balancing")
             diag.recommendations.append(f"Workload variability detected - reduced chunksize to {optimal_chunksize} for better distribution")
-    
+
     # Cap chunksize at a reasonable value
     if total_items > 0:
         # Don't make chunks larger than 10% of total items
         max_reasonable_chunksize = max(1, total_items // 10)
         optimal_chunksize = min(optimal_chunksize, max_reasonable_chunksize)
-    
+
     if diag:
         diag.optimal_chunksize = optimal_chunksize
-    
+
     if verbose:
         print(f"Optimal chunksize: {optimal_chunksize}")
-    
+
     # Step 7: Determine number of workers
     # Consider memory constraints and optionally system load
     estimated_job_ram = peak_memory if peak_memory > 0 else 0
-    
+
     if adjust_for_system_load:
         # Use load-aware calculation that considers current CPU and memory usage
         max_workers = calculate_load_aware_workers(physical_cores, estimated_job_ram)
-        
+
         # Report current system load if verbose
         if verbose:
             current_cpu = get_current_cpu_load()
             current_memory = get_memory_pressure()
             print(f"Current system load: CPU {current_cpu:.1f}%, Memory {current_memory:.1f}%")
             if current_cpu >= 70.0 or current_memory >= 75.0:
-                print(f"  Load-aware adjustment applied (high system load detected)")
+                print("  Load-aware adjustment applied (high system load detected)")
     else:
         # Use standard calculation (hardware constraints only)
         max_workers = calculate_max_workers(physical_cores, estimated_job_ram)
-    
+
     # Check for swap usage and warn if system is under memory pressure
     swap_percent, swap_used, swap_total = get_swap_usage()
     if swap_percent > 10.0:
@@ -1581,14 +1587,14 @@ def optimize(
             diag.constraints.append(swap_warning)
         if verbose:
             print(f"WARNING: System is using swap memory ({swap_percent:.1f}%)")
-            print(f"  Worker count has been reduced to prevent disk thrashing")
-    
+            print("  Worker count has been reduced to prevent disk thrashing")
+
     # Apply nested parallelism adjustment if enabled
     if auto_adjust_for_nested_parallelism and estimated_internal_threads > 1:
         # Reduce max_workers to account for internal threading
         # Formula: n_jobs = physical_cores / internal_threads
         adjusted_max_workers = max(1, physical_cores // estimated_internal_threads)
-        
+
         # Warn if internal threads exceed physical cores (unusual but possible)
         if estimated_internal_threads > physical_cores:
             warning_msg = (
@@ -1598,26 +1604,26 @@ def optimize(
             result_warnings.append(warning_msg)
             if diag:
                 diag.constraints.append(warning_msg)
-        
+
         if adjusted_max_workers < max_workers:
             adjustment_info = (
                 f"Reducing max_workers from {max_workers} to {adjusted_max_workers} "
                 f"to account for {estimated_internal_threads} internal threads per worker"
             )
             result_warnings.append(adjustment_info)
-            
+
             if diag:
                 diag.constraints.append(adjustment_info)
-            
+
             if verbose:
                 print(f"INFO: {adjustment_info}")
-            
+
             max_workers = adjusted_max_workers
-    
+
     if diag:
         diag.max_workers_cpu = physical_cores
         diag.max_workers_memory = max_workers
-    
+
     if max_workers < physical_cores:
         # Calculate memory metrics for enhanced message
         estimated_memory_per_worker_mb = (
@@ -1625,7 +1631,7 @@ def optimize(
         )
         available_memory = get_available_memory()
         available_memory_mb = available_memory / (1024 * 1024)
-        
+
         # Create enhanced memory constraint message
         memory_message = get_memory_constraint_message(
             estimated_memory_per_worker_mb,
@@ -1633,7 +1639,7 @@ def optimize(
             physical_cores,
             max_workers
         )
-        
+
         constraint_msg = (
             f"Memory constraints limit workers to {max_workers} "
             f"(physical cores: {physical_cores})"
@@ -1642,33 +1648,36 @@ def optimize(
         if diag:
             diag.constraints.append(constraint_msg)
             diag.recommendations.append("See memory guidance in warnings")
-    
+
     # For CPU-bound tasks, use physical cores (not logical/hyperthreaded)
     optimal_n_jobs = max_workers
-    
+
     if verbose:
         print(f"Optimal n_jobs: {optimal_n_jobs}")
-    
+
     # Step 8: Estimate speedup using proper Amdahl's Law
     _report_progress("Estimating speedup", 0.9)
-    
+
     if estimated_total_time and optimal_n_jobs > 1 and total_items > 0:
         # Choose cost model based on user preference
         if use_advanced_cost_model:
             # Import cost model module lazily
-            from .cost_model import detect_system_topology, calculate_advanced_amdahl_speedup
-            
+            from .cost_model import (
+                calculate_advanced_amdahl_speedup,
+                detect_system_topology,
+            )
+
             # Detect system topology (cached after first call)
             system_topology = detect_system_topology(physical_cores)
-            
+
             if verbose:
-                print(f"Using advanced cost model with:")
+                print("Using advanced cost model with:")
                 print(f"  L1 cache: {system_topology.cache_info.l1_size / 1024:.0f}KB")
                 print(f"  L2 cache: {system_topology.cache_info.l2_size / 1024:.0f}KB")
                 print(f"  L3 cache: {system_topology.cache_info.l3_size / (1024*1024):.0f}MB")
                 print(f"  NUMA nodes: {system_topology.numa_info.numa_nodes}")
                 print(f"  Memory bandwidth: {system_topology.memory_bandwidth.bandwidth_gb_per_sec:.1f} GB/s")
-            
+
             # Use advanced cost model with hardware topology
             estimated_speedup, cost_breakdown = calculate_advanced_amdahl_speedup(
                 total_compute_time=estimated_total_time,
@@ -1683,9 +1692,9 @@ def optimize(
                 data_size_per_item=sampling_result.data_size,
                 return_size_per_item=return_size
             )
-            
+
             if verbose:
-                print(f"Advanced cost factors:")
+                print("Advanced cost factors:")
                 print(f"  Cache coherency: {cost_breakdown['cache_coherency_factor']:.3f}x overhead")
                 print(f"  Bandwidth slowdown: {cost_breakdown['bandwidth_slowdown']:.3f}x")
                 print(f"  False sharing: {cost_breakdown['false_sharing_factor']:.3f}x overhead")
@@ -1702,28 +1711,28 @@ def optimize(
                 data_pickle_overhead_per_item=sampling_result.avg_data_pickle_time
             )
             cost_breakdown = None
-        
+
         # Populate diagnostic profile with speedup analysis
         if diag:
             diag.theoretical_max_speedup = float(optimal_n_jobs)
             diag.estimated_speedup = estimated_speedup
             diag.speedup_efficiency = estimated_speedup / optimal_n_jobs if optimal_n_jobs > 0 else 0.0
-            
+
             # Calculate overhead breakdown
             num_chunks = max(1, (total_items + optimal_chunksize - 1) // optimal_chunksize)
             diag.overhead_spawn = spawn_cost * optimal_n_jobs
             diag.overhead_ipc = avg_pickle_time * total_items
             diag.overhead_chunking = chunking_overhead * num_chunks
-            
+
             # Use advanced cost model breakdown if available
             if cost_breakdown is not None:
                 diag.parallel_compute_time = cost_breakdown['parallel_compute']
             else:
                 diag.parallel_compute_time = estimated_total_time / optimal_n_jobs
-        
+
         if verbose:
             print(f"Estimated speedup: {estimated_speedup:.2f}x")
-        
+
         # If speedup is less than 1.2x, parallelization may not be worth it
         if estimated_speedup < 1.2:
             if diag:
@@ -1732,27 +1741,27 @@ def optimize(
                 diag.rejection_reasons.append(f"Estimated speedup ({estimated_speedup:.2f}x) below 1.2x threshold")
                 diag.rejection_reasons.append("Parallelization overhead exceeds performance gains")
                 diag.recommendations.append("See detailed guidance in warnings")
-            
+
             # Calculate enhanced no-benefit message
             avg_function_time_ms = sampling_result.avg_time * 1000
             overhead_ms = spawn_cost * 1000
             # Calculate minimum function time needed for benefit
             min_function_time_ms = overhead_ms * 1.2 / optimal_n_jobs if optimal_n_jobs > 1 else overhead_ms * 1.2
-            
+
             no_benefit_message = get_no_speedup_benefit_message(
                 estimated_speedup,
                 avg_function_time_ms,
                 overhead_ms,
                 min_function_time_ms
             )
-            
+
             if verbose:
-                print(f"Parallelization provides minimal benefit:")
+                print("Parallelization provides minimal benefit:")
                 print(f"  Estimated speedup: {estimated_speedup:.2f}x (threshold: 1.2x)")
                 print("\n" + "="*70)
                 print(no_benefit_message)
                 print("="*70)
-            
+
             _report_progress("Optimization complete", 1.0)
             return OptimizationResult(
                 n_jobs=1,
@@ -1772,7 +1781,7 @@ def optimize(
             diag.theoretical_max_speedup = float(optimal_n_jobs)
             diag.estimated_speedup = estimated_speedup
             diag.speedup_efficiency = 0.7
-    
+
     # Step 9: Final sanity check
     if optimal_n_jobs == 1:
         if diag:
@@ -1796,13 +1805,13 @@ def optimize(
             coefficient_of_variation=ml_coefficient_of_variation,
             function_complexity=ml_function_complexity
         )
-    
+
     # Success case: parallelization is beneficial
     if diag and estimated_speedup > 1.2:
         diag.recommendations.append(f"Use {optimal_n_jobs} workers with chunksize {optimal_chunksize} for ~{estimated_speedup:.2f}x speedup")
         if diag.speedup_efficiency < 0.5:
             diag.recommendations.append("Efficiency is low - consider if parallelization overhead is acceptable")
-    
+
     # Log successful optimization
     logger.log_optimization_complete(
         n_jobs=optimal_n_jobs,
@@ -1811,9 +1820,9 @@ def optimize(
         executor_type=executor_type,
         cache_hit=False
     )
-    
+
     _report_progress("Optimization complete", 1.0)
-    
+
     return _make_result_and_cache(
         n_jobs=optimal_n_jobs,
         chunksize=optimal_chunksize,

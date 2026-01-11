@@ -2,14 +2,14 @@
 System information module for detecting hardware and OS constraints.
 """
 
+import multiprocessing
 import os
 import platform
 import subprocess
 import sys
-import time
-import multiprocessing
 import threading
-from typing import Tuple, Optional
+import time
+from typing import Optional, Tuple
 
 try:
     import psutil
@@ -140,15 +140,15 @@ def _parse_proc_cpuinfo() -> Optional[int]:
     try:
         if not os.path.exists('/proc/cpuinfo'):
             return None
-        
+
         cores = set()
         current_physical_id = None
         current_core_id = None
-        
+
         with open('/proc/cpuinfo', 'r') as f:
             for line in f:
                 line = line.strip()
-                
+
                 # Reset IDs when starting a new processor entry
                 if line.startswith('processor'):
                     # Save the previous processor's core info if we have both IDs
@@ -161,14 +161,14 @@ def _parse_proc_cpuinfo() -> Optional[int]:
                     current_physical_id = line.split(':')[1].strip()
                 elif line.startswith('core id'):
                     current_core_id = line.split(':')[1].strip()
-            
+
             # Don't forget the last processor entry
             if current_physical_id is not None and current_core_id is not None:
                 cores.add((current_physical_id, current_core_id))
-        
+
         if cores:
             return len(cores)
-        
+
         return None
     except (IOError, ValueError, IndexError):
         return None
@@ -193,26 +193,26 @@ def _parse_lscpu() -> Optional[int]:
             text=True,
             timeout=1.0
         )
-        
+
         if result.returncode != 0:
             return None
-        
+
         # Parse the output to count unique (socket, core) pairs
         cores = set()
         for line in result.stdout.split('\n'):
             # Skip comments and empty lines
             if line.startswith('#') or not line.strip():
                 continue
-            
+
             parts = line.split(',')
             if len(parts) >= 2:
                 core_id = parts[0].strip()
                 socket_id = parts[1].strip()
                 cores.add((socket_id, core_id))
-        
+
         if cores:
             return len(cores)
-        
+
         return None
     except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired, ValueError):
         return None
@@ -247,27 +247,27 @@ def get_physical_cores() -> int:
         beneficial when multiple optimizations occur in the same program.
     """
     global _CACHED_PHYSICAL_CORES
-    
+
     # Quick check without lock (optimization for common case)
     if _CACHED_PHYSICAL_CORES is not None:
         return _CACHED_PHYSICAL_CORES
-    
+
     # Acquire lock for detection
     with _physical_cores_lock:
         # Double-check after acquiring lock (another thread may have detected)
         if _CACHED_PHYSICAL_CORES is not None:
             return _CACHED_PHYSICAL_CORES
-        
+
         # Perform detection (only one thread reaches here)
         physical_cores = None
-        
+
         # Strategy 1: Use psutil if available (best method)
         if HAS_PSUTIL:
             # psutil can distinguish between physical and logical cores
             physical = psutil.cpu_count(logical=False)
             if physical is not None:
                 physical_cores = physical
-        
+
         # Strategy 2: Try /proc/cpuinfo on Linux (no dependencies)
         if physical_cores is None and platform.system() == "Linux":
             physical = _parse_proc_cpuinfo()
@@ -278,7 +278,7 @@ def get_physical_cores() -> int:
                 physical = _parse_lscpu()
                 if physical is not None:
                     physical_cores = physical
-        
+
         # Strategy 4: Conservative estimate - assume hyperthreading (logical / 2)
         # This is better than using all logical cores for CPU-bound tasks
         # Note: This calls get_logical_cores() which uses a different lock
@@ -292,11 +292,11 @@ def get_physical_cores() -> int:
                 physical_cores = max(1, logical // 2)
             else:
                 physical_cores = logical
-        
+
         # Strategy 5: Absolute fallback
         if physical_cores is None:
             physical_cores = 1
-        
+
         # Cache the result
         _CACHED_PHYSICAL_CORES = physical_cores
         return physical_cores
@@ -324,24 +324,24 @@ def get_logical_cores() -> int:
         optimizations occur in the same program.
     """
     global _CACHED_LOGICAL_CORES
-    
+
     # Quick check without lock (optimization for common case)
     if _CACHED_LOGICAL_CORES is not None:
         return _CACHED_LOGICAL_CORES
-    
+
     # Acquire lock for detection
     with _logical_cores_lock:
         # Double-check after acquiring lock (another thread may have detected)
         if _CACHED_LOGICAL_CORES is not None:
             return _CACHED_LOGICAL_CORES
-        
+
         # Perform detection (only one thread reaches here)
         logical_cores = os.cpu_count()
-        
+
         # Fallback to 1 if detection fails
         if logical_cores is None:
             logical_cores = 1
-        
+
         # Cache the result
         _CACHED_LOGICAL_CORES = logical_cores
         return logical_cores
@@ -397,21 +397,21 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
         performs the measurement while others wait for the result.
     """
     global _CACHED_SPAWN_COST
-    
+
     # Quick check without lock (optimization for common case)
     if _CACHED_SPAWN_COST is not None:
         return _CACHED_SPAWN_COST
-    
+
     # Acquire lock for measurement
     with _spawn_cost_lock:
         # Double-check after acquiring lock (another thread may have measured)
         if _CACHED_SPAWN_COST is not None:
             return _CACHED_SPAWN_COST
-        
+
         # Perform measurement (only one thread reaches here)
         # Get fallback value early for quality checks
         fallback_estimate = get_spawn_cost_estimate()
-        
+
         try:
             # Measure time to create pool with 1 worker
             start_1 = time.perf_counter()
@@ -420,7 +420,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                 result.get(timeout=timeout)
             end_1 = time.perf_counter()
             time_1_worker = end_1 - start_1
-            
+
             # Measure time to create pool with 2 workers
             start_2 = time.perf_counter()
             with multiprocessing.Pool(processes=2) as pool:
@@ -430,16 +430,16 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                     result.get(timeout=timeout)
             end_2 = time.perf_counter()
             time_2_workers = end_2 - start_2
-            
+
             # Calculate marginal cost per worker
             # This removes fixed pool initialization overhead
             marginal_cost = time_2_workers - time_1_worker
-            
+
             # Enhanced validation: Check multiple quality criteria
             # If marginal cost is positive and reasonable, use it with validation
             if marginal_cost > MIN_REASONABLE_MARGINAL_COST:
                 per_worker_cost = marginal_cost
-                
+
                 # Quality check 1: Reasonable range based on start method
                 # fork: 1ms to 100ms, spawn: 50ms to 1000ms, forkserver: 10ms to 500ms
                 start_method = get_multiprocessing_start_method()
@@ -452,12 +452,12 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                 else:
                     # Unknown start method - use conservative bounds
                     min_bound, max_bound = 0.001, 1.0
-                
+
                 if not (min_bound <= per_worker_cost <= max_bound):
                     # Outside reasonable bounds for this start method
                     _CACHED_SPAWN_COST = fallback_estimate
                     return fallback_estimate
-                
+
                 # Quality check 2: Signal strength validation
                 # 2-worker measurement should be at least 10% longer than 1-worker
                 # This ensures we're measuring real spawn cost, not noise
@@ -465,7 +465,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                     # Signal too weak - likely measurement noise
                     _CACHED_SPAWN_COST = fallback_estimate
                     return fallback_estimate
-                
+
                 # Quality check 3: Consistency with start method expectations
                 # Measured value should be within 10x of the expected value
                 # This catches measurements that are wildly off
@@ -473,7 +473,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                     # Measurement inconsistent with expectations
                     _CACHED_SPAWN_COST = fallback_estimate
                     return fallback_estimate
-                
+
                 # Quality check 4: Overhead fraction validation
                 # Marginal cost should be reasonable fraction of 2-worker time
                 # If marginal cost > 90% of total time, something is wrong
@@ -481,7 +481,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                     # Overhead seems unrealistically high relative to total
                     _CACHED_SPAWN_COST = fallback_estimate
                     return fallback_estimate
-                
+
                 # All quality checks passed - use measured value
                 _CACHED_SPAWN_COST = per_worker_cost
                 return per_worker_cost
@@ -496,7 +496,7 @@ def measure_spawn_cost(timeout: float = 2.0) -> float:
                     # Even 1-worker measurement seems unreliable
                     _CACHED_SPAWN_COST = fallback_estimate
                     return fallback_estimate
-            
+
         except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
             # If measurement fails, fall back to OS-based estimate
             # OSError: System-level issues (e.g., resource exhaustion)
@@ -556,62 +556,62 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
         performs the measurement while others wait for the result.
     """
     global _CACHED_CHUNKING_OVERHEAD
-    
+
     # Quick check without lock (optimization for common case)
     if _CACHED_CHUNKING_OVERHEAD is not None:
         return _CACHED_CHUNKING_OVERHEAD
-    
+
     # Acquire lock for measurement
     with _chunking_overhead_lock:
         # Double-check after acquiring lock (another thread may have measured)
         if _CACHED_CHUNKING_OVERHEAD is not None:
             return _CACHED_CHUNKING_OVERHEAD
-        
+
         # Perform measurement (only one thread reaches here)
         try:
             # Use 2 workers for consistency with real use cases
             n_workers = 2
-            
+
             # Use a reasonable workload size
             total_items = 1000
             data = range(total_items)
-            
+
             # Test with large chunks (fewer chunks, less overhead)
             # Use chunks of 100 items -> 10 chunks
             large_chunksize = 100
             num_large_chunks = (total_items + large_chunksize - 1) // large_chunksize
-            
+
             start_large = time.perf_counter()
             with multiprocessing.Pool(processes=n_workers) as pool:
                 list(pool.map(_minimal_worker, data, chunksize=large_chunksize))
             end_large = time.perf_counter()
             time_large = end_large - start_large
-            
+
             # Test with small chunks (more chunks, more overhead)
             # Use chunks of 10 items -> 100 chunks
             small_chunksize = 10
             num_small_chunks = (total_items + small_chunksize - 1) // small_chunksize
-            
+
             start_small = time.perf_counter()
             with multiprocessing.Pool(processes=n_workers) as pool:
                 list(pool.map(_minimal_worker, data, chunksize=small_chunksize))
             end_small = time.perf_counter()
             time_small = end_small - start_small
-            
+
             # Calculate marginal cost per chunk
             # Difference in execution time divided by difference in number of chunks
             time_diff = time_small - time_large
             chunk_diff = num_small_chunks - num_large_chunks
-            
+
             # Enhanced validation: Check multiple quality criteria
             if chunk_diff > 0 and time_diff > 0:
                 per_chunk_overhead = time_diff / chunk_diff
-                
+
                 # Quality check 1: Overhead should be positive and reasonable (< 10ms per chunk)
                 if not (0 < per_chunk_overhead < 0.01):
                     _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
                     return DEFAULT_CHUNKING_OVERHEAD
-                
+
                 # Quality check 2: Measurement should show clear signal
                 # The small-chunk run should take at least 5% longer than large-chunk
                 # This ensures we're measuring real overhead, not noise
@@ -619,7 +619,7 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
                     # Signal too weak - likely measurement noise
                     _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
                     return DEFAULT_CHUNKING_OVERHEAD
-                
+
                 # Quality check 3: Per-chunk overhead should be reasonable fraction of total time
                 # If per-chunk overhead * num_chunks > 50% of total time, something is wrong
                 estimated_total_overhead = per_chunk_overhead * num_small_chunks
@@ -627,22 +627,22 @@ def measure_chunking_overhead(timeout: float = 2.0) -> float:
                     # Overhead seems unrealistically high
                     _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
                     return DEFAULT_CHUNKING_OVERHEAD
-                
+
                 # Quality check 4: The overhead should be in a reasonable range
                 # Based on empirical observations, overhead is typically 0.1ms to 5ms per chunk
                 if not (0.0001 < per_chunk_overhead < 0.005):
                     # Outside reasonable bounds - use default
                     _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
                     return DEFAULT_CHUNKING_OVERHEAD
-                
+
                 # All quality checks passed - use measured value
                 _CACHED_CHUNKING_OVERHEAD = per_chunk_overhead
                 return per_chunk_overhead
-            
+
             # If measurement conditions not met, fall back to default
             _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
             return DEFAULT_CHUNKING_OVERHEAD
-            
+
         except (OSError, TimeoutError, ValueError, multiprocessing.ProcessError):
             # If measurement fails, fall back to default estimate
             _CACHED_CHUNKING_OVERHEAD = DEFAULT_CHUNKING_OVERHEAD
@@ -691,11 +691,11 @@ def get_multiprocessing_start_method() -> str:
     except RuntimeError:
         # Context not initialized yet
         method = multiprocessing.get_start_method(allow_none=True)
-    
+
     # If still None, return the OS default
     if method is None:
         return _get_default_start_method()
-    
+
     return method
 
 
@@ -713,7 +713,7 @@ def _get_default_start_method() -> str:
         - macOS (Python < 3.8): 'fork'
     """
     system = platform.system()
-    
+
     if system == "Windows":
         return "spawn"
     elif system == "Darwin":
@@ -747,7 +747,7 @@ def get_spawn_cost_estimate() -> float:
         cost 13x higher than the old OS-based estimate would suggest.
     """
     start_method = get_multiprocessing_start_method()
-    
+
     if start_method == "fork":
         # Fork with Copy-on-Write - very fast
         return SPAWN_COST_FORK
@@ -800,7 +800,7 @@ def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
     """
     actual = get_multiprocessing_start_method()
     default = _get_default_start_method()
-    
+
     if actual != default:
         if actual == "spawn" and default == "fork":
             return True, (
@@ -819,7 +819,7 @@ def check_start_method_mismatch() -> Tuple[bool, Optional[str]]:
                 f"Using '{actual}' start method instead of OS default '{default}'. "
                 f"Spawn cost estimates have been adjusted."
             )
-    
+
     return False, None
 
 
@@ -845,7 +845,7 @@ def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
     """
     max_limit = None
     high_limit = None
-    
+
     # Check memory.max (hard limit)
     max_path = os.path.join(base_path, "memory.max")
     if os.path.exists(max_path):
@@ -857,7 +857,7 @@ def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
                     max_limit = int(value)
         except (IOError, ValueError):
             pass
-    
+
     # Check memory.high (soft limit)
     high_path = os.path.join(base_path, "memory.high")
     if os.path.exists(high_path):
@@ -869,7 +869,7 @@ def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
                     high_limit = int(value)
         except (IOError, ValueError):
             pass
-    
+
     # Return the most restrictive limit
     if max_limit is not None and high_limit is not None:
         return min(max_limit, high_limit)
@@ -877,7 +877,7 @@ def _read_cgroup_v2_limit(base_path: str) -> Optional[int]:
         return max_limit
     elif high_limit is not None:
         return high_limit
-    
+
     return None
 
 
@@ -903,7 +903,7 @@ def _get_cgroup_path() -> Optional[str]:
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 parts = line.split(':')
                 if len(parts) >= 3:
                     # cgroup v2 format: 0::/path
@@ -914,7 +914,7 @@ def _get_cgroup_path() -> Optional[str]:
                         return parts[2]
     except (IOError, ValueError):
         pass
-    
+
     return None
 
 
@@ -949,18 +949,18 @@ def _read_cgroup_memory_limit() -> Optional[int]:
         # Handle both absolute paths and relative paths
         if cgroup_path.startswith('/'):
             cgroup_path = cgroup_path[1:]  # Remove leading slash
-        
+
         full_path = os.path.join("/sys/fs/cgroup", cgroup_path)
         if os.path.exists(full_path):
             limit = _read_cgroup_v2_limit(full_path)
             if limit is not None:
                 return limit
-    
+
     # Strategy 2: cgroup v2 at root (simple containers like Docker with unified hierarchy)
     limit = _read_cgroup_v2_limit("/sys/fs/cgroup")
     if limit is not None:
         return limit
-    
+
     # Strategy 3: cgroup v1 (legacy systems)
     cgroup_v1_path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
     if os.path.exists(cgroup_v1_path):
@@ -972,12 +972,12 @@ def _read_cgroup_memory_limit() -> Optional[int]:
                     return value
         except (IOError, ValueError):
             pass
-    
+
     # Strategy 4: cgroup v1 with process-specific path
     if cgroup_path:
         if cgroup_path.startswith('/'):
             cgroup_path = cgroup_path[1:]
-        
+
         full_path = os.path.join("/sys/fs/cgroup/memory", cgroup_path, "memory.limit_in_bytes")
         if os.path.exists(full_path):
             try:
@@ -987,7 +987,7 @@ def _read_cgroup_memory_limit() -> Optional[int]:
                         return value
             except (IOError, ValueError):
                 pass
-    
+
     return None
 
 
@@ -1020,33 +1020,33 @@ def get_available_memory() -> int:
         rapid succession (e.g., batch processing, validation workflows).
     """
     global _CACHED_AVAILABLE_MEMORY, _memory_cache_timestamp
-    
+
     current_time = time.perf_counter()
-    
+
     # Quick check without lock (optimization for common case)
-    if (_CACHED_AVAILABLE_MEMORY is not None and 
+    if (_CACHED_AVAILABLE_MEMORY is not None and
         _memory_cache_timestamp is not None and
         (current_time - _memory_cache_timestamp) < MEMORY_CACHE_TTL):
         return _CACHED_AVAILABLE_MEMORY
-    
+
     # Acquire lock for detection
     with _memory_cache_lock:
         # Double-check after acquiring lock (another thread may have detected)
-        if (_CACHED_AVAILABLE_MEMORY is not None and 
+        if (_CACHED_AVAILABLE_MEMORY is not None and
             _memory_cache_timestamp is not None and
             (current_time - _memory_cache_timestamp) < MEMORY_CACHE_TTL):
             return _CACHED_AVAILABLE_MEMORY
-        
+
         # Perform detection (only one thread reaches here)
         # First, check for container memory limits
         cgroup_limit = _read_cgroup_memory_limit()
-        
+
         available_memory = None
-        
+
         if HAS_PSUTIL:
             vm = psutil.virtual_memory()
             system_available = vm.available
-            
+
             # If we're in a container, respect the lower limit
             if cgroup_limit is not None:
                 available_memory = min(cgroup_limit, system_available)
@@ -1059,11 +1059,11 @@ def get_available_memory() -> int:
             # Return a conservative estimate if detection fails (1GB)
             # Better to underestimate than cause OOM
             available_memory = 1024 * 1024 * 1024
-        
+
         # Cache the result with timestamp
         _CACHED_AVAILABLE_MEMORY = available_memory
         _memory_cache_timestamp = current_time
-        
+
         return available_memory
 
 
@@ -1091,7 +1091,7 @@ def get_swap_usage() -> Tuple[float, int, int]:
     """
     if not HAS_PSUTIL:
         return 0.0, 0, 0
-    
+
     try:
         swap = psutil.swap_memory()
         return swap.percent, swap.used, swap.total
@@ -1124,22 +1124,22 @@ def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
         under memory pressure, which would cause severe performance degradation.
     """
     available_ram = get_available_memory()
-    
+
     # Leave some headroom (20%) for the system
     usable_ram = int(available_ram * 0.8)
-    
+
     # Calculate memory-based limit
     if estimated_job_ram > 0:
         memory_limit = max(1, usable_ram // estimated_job_ram)
     else:
         memory_limit = physical_cores
-    
+
     # Apply swap-aware adjustment
     base_workers = min(physical_cores, memory_limit)
-    
+
     # Check swap usage
     swap_percent, _, _ = get_swap_usage()
-    
+
     if swap_percent > 50.0:
         # Severe swap usage - reduce workers by 50%
         adjusted_workers = max(1, base_workers // 2)
@@ -1149,7 +1149,7 @@ def calculate_max_workers(physical_cores: int, estimated_job_ram: int) -> int:
     else:
         # No significant swap usage - use full worker count
         adjusted_workers = base_workers
-    
+
     return adjusted_workers
 
 
@@ -1176,7 +1176,7 @@ def get_current_cpu_load(interval: float = 0.1) -> float:
     """
     if not HAS_PSUTIL:
         return 0.0
-    
+
     try:
         # psutil.cpu_percent() with interval > 0 blocks and measures CPU usage
         # over that interval, providing a more accurate snapshot than interval=0
@@ -1207,7 +1207,7 @@ def get_memory_pressure() -> float:
     """
     if not HAS_PSUTIL:
         return 0.0
-    
+
     try:
         vm = psutil.virtual_memory()
         return float(vm.percent)
@@ -1271,11 +1271,11 @@ def calculate_load_aware_workers(
     # Step 1: Calculate base worker count with existing constraints
     # (physical cores, memory limits, swap usage)
     base_workers = calculate_max_workers(physical_cores, estimated_job_ram)
-    
+
     # Step 2: Check real-time CPU load
     current_cpu = get_current_cpu_load()
     cpu_adjusted_workers = base_workers
-    
+
     if current_cpu >= cpu_threshold:
         # Prevent division by zero if cpu_threshold is 100.0
         if cpu_threshold >= 100.0:
@@ -1285,7 +1285,7 @@ def calculate_load_aware_workers(
             # Calculate available CPU capacity
             available_cpu_percent = max(0.0, 100.0 - current_cpu)
             cpu_capacity_ratio = available_cpu_percent / (100.0 - cpu_threshold)
-            
+
             if aggressive_reduction:
                 # More aggressive: scale linearly with available capacity
                 cpu_adjusted_workers = max(1, int(base_workers * cpu_capacity_ratio))
@@ -1295,11 +1295,11 @@ def calculate_load_aware_workers(
                     cpu_adjusted_workers = max(1, base_workers // 2)
                 else:
                     cpu_adjusted_workers = max(1, int(base_workers * 0.75))
-    
+
     # Step 3: Check real-time memory pressure
     current_memory = get_memory_pressure()
     memory_adjusted_workers = base_workers
-    
+
     if current_memory >= memory_threshold:
         # Prevent division by zero if memory_threshold is 100.0
         if memory_threshold >= 100.0:
@@ -1309,7 +1309,7 @@ def calculate_load_aware_workers(
             # Calculate available memory capacity
             available_memory_percent = max(0.0, 100.0 - current_memory)
             memory_capacity_ratio = available_memory_percent / (100.0 - memory_threshold)
-            
+
             if aggressive_reduction:
                 # More aggressive: scale linearly with available capacity
                 memory_adjusted_workers = max(1, int(base_workers * memory_capacity_ratio))
@@ -1319,11 +1319,11 @@ def calculate_load_aware_workers(
                     memory_adjusted_workers = max(1, base_workers // 2)
                 else:
                     memory_adjusted_workers = max(1, int(base_workers * 0.75))
-    
+
     # Step 4: Apply the most conservative worker count
     # (take the minimum to ensure we don't overload any resource)
     optimal_workers = min(base_workers, cpu_adjusted_workers, memory_adjusted_workers)
-    
+
     return optimal_workers
 
 
