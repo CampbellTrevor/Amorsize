@@ -664,6 +664,10 @@ def perform_dry_run(
     if enable_function_profiling:
         profiler = cProfile.Profile()
     
+    # Performance optimization (Iteration 94): Compute sample_count once outside try block
+    # This allows reuse in both success and exception paths, eliminating redundant len() calls
+    sample_count = len(sample)
+    
     # Start memory tracking only if enabled
     # Lazy initialization: skip tracemalloc overhead when not needed
     # This provides ~2-3% faster dry run performance when memory tracking is disabled
@@ -674,7 +678,6 @@ def perform_dry_run(
         # Memory optimization: Pre-allocate lists with known size for pickle-related data only
         # Performance optimization (Iteration 91): Use Welford's algorithm for variance calculation
         # This eliminates the need to store all timing values and reduces computation to single-pass
-        sample_count = len(sample)
         return_sizes = [0] * sample_count
         pickle_times = [0.0] * sample_count
         
@@ -788,7 +791,7 @@ def perform_dry_run(
             avg_time=avg_time,
             return_size=avg_return_size,
             peak_memory=peak,
-            sample_count=len(sample),
+            sample_count=sample_count,
             is_picklable=is_picklable,
             avg_pickle_time=avg_pickle_time,
             error=None,
@@ -821,7 +824,7 @@ def perform_dry_run(
             avg_time=0.0,
             return_size=0,
             peak_memory=0,
-            sample_count=len(sample),
+            sample_count=sample_count,
             is_picklable=is_picklable,
             avg_pickle_time=0.0,
             error=e,
