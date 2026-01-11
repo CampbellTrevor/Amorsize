@@ -294,6 +294,62 @@ class OptimizationResult:
             return "Diagnostic profiling not enabled. Use optimize(..., profile=True) for detailed analysis."
         return self.profile.explain_decision()
 
+    def analyze_bottlenecks(self) -> str:
+        """
+        Analyze performance bottlenecks and get actionable recommendations.
+        
+        This method identifies what's limiting parallelization performance
+        and provides specific recommendations to address bottlenecks.
+        
+        Returns:
+            Formatted bottleneck analysis report with recommendations
+            
+        Raises:
+            ValueError: If diagnostic profiling wasn't enabled (profile=True required)
+            
+        Example:
+            >>> result = optimize(my_func, data, profile=True)
+            >>> print(result.analyze_bottlenecks())
+            
+            PERFORMANCE BOTTLENECK ANALYSIS
+            ================================
+            Overall Efficiency: 75.0%
+            Primary Bottleneck: Spawn Overhead
+            ...
+        """
+        if self.profile is None:
+            raise ValueError(
+                "Bottleneck analysis requires diagnostic profiling. "
+                "Use optimize(..., profile=True) to enable profiling."
+            )
+        
+        # Import here to avoid circular dependency
+        from .bottleneck_analysis import analyze_bottlenecks, format_bottleneck_report
+        
+        # Handle edge case: serial execution (n_jobs could be 0 or 1)
+        if self.n_jobs <= 1:
+            estimated_memory = self.profile.estimated_result_memory
+        else:
+            estimated_memory = self.profile.estimated_result_memory // self.n_jobs
+        
+        # Extract needed data from profile
+        analysis = analyze_bottlenecks(
+            n_jobs=self.n_jobs,
+            chunksize=self.chunksize,
+            total_items=self.profile.total_items,
+            avg_execution_time=self.profile.avg_execution_time,
+            spawn_cost=self.profile.overhead_spawn,
+            ipc_overhead=self.profile.overhead_ipc,
+            chunking_overhead=self.profile.overhead_chunking,
+            estimated_speedup=self.estimated_speedup,
+            physical_cores=self.profile.physical_cores,
+            available_memory=self.profile.available_memory,
+            estimated_memory_per_job=estimated_memory,
+            coefficient_of_variation=self.profile.coefficient_of_variation
+        )
+        
+        return format_bottleneck_report(analysis)
+
     def show_function_profile(self, sort_by: str = 'cumulative', limit: int = 20) -> None:
         """
         Display cProfile function profiling results showing where time is spent

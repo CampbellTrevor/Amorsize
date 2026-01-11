@@ -65,6 +65,12 @@ from .hooks import (
     create_timing_hook,
 )
 from .optimizer import DiagnosticProfile, OptimizationResult, optimize
+from .bottleneck_analysis import (
+    BottleneckAnalysis,
+    BottleneckType,
+    analyze_bottlenecks,
+    format_bottleneck_report,
+)
 from .performance import (
     PerformanceResult,
     WorkloadSpec,
@@ -467,4 +473,8 @@ __all__ = [
     "CheckpointState",
     "get_pending_items",
     "merge_results",
+    "BottleneckAnalysis",
+    "BottleneckType",
+    "analyze_bottlenecks",
+    "format_bottleneck_report",
 ]
