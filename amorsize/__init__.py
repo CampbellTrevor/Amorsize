@@ -68,6 +68,12 @@ from .cache import (
 )
 from .structured_logging import configure_logging
 from .adaptive_chunking import AdaptiveChunkingPool, create_adaptive_pool
+from .pool_manager import (
+    PoolManager,
+    get_global_pool_manager,
+    managed_pool,
+    shutdown_global_pool_manager
+)
 
 # ML prediction functions (optional feature)
 try:
@@ -187,5 +193,9 @@ __all__ = [
     "MIN_TRAINING_SAMPLES",
     "DEFAULT_CONFIDENCE_THRESHOLD",
     "AdaptiveChunkingPool",
-    "create_adaptive_pool"
+    "create_adaptive_pool",
+    "PoolManager",
+    "get_global_pool_manager",
+    "managed_pool",
+    "shutdown_global_pool_manager"
 ]
