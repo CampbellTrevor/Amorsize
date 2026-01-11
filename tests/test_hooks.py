@@ -446,10 +446,14 @@ class TestThreadSafety:
         manager = HookManager()
         
         def register_hooks(thread_id):
-            for _ in range(10):
+            # Create factory function to avoid closure issues
+            def make_hook(tid):
                 def hook(ctx: HookContext):
                     pass
-                manager.register(HookEvent.ON_PROGRESS, hook)
+                return hook
+            
+            for i in range(10):
+                manager.register(HookEvent.ON_PROGRESS, make_hook(thread_id))
         
         threads = [
             threading.Thread(target=register_hooks, args=(i,))

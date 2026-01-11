@@ -15,6 +15,7 @@ Design principles:
 - Composable: Multiple hooks can be registered for same event
 """
 
+import sys
 import threading
 import time
 import traceback
@@ -212,7 +213,6 @@ class HookManager:
                     self._hook_error_counts[event] += 1
                 
                 if self._verbose:
-                    import sys
                     error_info = f"Hook error in {event.value}: {type(e).__name__}: {e}"
                     tb = traceback.format_exc()
                     print(f"WARNING: {error_info}\n{tb}", file=sys.stderr)
@@ -295,7 +295,8 @@ def create_progress_hook(
     def progress_hook(ctx: HookContext) -> None:
         current_time = ctx.timestamp
         if current_time - last_call_time[0] >= min_interval:
-            callback(ctx.percent_complete, ctx.items_completed, ctx.total_items or 0)
+            total = ctx.total_items if ctx.total_items is not None else 0
+            callback(ctx.percent_complete, ctx.items_completed, total)
             last_call_time[0] = current_time
     
     return progress_hook

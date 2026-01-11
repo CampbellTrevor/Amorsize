@@ -26,8 +26,9 @@ from amorsize import (
 def expensive_function(x: int) -> int:
     """Example CPU-intensive function."""
     result = 0
+    squared = x ** 2  # Calculate once outside loop
     for i in range(1000):
-        result += x ** 2
+        result += squared
     return result
 
 

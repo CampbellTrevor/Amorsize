@@ -137,11 +137,20 @@ def execute(
 
     # Trigger PRE_EXECUTE hook
     if hooks is not None and hooks.has_hooks(HookEvent.PRE_EXECUTE):
+        # Calculate total items safely
+        total_items = None
+        if hasattr(opt_result, 'data'):
+            if hasattr(opt_result.data, '__len__'):
+                try:
+                    total_items = len(opt_result.data)
+                except (TypeError, AttributeError):
+                    pass
+        
         hooks.trigger(HookContext(
             event=HookEvent.PRE_EXECUTE,
             n_jobs=opt_result.n_jobs,
             chunksize=opt_result.chunksize,
-            total_items=len(opt_result.data) if hasattr(opt_result.data, '__len__') else None,
+            total_items=total_items,
             metadata={
                 "executor_type": opt_result.executor_type,
                 "estimated_speedup": opt_result.estimated_speedup
