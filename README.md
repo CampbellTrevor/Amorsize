@@ -4,6 +4,14 @@
 
 Amorsize analyzes your Python functions and data to determine the optimal parallelization parameters (`n_jobs` and `chunksize`), preventing "Negative Scaling" where parallelism becomes slower than serial execution.
 
+## 🚀 New to Amorsize?
+
+**[📖 Start Here: 5-Minute Getting Started Guide](docs/GETTING_STARTED.md)**
+
+Learn the basics in 5 minutes with practical examples for data processing, ML, and web scraping!
+
+---
+
 ## Why Amorsize?
 
 **The Problem:** Blindly using `multiprocessing.Pool` with `n_jobs=-1` can make your code *slower* due to overhead from process spawning, memory copying, and inter-process communication.
