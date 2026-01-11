@@ -334,6 +334,19 @@ Result: `n_jobs = min(physical_cores, available_RAM / estimated_job_RAM)`
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
+## Troubleshooting
+
+Having issues? Check the comprehensive [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for solutions to common problems:
+
+- Function/data pickling errors
+- Memory constraints
+- No speedup from parallelization
+- Windows/macOS spawn issues
+- Docker/container memory detection
+- And much more...
+
+The guide includes detailed explanations, code examples, and diagnostic tools to help resolve any issues quickly.
+
 ## Contributing
 
 Contributions welcome! Please feel free to submit a Pull Request.
