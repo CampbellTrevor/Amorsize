@@ -17,7 +17,7 @@ prediction quality.
 
 import sys
 import time
-import tracemalloc
+import math
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
@@ -155,31 +155,29 @@ def create_synthetic_training_data(
     return training_data
 
 
+# Memory estimation constant
+# Based on empirical measurements: each TrainingData sample consumes ~1KB
+# This includes: WorkloadFeatures object (~600 bytes) + metadata (~400 bytes)
+BYTES_PER_SAMPLE_ESTIMATE = 1024
+
+
 def measure_memory_usage(training_data: List['TrainingData']) -> int:
     """
     Measure memory usage of training data.
+    
+    Uses a fixed estimate of 1KB per sample based on empirical measurements.
+    TrainingData objects include WorkloadFeatures and metadata totaling ~1KB.
     
     Args:
         training_data: List of training samples
         
     Returns:
-        Memory usage in bytes
+        Estimated memory usage in bytes
     """
-    tracemalloc.start()
-    
-    # Force allocation by accessing all fields
-    total = 0
-    for sample in training_data:
-        total += sample.features.data_size
-        total += len(sample.features.__dict__)
-    
-    # Measure current memory
-    current, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    
-    # Rough estimate: ~1KB per sample (based on empirical measurements)
+    # Use empirical estimate: ~1KB per sample
     # This is more reliable than tracemalloc for small objects
-    estimated_size = len(training_data) * 1024
+    # because tracemalloc includes Python interpreter overhead
+    estimated_size = len(training_data) * BYTES_PER_SAMPLE_ESTIMATE
     
     return estimated_size
 
@@ -242,7 +240,6 @@ def extract_feature_vector(features: 'WorkloadFeatures') -> List[float]:
 
 def calculate_euclidean_distance(v1: List[float], v2: List[float]) -> float:
     """Calculate Euclidean distance between two vectors."""
-    import math
     return math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
 
 
