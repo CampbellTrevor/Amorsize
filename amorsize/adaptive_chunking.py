@@ -11,7 +11,6 @@ import threading
 from typing import Callable, Iterable, Any, Optional, List, Tuple
 from collections import deque
 from multiprocessing.pool import Pool, ThreadPool
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 
 class AdaptiveChunkingPool:
@@ -74,7 +73,7 @@ class AdaptiveChunkingPool:
             min_chunksize: Minimum chunk size (default: 1)
             max_chunksize: Maximum chunk size (default: None = no limit)
             enable_adaptation: If False, disables adaptation (acts like normal Pool)
-            use_threads: If True, use ThreadPoolExecutor instead of ProcessPoolExecutor
+            use_threads: If True, use ThreadPool instead of Pool (default: False)
             window_size: Number of recent chunks to consider for adaptation (default: 10)
         
         Raises:
@@ -166,7 +165,6 @@ class AdaptiveChunkingPool:
                 
                 # Only update if it's a significant change (>10% difference)
                 if abs(new_chunksize - self.current_chunksize) > max(1, self.current_chunksize * 0.1):
-                    old_chunksize = self.current_chunksize
                     self.current_chunksize = new_chunksize
                     self._adaptation_count += 1
                     
