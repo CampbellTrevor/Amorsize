@@ -112,6 +112,15 @@ from .circuit_breaker import (
     circuit_breaker_call,
 )
 
+# Checkpoint/Resume for long-running workloads (no extra dependencies)
+from .checkpoint import (
+    CheckpointManager,
+    CheckpointPolicy,
+    CheckpointState,
+    get_pending_items,
+    merge_results,
+)
+
 # Monitoring integrations (optional, no extra dependencies)
 try:
     from .monitoring import (
@@ -441,4 +450,9 @@ __all__ = [
     "CircuitState",
     "with_circuit_breaker",
     "circuit_breaker_call",
+    "CheckpointManager",
+    "CheckpointPolicy",
+    "CheckpointState",
+    "get_pending_items",
+    "merge_results",
 ]
