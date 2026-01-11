@@ -28,6 +28,7 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 - 🔄 **One-Line Execution**: `execute()` combines optimization and execution seamlessly
 - 🔁 **Retry Logic**: Exponential backoff for handling transient failures (network, rate limits)
 - 🔴 **Circuit Breaker**: Prevent cascade failures with automatic failure detection and recovery
+- 💾 **Checkpoint/Resume**: Save progress and resume from failures for long-running workloads
 - 📦 **Batch Processing**: Memory-safe processing for workloads with large return objects
 - 🌊 **Streaming Optimization**: imap/imap_unordered helper for continuous data streams
 
@@ -388,6 +389,99 @@ results = execute(robust_api_call, data)
 ```
 
 See [Circuit Breaker Guide](examples/circuit_breaker_demo.py) for complete examples.
+
+### Option 10: Checkpoint/Resume for Long-Running Workloads
+
+Save progress during execution and resume from failures without losing work:
+
+```python
+from amorsize import CheckpointManager, CheckpointPolicy, get_pending_items, merge_results
+
+# Configure checkpointing
+policy = CheckpointPolicy(
+    checkpoint_dir="./checkpoints",
+    checkpoint_interval=100,  # Checkpoint every 100 items
+    save_format="pickle",     # or "json" for human-readable
+    keep_history=2,           # Keep 2 old versions
+    auto_cleanup=True         # Delete on success
+)
+
+manager = CheckpointManager(policy)
+checkpoint_name = "my_long_task"
+
+def expensive_computation(x):
+    """Long-running computation that might fail."""
+    # ... expensive work ...
+    return result
+
+# First run (may fail partway through)
+data = list(range(10000))
+checkpoint_state = None
+completed_indices = []
+results = []
+
+try:
+    for i, item in enumerate(data):
+        result = expensive_computation(item)
+        completed_indices.append(i)
+        results.append(result)
+        
+        # Checkpoint periodically
+        if (i + 1) % 100 == 0:
+            from amorsize import CheckpointState
+            import time
+            
+            state = CheckpointState(
+                completed_indices=completed_indices.copy(),
+                results=results.copy(),
+                total_items=len(data),
+                checkpoint_time=time.time(),
+                n_jobs=4,
+                chunksize=10,
+                metadata={"phase": "processing"}
+            )
+            manager.save_checkpoint(checkpoint_name, state)
+except Exception as e:
+    print(f"Failed after {len(completed_indices)} items")
+
+# Second run (resume from checkpoint)
+checkpoint_state = manager.load_checkpoint(checkpoint_name)
+
+if checkpoint_state:
+    # Get only the pending items
+    pending_indices, pending_items = get_pending_items(data, checkpoint_state)
+    
+    # Process only what's left
+    new_results = [expensive_computation(item) for item in pending_items]
+    
+    # Merge with checkpointed results
+    final_results = merge_results(
+        new_results, pending_indices, checkpoint_state, len(data)
+    )
+    
+    # Success - cleanup checkpoint
+    manager.delete_checkpoint(checkpoint_name)
+```
+
+**Key features:**
+- ✅ Save progress during execution
+- ✅ Resume from last checkpoint on failure
+- ✅ JSON (readable) or Pickle (efficient) formats
+- ✅ Automatic versioning and history management
+- ✅ Thread-safe concurrent operations
+- ✅ Zero external dependencies
+
+**Use cases:**
+- Long-running batch jobs (hours/days of computation)
+- Expensive API calls or ML inference
+- Unreliable environments (spot instances, network issues)
+- Development/debugging with iterative workflows
+
+**JSON vs Pickle:**
+- **JSON**: Human-readable, limited to JSON-serializable objects, ~2x slower
+- **Pickle**: Binary format, supports all Python objects, faster and more compact
+
+See [Checkpoint Guide](examples/checkpoint_demo.py) for complete examples.
 
 ## How It Works
 
