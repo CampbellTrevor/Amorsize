@@ -109,7 +109,9 @@ try:
         K_RANGE_MIN,
         K_RANGE_MAX,
         MIN_SAMPLES_FOR_K_TUNING,
-        DEFAULT_K_VALUE
+        DEFAULT_K_VALUE,
+        ENABLE_ENSEMBLE_PREDICTION,
+        MIN_SAMPLES_FOR_ENSEMBLE
     )
     _has_ml_prediction = True
 except ImportError:
@@ -147,6 +149,8 @@ except ImportError:
     K_RANGE_MAX = 15
     MIN_SAMPLES_FOR_K_TUNING = 20
     DEFAULT_K_VALUE = 5
+    ENABLE_ENSEMBLE_PREDICTION = True
+    MIN_SAMPLES_FOR_ENSEMBLE = 15
 
 # Distributed cache functions (optional, requires redis-py)
 try:
@@ -267,6 +271,8 @@ __all__ = [
     "K_RANGE_MAX",
     "MIN_SAMPLES_FOR_K_TUNING",
     "DEFAULT_K_VALUE",
+    "ENABLE_ENSEMBLE_PREDICTION",
+    "MIN_SAMPLES_FOR_ENSEMBLE",
     "AdaptiveChunkingPool",
     "create_adaptive_pool",
     "PoolManager",
