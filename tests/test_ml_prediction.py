@@ -81,8 +81,8 @@ class TestWorkloadFeatures:
         )
         
         vector = features.to_vector()
-        # Enhanced to 8 features in Iteration 104 (was 5)
-        assert len(vector) == 8
+        # Enhanced to 12 features in Iteration 114 (was 8 in Iteration 104, was 5 originally)
+        assert len(vector) == 12
         assert all(isinstance(v, float) for v in vector)
         assert all(0.0 <= v <= 1.0 for v in vector)
     
@@ -490,12 +490,12 @@ class TestEnhancedFeatures:
         )
         
         vector = features.to_vector()
-        assert len(vector) == 8  # Enhanced from 5 to 8
+        assert len(vector) == 12  # Enhanced from 8 to 12 in Iteration 114
         assert all(isinstance(v, float) for v in vector)
         assert all(0.0 <= v <= 1.0 for v in vector)
     
     def test_enhanced_feature_distance(self):
-        """Test distance calculation with 8 features."""
+        """Test distance calculation with 12 features (enhanced in Iteration 114)."""
         features1 = WorkloadFeatures(
             data_size=1000,
             estimated_item_time=0.01,
@@ -521,9 +521,9 @@ class TestEnhancedFeatures:
         distance = features1.distance(features2)
         # Distance should be positive for different features
         assert distance > 0.0
-        # Maximum distance with 8 features is sqrt(8)
+        # Maximum distance with 12 features is sqrt(12) - updated in Iteration 114
         import math
-        assert distance <= math.sqrt(8)
+        assert distance <= math.sqrt(12)
 
 
 class TestFunctionComplexity:

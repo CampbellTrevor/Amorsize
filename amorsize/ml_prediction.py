@@ -29,6 +29,14 @@ from .system_info import (
     get_spawn_cost_estimate
 )
 
+# Import cost model for hardware-aware features (optional)
+try:
+    from .cost_model import detect_system_topology, SystemTopology
+    _HAS_COST_MODEL = True
+except ImportError:
+    _HAS_COST_MODEL = False
+    SystemTopology = None
+
 
 # Minimum number of training samples needed for prediction
 MIN_TRAINING_SAMPLES = 3
@@ -149,6 +157,7 @@ class WorkloadFeatures:
     
     Features are normalized to [0, 1] range for better model performance.
     Enhanced in Iteration 104 with additional features for 15-25% accuracy improvement.
+    Enhanced in Iteration 114 with hardware-aware features (cache, NUMA, bandwidth).
     """
     
     def __init__(
@@ -160,7 +169,8 @@ class WorkloadFeatures:
         start_method: str,
         pickle_size: Optional[int] = None,
         coefficient_of_variation: Optional[float] = None,
-        function_complexity: Optional[int] = None
+        function_complexity: Optional[int] = None,
+        system_topology: Optional['SystemTopology'] = None
     ):
         # Raw features (original 5)
         self.data_size = data_size
@@ -169,10 +179,24 @@ class WorkloadFeatures:
         self.available_memory = available_memory
         self.start_method = start_method
         
-        # Raw features (new 3 - enhanced features)
+        # Raw features (new 3 - enhanced features from Iteration 104)
         self.pickle_size = pickle_size or 0
         self.coefficient_of_variation = coefficient_of_variation or 0.0
         self.function_complexity = function_complexity or 0
+        
+        # Raw features (new 4 - hardware-aware features from Iteration 114)
+        # These are extracted from system_topology if available
+        if system_topology is not None and _HAS_COST_MODEL:
+            self.l3_cache_size = system_topology.cache_info.l3_size
+            self.numa_nodes = system_topology.numa_info.numa_nodes
+            self.memory_bandwidth_gb_s = system_topology.memory_bandwidth.bandwidth_gb_per_sec
+            self.has_numa = 1 if system_topology.numa_info.has_numa else 0
+        else:
+            # Default values when cost model unavailable
+            self.l3_cache_size = 8 * 1024 * 1024  # 8MB (conservative default)
+            self.numa_nodes = 1
+            self.memory_bandwidth_gb_s = 25.0  # DDR4-3200 single channel estimate
+            self.has_numa = 0
         
         # Normalized features (0-1 range) - original 5
         # Log scale for data size (typical range: 10 to 1M items)
@@ -208,6 +232,23 @@ class WorkloadFeatures:
         
         # Log scale for function complexity (bytecode size, typical: 100 to 10000 bytes)
         self.norm_complexity = self._normalize_log(max(1, function_complexity or 1), 100, 10000)
+        
+        # Normalized features (0-1 range) - new 4 hardware-aware features (Iteration 114)
+        # Log scale for L3 cache size (typical range: 1MB to 256MB)
+        # Larger cache = better data locality for multi-core workloads
+        self.norm_l3_cache = self._normalize_log(max(1e6, self.l3_cache_size), 1e6, 256e6)
+        
+        # Linear scale for NUMA nodes (typical range: 1 to 8)
+        # More NUMA nodes = higher cross-node memory access penalty
+        self.norm_numa_nodes = min(1.0, self.numa_nodes / 8.0)
+        
+        # Log scale for memory bandwidth (typical range: 10 GB/s to 1000 GB/s)
+        # Higher bandwidth = better support for memory-intensive parallel workloads
+        self.norm_memory_bandwidth = self._normalize_log(max(10.0, self.memory_bandwidth_gb_s), 10.0, 1000.0)
+        
+        # Binary feature for NUMA presence (0 or 1)
+        # Has NUMA = need to consider cross-node penalties
+        self.norm_has_numa = float(self.has_numa)
     
     @staticmethod
     def _normalize_log(value: float, min_val: float, max_val: float) -> float:
@@ -225,6 +266,7 @@ class WorkloadFeatures:
         Convert features to a vector for model input.
         
         Enhanced in Iteration 104 with 8 features (was 5).
+        Enhanced in Iteration 114 with 12 features (was 8) - added hardware-aware features.
         """
         return [
             self.norm_data_size,
@@ -234,7 +276,11 @@ class WorkloadFeatures:
             self.norm_start_method,
             self.norm_pickle_size,
             self.norm_cv,
-            self.norm_complexity
+            self.norm_complexity,
+            self.norm_l3_cache,
+            self.norm_numa_nodes,
+            self.norm_memory_bandwidth,
+            self.norm_has_numa
         ]
     
     def distance(self, other: "WorkloadFeatures") -> float:
@@ -242,7 +288,7 @@ class WorkloadFeatures:
         Calculate Euclidean distance to another feature vector.
         
         Used to determine how similar two workloads are.
-        Returns value in [0, sqrt(8)] range (8 features - updated in Iteration 104).
+        Returns value in [0, sqrt(12)] range (12 features - updated in Iteration 114).
         """
         vec1 = self.to_vector()
         vec2 = other.to_vector()
@@ -334,8 +380,8 @@ class SimpleLinearPredictor:
         # Calculate feature match score (0-1, higher is better)
         # This is the average similarity of the k neighbors
         avg_distance = sum(d for d, _ in neighbors) / len(neighbors)
-        # Convert distance [0, sqrt(8)] to similarity [1, 0] (8 features - updated in Iteration 104)
-        feature_match_score = max(0.0, 1.0 - (avg_distance / math.sqrt(8)))
+        # Convert distance [0, sqrt(12)] to similarity [1, 0] (12 features - updated in Iteration 114)
+        feature_match_score = max(0.0, 1.0 - (avg_distance / math.sqrt(12)))
         
         reason = (
             f"Predicted from {len(neighbors)} similar historical workloads "
@@ -394,8 +440,8 @@ class SimpleLinearPredictor:
         # Average distance of neighbors, normalized to [0, 1]
         avg_distance = sum(d for d, _ in neighbors) / len(neighbors)
         # Convert to similarity score (closer = higher score)
-        # sqrt(8) is the maximum distance with 8 features (updated in Iteration 104)
-        proximity_score = max(0.0, 1.0 - (avg_distance / math.sqrt(8)))
+        # sqrt(12) is the maximum distance with 12 features (updated in Iteration 114)
+        proximity_score = max(0.0, 1.0 - (avg_distance / math.sqrt(12)))
         
         # Factor 2: Sample size score
         # More training samples = higher confidence
@@ -674,6 +720,8 @@ def load_training_data_from_cache() -> List[TrainingData]:
                 function_complexity = cache_entry.get('function_complexity', None)
                 
                 # Create features
+                # Note: system_topology is not stored in cache files
+                # Will use default values for hardware features when loading old data
                 features = WorkloadFeatures(
                     data_size=data_size,
                     estimated_item_time=exec_time,
@@ -682,7 +730,8 @@ def load_training_data_from_cache() -> List[TrainingData]:
                     start_method=start_method,
                     pickle_size=pickle_size,
                     coefficient_of_variation=coefficient_of_variation,
-                    function_complexity=function_complexity
+                    function_complexity=function_complexity,
+                    system_topology=None  # Not stored in cache, use defaults
                 )
                 
                 # Create training sample
@@ -756,6 +805,16 @@ def predict_parameters(
     # Compute function complexity
     function_complexity = _compute_function_complexity(func)
     
+    # Detect system topology for hardware-aware features (Iteration 114)
+    system_topology = None
+    if _HAS_COST_MODEL:
+        try:
+            physical_cores = get_physical_cores()
+            system_topology = detect_system_topology(physical_cores)
+        except Exception:
+            # Graceful fallback if topology detection fails
+            system_topology = None
+    
     # Extract features for current workload
     features = WorkloadFeatures(
         data_size=data_size,
@@ -765,7 +824,8 @@ def predict_parameters(
         start_method=get_multiprocessing_start_method(),
         pickle_size=pickle_size,
         coefficient_of_variation=coefficient_of_variation,
-        function_complexity=function_complexity
+        function_complexity=function_complexity,
+        system_topology=system_topology
     )
     
     # Load training data from cache
@@ -773,7 +833,10 @@ def predict_parameters(
     
     if verbose:
         print(f"ML Prediction: Loaded {len(training_data)} training samples from cache")
-        print(f"ML Prediction: Using 8 features (enhanced with pickle_size, CV, complexity)")
+        if _HAS_COST_MODEL and system_topology:
+            print(f"ML Prediction: Using 12 features (enhanced with hardware topology)")
+        else:
+            print(f"ML Prediction: Using 12 features (with default hardware values)")
     
     if len(training_data) < MIN_TRAINING_SAMPLES:
         if verbose:
@@ -963,6 +1026,16 @@ def update_model_from_execution(
         # Compute function complexity
         function_complexity = _compute_function_complexity(func)
         
+        # Detect system topology for hardware-aware features (Iteration 114)
+        system_topology = None
+        if _HAS_COST_MODEL:
+            try:
+                physical_cores = get_physical_cores()
+                system_topology = detect_system_topology(physical_cores)
+            except Exception:
+                # Graceful fallback if topology detection fails
+                system_topology = None
+        
         # Create features for this execution
         features = WorkloadFeatures(
             data_size=data_size,
@@ -972,7 +1045,8 @@ def update_model_from_execution(
             start_method=get_multiprocessing_start_method(),
             pickle_size=pickle_size,
             coefficient_of_variation=coefficient_of_variation,
-            function_complexity=function_complexity
+            function_complexity=function_complexity,
+            system_topology=system_topology
         )
         
         # Create training sample from execution results
@@ -1068,6 +1142,8 @@ def load_ml_training_data() -> List[TrainingData]:
                 
                 # Extract features
                 feat_dict = data.get('features', {})
+                # Note: system_topology is not stored in cache files
+                # Will use default values for hardware features when loading old data
                 features = WorkloadFeatures(
                     data_size=feat_dict.get('data_size', 1000),
                     estimated_item_time=feat_dict.get('estimated_item_time', 0.01),
@@ -1076,7 +1152,8 @@ def load_ml_training_data() -> List[TrainingData]:
                     start_method=feat_dict.get('start_method', get_multiprocessing_start_method()),
                     pickle_size=feat_dict.get('pickle_size'),
                     coefficient_of_variation=feat_dict.get('coefficient_of_variation'),
-                    function_complexity=feat_dict.get('function_complexity')
+                    function_complexity=feat_dict.get('function_complexity'),
+                    system_topology=None  # Not stored in cache, use defaults
                 )
                 
                 # Create training sample
