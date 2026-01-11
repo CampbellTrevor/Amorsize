@@ -82,6 +82,7 @@ from .visualization import (
     plot_speedup_comparison,
     visualize_comparison_result,
 )
+from .watch import WatchMonitor, WatchSnapshot, watch
 
 # ML prediction functions (optional feature)
 try:
@@ -313,5 +314,8 @@ __all__ = [
     "CacheInfo",
     "NUMAInfo",
     "MemoryBandwidthInfo",
-    "SystemTopology"
+    "SystemTopology",
+    "watch",
+    "WatchMonitor",
+    "WatchSnapshot"
 ]

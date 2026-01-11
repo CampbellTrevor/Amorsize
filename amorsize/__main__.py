@@ -24,6 +24,7 @@ from .history import (
     save_result,
 )
 from .tuning import quick_tune, tune_parameters
+from .watch import watch
 
 
 # ANSI color codes for terminal output
@@ -1057,6 +1058,30 @@ def cmd_execute(args: argparse.Namespace):
             sys.exit(1)
 
 
+def cmd_watch(args: argparse.Namespace):
+    """Execute the 'watch' command."""
+    # Set color mode first
+    _set_color_mode_from_args(args)
+    
+    # Load function
+    func = load_function(args.function)
+    
+    # Load data
+    data = load_data(args)
+    
+    # Run watch mode
+    watch(
+        func,
+        data,
+        interval=args.interval,
+        change_threshold_n_jobs=args.change_threshold_n_jobs,
+        change_threshold_speedup=args.change_threshold_speedup,
+        verbose=args.verbose,
+        sample_size=args.sample_size,
+        target_chunk_duration=args.target_chunk_duration
+    )
+
+
 def cmd_validate(args: argparse.Namespace):
     """Execute the 'validate' command."""
     # Run system validation
@@ -1808,6 +1833,35 @@ Examples:
         help='Load configuration from file and use those parameters (skips optimization)'
     )
 
+    # ===== WATCH SUBCOMMAND =====
+    watch_parser = subparsers.add_parser(
+        'watch',
+        parents=[parent_parser],
+        help='Continuously monitor optimization parameters',
+        description='Monitor a function\'s optimization parameters over time, alerting when changes are detected'
+    )
+    watch_parser.add_argument(
+        '--interval',
+        type=float,
+        default=60.0,
+        metavar='SECONDS',
+        help='Time between optimization checks in seconds (default: 60)'
+    )
+    watch_parser.add_argument(
+        '--change-threshold-n-jobs',
+        type=int,
+        default=1,
+        metavar='N',
+        help='Alert if n_jobs changes by this amount (default: 1)'
+    )
+    watch_parser.add_argument(
+        '--change-threshold-speedup',
+        type=float,
+        default=0.2,
+        metavar='RATIO',
+        help='Alert if speedup changes by this ratio (default: 0.2 = 20%%)'
+    )
+
     # ===== COMPARE SUBCOMMAND =====
     compare_parser = subparsers.add_parser(
         'compare',
@@ -2129,6 +2183,8 @@ def main():
             cmd_optimize(args)
         elif args.command == 'execute':
             cmd_execute(args)
+        elif args.command == 'watch':
+            cmd_watch(args)
         elif args.command == 'compare':
             cmd_compare(args)
         elif args.command == 'tune':
