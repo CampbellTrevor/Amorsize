@@ -89,7 +89,10 @@ def _validate_streaming_parameters(
     prefer_ordered: Optional[bool],
     buffer_size: Optional[int],
     enable_adaptive_chunking: bool,
-    pool_manager: Any
+    adaptation_rate: float,
+    pool_manager: Any,
+    enable_memory_backpressure: bool,
+    memory_threshold: float
 ) -> None:
     """
     Validate parameters for optimize_streaming().
@@ -128,6 +131,19 @@ def _validate_streaming_parameters(
     
     if not isinstance(enable_adaptive_chunking, bool):
         raise ValueError(f"Invalid enable_adaptive_chunking: must be bool, got {type(enable_adaptive_chunking).__name__}")
+    
+    if not isinstance(adaptation_rate, (int, float)):
+        raise ValueError(f"Invalid adaptation_rate: must be numeric, got {type(adaptation_rate).__name__}")
+    if not (0.0 <= adaptation_rate <= 1.0):
+        raise ValueError(f"Invalid adaptation_rate: must be 0.0-1.0, got {adaptation_rate}")
+    
+    if not isinstance(enable_memory_backpressure, bool):
+        raise ValueError(f"Invalid enable_memory_backpressure: must be bool, got {type(enable_memory_backpressure).__name__}")
+    
+    if not isinstance(memory_threshold, (int, float)):
+        raise ValueError(f"Invalid memory_threshold: must be numeric, got {type(memory_threshold).__name__}")
+    if not (0.0 <= memory_threshold <= 1.0):
+        raise ValueError(f"Invalid memory_threshold: must be 0.0-1.0, got {memory_threshold}")
     
     # pool_manager validation (if provided)
     if pool_manager is not None:
@@ -250,7 +266,9 @@ def optimize_streaming(
     # Validate all parameters
     _validate_streaming_parameters(
         func, data, sample_size, target_chunk_duration,
-        prefer_ordered, buffer_size, enable_adaptive_chunking, pool_manager
+        prefer_ordered, buffer_size, enable_adaptive_chunking, 
+        adaptation_rate, pool_manager, enable_memory_backpressure, 
+        memory_threshold
     )
     
     # Initialize diagnostic profile if requested

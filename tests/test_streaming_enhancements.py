@@ -391,6 +391,37 @@ class TestParameterValidation:
                 enable_adaptive_chunking="yes"  # Invalid: string
             )
     
+    def test_adaptation_rate_must_be_numeric(self):
+        """Test that adaptation_rate must be numeric."""
+        data = list(range(50))
+        
+        with pytest.raises(ValueError, match="must be numeric"):
+            optimize_streaming(
+                slow_function,
+                data,
+                adaptation_rate="fast"  # Invalid: string
+            )
+    
+    def test_adaptation_rate_must_be_in_range(self):
+        """Test that adaptation_rate must be 0.0-1.0."""
+        data = list(range(50))
+        
+        # Test too high
+        with pytest.raises(ValueError, match="must be 0.0-1.0"):
+            optimize_streaming(
+                slow_function,
+                data,
+                adaptation_rate=1.5  # Invalid: > 1.0
+            )
+        
+        # Test negative
+        with pytest.raises(ValueError, match="must be 0.0-1.0"):
+            optimize_streaming(
+                slow_function,
+                data,
+                adaptation_rate=-0.1  # Invalid: < 0.0
+            )
+    
     def test_adaptation_rate_validation(self):
         """Test adaptation rate validation."""
         data = list(range(50))
@@ -405,6 +436,37 @@ class TestParameterValidation:
             )
             assert isinstance(result, StreamingOptimizationResult)
     
+    def test_memory_threshold_must_be_numeric(self):
+        """Test that memory_threshold must be numeric."""
+        data = list(range(50))
+        
+        with pytest.raises(ValueError, match="must be numeric"):
+            optimize_streaming(
+                slow_function,
+                data,
+                memory_threshold="high"  # Invalid: string
+            )
+    
+    def test_memory_threshold_must_be_in_range(self):
+        """Test that memory_threshold must be 0.0-1.0."""
+        data = list(range(50))
+        
+        # Test too high
+        with pytest.raises(ValueError, match="must be 0.0-1.0"):
+            optimize_streaming(
+                slow_function,
+                data,
+                memory_threshold=1.5  # Invalid: > 1.0
+            )
+        
+        # Test negative
+        with pytest.raises(ValueError, match="must be 0.0-1.0"):
+            optimize_streaming(
+                slow_function,
+                data,
+                memory_threshold=-0.1  # Invalid: < 0.0
+            )
+    
     def test_memory_threshold_validation(self):
         """Test memory threshold validation."""
         data = list(range(50))
@@ -418,6 +480,17 @@ class TestParameterValidation:
                 memory_threshold=threshold
             )
             assert isinstance(result, StreamingOptimizationResult)
+    
+    def test_enable_memory_backpressure_must_be_bool(self):
+        """Test that enable_memory_backpressure must be a boolean."""
+        data = list(range(50))
+        
+        with pytest.raises(ValueError, match="must be bool"):
+            optimize_streaming(
+                slow_function,
+                data,
+                enable_memory_backpressure="yes"  # Invalid: string
+            )
 
 
 # ============================================================================
