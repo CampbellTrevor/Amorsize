@@ -5,6 +5,9 @@ This module provides convenience functions that combine optimization
 and execution in a single call, making it easier to use Amorsize.
 """
 
+import multiprocessing
+import os
+import threading
 import time
 from multiprocessing import Pool
 from typing import Any, Callable, Iterator, List, Optional, Union
@@ -14,6 +17,310 @@ from .optimizer import optimize
 
 # Default estimated item time when not available from optimization result
 DEFAULT_ESTIMATED_ITEM_TIME = 0.01
+
+# Global hook manager for worker processes (set via initializer)
+_worker_hook_manager: Optional[HookManager] = None
+_worker_id_counter = multiprocessing.Value('i', 0)
+_worker_id_lock = multiprocessing.Lock()
+
+
+def _worker_initializer(hook_manager: Optional[HookManager]) -> None:
+    """
+    Initialize worker process with hook manager.
+    
+    This function is called once when each worker process starts.
+    It sets up the global hook manager and triggers ON_WORKER_START event.
+    
+    Args:
+        hook_manager: HookManager instance to use for this worker
+    """
+    global _worker_hook_manager
+    _worker_hook_manager = hook_manager
+    
+    # Trigger ON_WORKER_START hook
+    if hook_manager is not None and hook_manager.has_hooks(HookEvent.ON_WORKER_START):
+        # Get unique worker ID
+        with _worker_id_lock:
+            _worker_id_counter.value += 1
+            worker_id = _worker_id_counter.value
+        
+        hook_manager.trigger(HookContext(
+            event=HookEvent.ON_WORKER_START,
+            worker_id=worker_id,
+            metadata={"pid": os.getpid()}
+        ))
+
+
+def _worker_wrapper(func: Callable[[Any], Any], item: Any) -> Any:
+    """
+    Wrapper function that executes user function and triggers hooks.
+    
+    This wrapper is used to track individual item execution in workers.
+    It's primarily used for fine-grained monitoring but adds minimal overhead.
+    
+    Args:
+        func: User function to execute
+        item: Input item to process
+    
+    Returns:
+        Result of func(item)
+    """
+    # Simply execute the function - we track chunks, not individual items
+    # to minimize overhead
+    return func(item)
+
+
+def _execute_serial(
+    func: Callable[[Any], Any],
+    data: Union[List, Iterator],
+    hooks: Optional[HookManager],
+    start_time: float,
+    chunksize: int,
+    use_fine_grained_tracking: bool
+) -> List[Any]:
+    """
+    Execute function serially with optional fine-grained tracking.
+    
+    Args:
+        func: Function to execute
+        data: Input data
+        hooks: Hook manager for callbacks
+        start_time: Execution start time
+        chunksize: Chunk size for grouping
+        use_fine_grained_tracking: Whether to trigger progress/chunk hooks
+    
+    Returns:
+        List of results
+    """
+    results = []
+    data_list = list(data) if not isinstance(data, list) else data
+    total_items = len(data_list)
+    
+    if not use_fine_grained_tracking:
+        # Fast path - no fine-grained tracking
+        return [func(item) for item in data_list]
+    
+    # Process items with fine-grained tracking
+    chunk_id = 0
+    for i in range(0, total_items, chunksize):
+        chunk_start = time.time()
+        chunk_data = data_list[i:i+chunksize]
+        chunk_results = [func(item) for item in chunk_data]
+        results.extend(chunk_results)
+        chunk_time = time.time() - chunk_start
+        
+        # Trigger ON_CHUNK_COMPLETE hook
+        if hooks is not None and hooks.has_hooks(HookEvent.ON_CHUNK_COMPLETE):
+            hooks.trigger(HookContext(
+                event=HookEvent.ON_CHUNK_COMPLETE,
+                chunk_id=chunk_id,
+                chunk_size=len(chunk_data),
+                chunk_time=chunk_time,
+                items_completed=len(results),
+                total_items=total_items,
+                percent_complete=(len(results) / total_items * 100.0) if total_items > 0 else 0.0,
+                elapsed_time=time.time() - start_time
+            ))
+        
+        # Trigger ON_PROGRESS hook
+        if hooks is not None and hooks.has_hooks(HookEvent.ON_PROGRESS):
+            elapsed = time.time() - start_time
+            hooks.trigger(HookContext(
+                event=HookEvent.ON_PROGRESS,
+                items_completed=len(results),
+                total_items=total_items,
+                percent_complete=(len(results) / total_items * 100.0) if total_items > 0 else 0.0,
+                elapsed_time=elapsed,
+                throughput_items_per_sec=len(results) / elapsed if elapsed > 0 else 0.0
+            ))
+        
+        chunk_id += 1
+    
+    return results
+
+
+def _execute_threaded(
+    func: Callable[[Any], Any],
+    data: Union[List, Iterator],
+    n_jobs: int,
+    chunksize: int,
+    hooks: Optional[HookManager],
+    start_time: float,
+    use_fine_grained_tracking: bool
+) -> List[Any]:
+    """
+    Execute function using ThreadPoolExecutor with optional fine-grained tracking.
+    
+    Args:
+        func: Function to execute
+        data: Input data
+        n_jobs: Number of threads
+        chunksize: Chunk size for grouping
+        hooks: Hook manager for callbacks
+        start_time: Execution start time
+        use_fine_grained_tracking: Whether to trigger progress/chunk hooks
+    
+    Returns:
+        List of results
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    
+    data_list = list(data) if not isinstance(data, list) else data
+    
+    if not use_fine_grained_tracking:
+        # Fast path - use standard map
+        with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+            return list(executor.map(func, data_list, chunksize=chunksize))
+    
+    # Use submit for fine-grained tracking
+    results = []
+    total_items = len(data_list)
+    
+    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+        # Submit all tasks
+        futures = []
+        for i in range(0, total_items, chunksize):
+            chunk_data = data_list[i:i+chunksize]
+            for item in chunk_data:
+                futures.append(executor.submit(func, item))
+        
+        # Collect results with progress tracking
+        chunk_id = 0
+        items_processed = 0
+        chunk_start_idx = 0
+        
+        for idx, future in enumerate(futures):
+            result = future.result()
+            results.append(result)
+            items_processed += 1
+            
+            # Check if we completed a chunk
+            if (items_processed - chunk_start_idx >= chunksize) or (items_processed == total_items):
+                chunk_size = items_processed - chunk_start_idx
+                chunk_start_idx = items_processed
+                
+                # Trigger ON_CHUNK_COMPLETE hook
+                if hooks is not None and hooks.has_hooks(HookEvent.ON_CHUNK_COMPLETE):
+                    hooks.trigger(HookContext(
+                        event=HookEvent.ON_CHUNK_COMPLETE,
+                        chunk_id=chunk_id,
+                        chunk_size=chunk_size,
+                        items_completed=items_processed,
+                        total_items=total_items,
+                        percent_complete=(items_processed / total_items * 100.0) if total_items > 0 else 0.0,
+                        elapsed_time=time.time() - start_time
+                    ))
+                
+                # Trigger ON_PROGRESS hook
+                if hooks is not None and hooks.has_hooks(HookEvent.ON_PROGRESS):
+                    elapsed = time.time() - start_time
+                    hooks.trigger(HookContext(
+                        event=HookEvent.ON_PROGRESS,
+                        items_completed=items_processed,
+                        total_items=total_items,
+                        percent_complete=(items_processed / total_items * 100.0) if total_items > 0 else 0.0,
+                        elapsed_time=elapsed,
+                        throughput_items_per_sec=items_processed / elapsed if elapsed > 0 else 0.0
+                    ))
+                
+                chunk_id += 1
+    
+    return results
+
+
+def _execute_multiprocess(
+    func: Callable[[Any], Any],
+    data: Union[List, Iterator],
+    n_jobs: int,
+    chunksize: int,
+    hooks: Optional[HookManager],
+    start_time: float,
+    use_fine_grained_tracking: bool
+) -> List[Any]:
+    """
+    Execute function using multiprocessing.Pool with optional fine-grained tracking.
+    
+    Args:
+        func: Function to execute
+        data: Input data
+        n_jobs: Number of processes
+        chunksize: Chunk size for grouping
+        hooks: Hook manager for callbacks
+        start_time: Execution start time
+        use_fine_grained_tracking: Whether to trigger progress/chunk hooks
+    
+    Returns:
+        List of results
+    """
+    data_list = list(data) if not isinstance(data, list) else data
+    total_items = len(data_list)
+    
+    # Determine if we need worker hooks
+    need_worker_hooks = (
+        hooks is not None and (
+            hooks.has_hooks(HookEvent.ON_WORKER_START) or
+            hooks.has_hooks(HookEvent.ON_WORKER_END)
+        )
+    )
+    
+    if not use_fine_grained_tracking and not need_worker_hooks:
+        # Fast path - use standard map without hooks
+        with Pool(n_jobs) as pool:
+            return pool.map(func, data_list, chunksize=chunksize)
+    
+    # Use imap for fine-grained tracking
+    # Note: We can't pass hooks to worker processes due to pickling issues,
+    # so ON_WORKER_START/END hooks can't be triggered in true worker context.
+    # They would need shared memory or a separate communication channel.
+    # For now, we focus on chunk and progress tracking which are valuable.
+    
+    with Pool(n_jobs) as pool:
+        results = []
+        chunk_id = 0
+        items_processed = 0
+        chunk_start_idx = 0
+        chunk_start_time = time.time()
+        
+        # Use imap to get results as they complete
+        for result in pool.imap(func, data_list, chunksize=chunksize):
+            results.append(result)
+            items_processed += 1
+            
+            # Check if we completed a chunk
+            if (items_processed - chunk_start_idx >= chunksize) or (items_processed == total_items):
+                chunk_size = items_processed - chunk_start_idx
+                chunk_time = time.time() - chunk_start_time
+                chunk_start_idx = items_processed
+                chunk_start_time = time.time()
+                
+                # Trigger ON_CHUNK_COMPLETE hook
+                if hooks is not None and hooks.has_hooks(HookEvent.ON_CHUNK_COMPLETE):
+                    hooks.trigger(HookContext(
+                        event=HookEvent.ON_CHUNK_COMPLETE,
+                        chunk_id=chunk_id,
+                        chunk_size=chunk_size,
+                        chunk_time=chunk_time,
+                        items_completed=items_processed,
+                        total_items=total_items,
+                        percent_complete=(items_processed / total_items * 100.0) if total_items > 0 else 0.0,
+                        elapsed_time=time.time() - start_time
+                    ))
+                
+                # Trigger ON_PROGRESS hook
+                if hooks is not None and hooks.has_hooks(HookEvent.ON_PROGRESS):
+                    elapsed = time.time() - start_time
+                    hooks.trigger(HookContext(
+                        event=HookEvent.ON_PROGRESS,
+                        items_completed=items_processed,
+                        total_items=total_items,
+                        percent_complete=(items_processed / total_items * 100.0) if total_items > 0 else 0.0,
+                        elapsed_time=elapsed,
+                        throughput_items_per_sec=items_processed / elapsed if elapsed > 0 else 0.0
+                    ))
+                
+                chunk_id += 1
+    
+    return results
 
 
 def execute(
@@ -157,26 +464,39 @@ def execute(
             }
         ))
 
+    # Determine if we need fine-grained tracking
+    use_fine_grained_tracking = hooks is not None and (
+        hooks.has_hooks(HookEvent.ON_CHUNK_COMPLETE) or
+        hooks.has_hooks(HookEvent.ON_PROGRESS) or
+        hooks.has_hooks(HookEvent.ON_WORKER_START) or
+        hooks.has_hooks(HookEvent.ON_WORKER_END)
+    )
+    
     # Step 2: Execute with optimal parameters
     if opt_result.n_jobs == 1:
         # Serial execution - don't create any executor
         if verbose:
             print("Using serial execution (no Pool/ThreadPool created)")
-        results = [func(item) for item in opt_result.data]
+        results = _execute_serial(
+            func, opt_result.data, hooks, start_time, 
+            opt_result.chunksize, use_fine_grained_tracking
+        )
     elif opt_result.executor_type == "thread":
         # Threading execution for I/O-bound workloads
-        # Lazy import to avoid loading concurrent.futures at module level
-        from concurrent.futures import ThreadPoolExecutor
         if verbose:
             print(f"Creating ThreadPoolExecutor with {opt_result.n_jobs} workers")
-        with ThreadPoolExecutor(max_workers=opt_result.n_jobs) as executor:
-            results = list(executor.map(func, opt_result.data, chunksize=opt_result.chunksize))
+        results = _execute_threaded(
+            func, opt_result.data, opt_result.n_jobs, opt_result.chunksize,
+            hooks, start_time, use_fine_grained_tracking
+        )
     else:
         # Multiprocessing execution for CPU-bound workloads
         if verbose:
             print(f"Creating multiprocessing.Pool with {opt_result.n_jobs} workers")
-        with Pool(opt_result.n_jobs) as pool:
-            results = pool.map(func, opt_result.data, chunksize=opt_result.chunksize)
+        results = _execute_multiprocess(
+            func, opt_result.data, opt_result.n_jobs, opt_result.chunksize,
+            hooks, start_time, use_fine_grained_tracking
+        )
 
     # Calculate execution time
     execution_time = time.time() - start_time
