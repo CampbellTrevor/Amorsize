@@ -62,6 +62,16 @@ HETEROGENEOUS_CV_THRESHOLD = 0.5
 # Large dataset threshold for auto-selecting imap_unordered
 LARGE_DATASET_THRESHOLD = 10000
 
+# Calibration constants (Iteration 116)
+# Filename format for calibration data
+CALIBRATION_FILE = "ml_calibration.json"
+
+# Minimum samples needed to adjust confidence threshold
+MIN_CALIBRATION_SAMPLES = 10
+
+# How much to adjust threshold based on accuracy (conservative factor)
+CALIBRATION_ADJUSTMENT_FACTOR = 0.1
+
 
 class PredictionResult:
     """
@@ -149,6 +159,137 @@ class StreamingPredictionResult(PredictionResult):
             f"method={method}, "
             f"confidence={self.confidence:.2f})"
         )
+
+
+class CalibrationData:
+    """
+    Container for confidence calibration tracking data (Iteration 116).
+    
+    Tracks prediction accuracy over time to enable adaptive confidence threshold
+    adjustment. This allows the system to learn when high confidence actually
+    correlates with accurate predictions.
+    
+    Attributes:
+        predictions: List of (confidence, accuracy) tuples from past predictions
+        adjusted_threshold: Current calibrated confidence threshold
+        last_update: Timestamp of last calibration update
+        baseline_threshold: Original threshold before calibration
+    """
+    
+    def __init__(
+        self,
+        predictions: Optional[List[Tuple[float, float]]] = None,
+        adjusted_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+        last_update: Optional[float] = None,
+        baseline_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD
+    ):
+        self.predictions = predictions if predictions is not None else []
+        self.adjusted_threshold = adjusted_threshold
+        self.last_update = last_update if last_update is not None else time.time()
+        self.baseline_threshold = baseline_threshold
+    
+    def add_prediction_result(self, confidence: float, accuracy: float):
+        """
+        Add a new prediction result for calibration.
+        
+        Args:
+            confidence: Confidence score that was assigned (0-1)
+            accuracy: Actual accuracy achieved (0-1, higher is better)
+        """
+        self.predictions.append((confidence, accuracy))
+        self.last_update = time.time()
+    
+    def get_calibration_stats(self) -> Dict[str, float]:
+        """
+        Calculate calibration statistics from prediction history.
+        
+        Returns:
+            Dictionary with calibration metrics:
+                - mean_accuracy: Average prediction accuracy
+                - high_confidence_accuracy: Accuracy when confidence >= threshold
+                - low_confidence_accuracy: Accuracy when confidence < threshold
+                - optimal_threshold: Suggested threshold based on accuracy curve
+                - sample_count: Number of calibration samples
+        """
+        if not self.predictions:
+            return {
+                'mean_accuracy': 0.0,
+                'high_confidence_accuracy': 0.0,
+                'low_confidence_accuracy': 0.0,
+                'optimal_threshold': self.baseline_threshold,
+                'sample_count': 0
+            }
+        
+        # Calculate overall mean accuracy
+        accuracies = [acc for _, acc in self.predictions]
+        mean_accuracy = sum(accuracies) / len(accuracies)
+        
+        # Split by current threshold
+        high_conf_predictions = [(c, a) for c, a in self.predictions if c >= self.adjusted_threshold]
+        low_conf_predictions = [(c, a) for c, a in self.predictions if c < self.adjusted_threshold]
+        
+        high_conf_accuracy = (
+            sum(a for _, a in high_conf_predictions) / len(high_conf_predictions)
+            if high_conf_predictions else 0.0
+        )
+        low_conf_accuracy = (
+            sum(a for _, a in low_conf_predictions) / len(low_conf_predictions)
+            if low_conf_predictions else 0.0
+        )
+        
+        # Find optimal threshold by maximizing accuracy above threshold
+        # Try thresholds from 0.5 to 0.95 in steps of 0.05
+        best_threshold = self.baseline_threshold
+        best_score = 0.0
+        
+        for threshold in [0.5 + i * 0.05 for i in range(10)]:
+            above_threshold = [a for c, a in self.predictions if c >= threshold]
+            if len(above_threshold) >= 3:  # Need at least 3 samples
+                avg_accuracy = sum(above_threshold) / len(above_threshold)
+                # Score balances accuracy and sample count
+                score = avg_accuracy * min(1.0, len(above_threshold) / 10.0)
+                if score > best_score:
+                    best_score = score
+                    best_threshold = threshold
+        
+        return {
+            'mean_accuracy': mean_accuracy,
+            'high_confidence_accuracy': high_conf_accuracy,
+            'low_confidence_accuracy': low_conf_accuracy,
+            'optimal_threshold': best_threshold,
+            'sample_count': len(self.predictions)
+        }
+    
+    def recalibrate_threshold(self) -> float:
+        """
+        Recalibrate confidence threshold based on prediction history.
+        
+        Uses calibration statistics to adjust the threshold:
+        - If high-confidence predictions are accurate, lower threshold slightly
+        - If high-confidence predictions are inaccurate, raise threshold
+        
+        Returns:
+            New calibrated threshold
+        """
+        if len(self.predictions) < MIN_CALIBRATION_SAMPLES:
+            # Not enough data for calibration yet
+            return self.adjusted_threshold
+        
+        stats = self.get_calibration_stats()
+        
+        # If we have a clearly better threshold, move toward it
+        optimal = stats['optimal_threshold']
+        current = self.adjusted_threshold
+        
+        # Use conservative adjustment factor to avoid oscillation
+        adjustment = (optimal - current) * CALIBRATION_ADJUSTMENT_FACTOR
+        new_threshold = current + adjustment
+        
+        # Clamp to reasonable bounds [0.5, 0.95]
+        new_threshold = max(0.5, min(0.95, new_threshold))
+        
+        self.adjusted_threshold = new_threshold
+        return new_threshold
 
 
 class WorkloadFeatures:
@@ -637,6 +778,72 @@ def _get_ml_cache_dir() -> Path:
     return cache_dir
 
 
+def _load_calibration_data() -> CalibrationData:
+    """
+    Load confidence calibration data from cache (Iteration 116).
+    
+    Returns:
+        CalibrationData object with historical calibration information
+    """
+    cache_dir = _get_ml_cache_dir()
+    calibration_file = cache_dir / CALIBRATION_FILE
+    
+    if not calibration_file.exists():
+        return CalibrationData()
+    
+    try:
+        with open(calibration_file, 'r') as f:
+            data = json.load(f)
+        
+        return CalibrationData(
+            predictions=[(p['confidence'], p['accuracy']) for p in data.get('predictions', [])],
+            adjusted_threshold=data.get('adjusted_threshold', DEFAULT_CONFIDENCE_THRESHOLD),
+            last_update=data.get('last_update', time.time()),
+            baseline_threshold=data.get('baseline_threshold', DEFAULT_CONFIDENCE_THRESHOLD)
+        )
+    except Exception:
+        # If load fails, return fresh calibration data
+        return CalibrationData()
+
+
+def _save_calibration_data(calibration: CalibrationData) -> bool:
+    """
+    Save confidence calibration data to cache (Iteration 116).
+    
+    Args:
+        calibration: CalibrationData object to save
+    
+    Returns:
+        True if successfully saved, False otherwise
+    """
+    cache_dir = _get_ml_cache_dir()
+    calibration_file = cache_dir / CALIBRATION_FILE
+    
+    try:
+        # Prepare data for JSON serialization
+        data = {
+            'predictions': [
+                {'confidence': conf, 'accuracy': acc}
+                for conf, acc in calibration.predictions
+            ],
+            'adjusted_threshold': calibration.adjusted_threshold,
+            'last_update': calibration.last_update,
+            'baseline_threshold': calibration.baseline_threshold,
+            'version': '1.0'  # For future compatibility
+        }
+        
+        # Atomic write: write to temp file then rename
+        temp_file = calibration_file.with_suffix('.tmp')
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        # Atomic rename
+        temp_file.replace(calibration_file)
+        return True
+    except Exception:
+        return False
+
+
 def _compute_function_signature(func: Callable) -> str:
     """
     Compute a signature for a function to group related optimizations.
@@ -783,7 +990,8 @@ def predict_parameters(
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
     verbose: bool = False,
     pickle_size: Optional[int] = None,
-    coefficient_of_variation: Optional[float] = None
+    coefficient_of_variation: Optional[float] = None,
+    use_calibration: bool = True
 ) -> Optional[PredictionResult]:
     """
     Predict optimal n_jobs and chunksize using ML model.
@@ -792,6 +1000,7 @@ def predict_parameters(
     by learning from historical optimization data.
     
     Enhanced in Iteration 104 with additional features for improved accuracy.
+    Enhanced in Iteration 116 with confidence calibration for adaptive thresholds.
     
     Args:
         func: Function to optimize (used for grouping related workloads)
@@ -801,6 +1010,7 @@ def predict_parameters(
         verbose: If True, print diagnostic information
         pickle_size: Average pickle size of return objects (bytes) - optional
         coefficient_of_variation: CV of execution times (0-2) - optional
+        use_calibration: If True, use calibrated confidence threshold (Iteration 116)
     
     Returns:
         PredictionResult if confident enough, None if should fall back to dry-run
@@ -812,6 +1022,24 @@ def predict_parameters(
         ... else:
         ...     print("Falling back to dry-run sampling")
     """
+    # Load calibration data if enabled (Iteration 116)
+    if use_calibration:
+        try:
+            calibration = _load_calibration_data()
+            # Use calibrated threshold if we have enough calibration samples
+            if len(calibration.predictions) >= MIN_CALIBRATION_SAMPLES:
+                effective_threshold = calibration.adjusted_threshold
+                if verbose:
+                    print(f"ML Prediction: Using calibrated threshold {effective_threshold:.2f} "
+                          f"(baseline: {confidence_threshold:.2f}, samples: {len(calibration.predictions)})")
+            else:
+                effective_threshold = confidence_threshold
+        except Exception:
+            # If calibration load fails, use default threshold
+            effective_threshold = confidence_threshold
+    else:
+        effective_threshold = confidence_threshold
+    
     # Compute function complexity
     function_complexity = _compute_function_complexity(func)
     
@@ -858,15 +1086,15 @@ def predict_parameters(
     for sample in training_data:
         predictor.add_training_sample(sample)
     
-    # Make prediction
-    prediction = predictor.predict(features, confidence_threshold)
+    # Make prediction using effective (possibly calibrated) threshold
+    prediction = predictor.predict(features, effective_threshold)
     
     if verbose:
         if prediction:
             print(f"ML Prediction: Success - n_jobs={prediction.n_jobs}, "
                   f"chunksize={prediction.chunksize}, confidence={prediction.confidence:.1%}")
         else:
-            print(f"ML Prediction: Low confidence (< {confidence_threshold:.1%}), falling back to dry-run")
+            print(f"ML Prediction: Low confidence (< {effective_threshold:.1%}), falling back to dry-run")
     
     return prediction
 
@@ -1283,6 +1511,159 @@ def update_model_from_streaming_execution(
         return False
 
 
+def track_prediction_accuracy(
+    predicted_result: PredictionResult,
+    actual_n_jobs: int,
+    actual_chunksize: int,
+    verbose: bool = False
+) -> bool:
+    """
+    Track accuracy of a prediction for confidence calibration (Iteration 116).
+    
+    This function updates the calibration system with the accuracy of a prediction,
+    enabling the system to adaptively adjust confidence thresholds over time.
+    
+    Call this function after:
+    1. Making a prediction with predict_parameters()
+    2. Running the actual optimization (dry-run or execution)
+    3. Obtaining the actual optimal parameters
+    
+    The system will use this information to recalibrate confidence thresholds,
+    making the ML vs dry-run trade-off more intelligent over time.
+    
+    Args:
+        predicted_result: The prediction that was made
+        actual_n_jobs: Actual optimal n_jobs from dry-run/execution
+        actual_chunksize: Actual optimal chunksize from dry-run/execution
+        verbose: If True, print diagnostic information
+    
+    Returns:
+        True if successfully tracked, False otherwise
+    
+    Example:
+        >>> # Make a prediction
+        >>> prediction = predict_parameters(my_func, 10000, 0.001)
+        >>> # Run actual optimization
+        >>> result = optimize(my_func, data, enable_ml_prediction=False)
+        >>> # Track accuracy for calibration
+        >>> track_prediction_accuracy(
+        ...     prediction, result.n_jobs, result.chunksize, verbose=True
+        ... )
+    """
+    try:
+        # Load current calibration data
+        calibration = _load_calibration_data()
+        
+        # Calculate prediction accuracy
+        n_jobs_error = abs(predicted_result.n_jobs - actual_n_jobs)
+        chunksize_error = abs(predicted_result.chunksize - actual_chunksize)
+        
+        # Calculate relative errors
+        n_jobs_relative = min(1.0, n_jobs_error / max(1, actual_n_jobs))
+        chunksize_relative = min(1.0, chunksize_error / max(1, actual_chunksize))
+        
+        # Overall accuracy: 1.0 = perfect, 0.0 = completely wrong
+        accuracy = 1.0 - ((n_jobs_relative + chunksize_relative) / 2.0)
+        
+        # Add to calibration data
+        calibration.add_prediction_result(
+            confidence=predicted_result.confidence,
+            accuracy=accuracy
+        )
+        
+        if verbose:
+            print(f"Calibration: Tracked prediction accuracy {accuracy:.1%} "
+                  f"(confidence was {predicted_result.confidence:.1%})")
+            print(f"Calibration: n_jobs error={n_jobs_error}, chunksize error={chunksize_error}")
+        
+        # Recalibrate threshold if we have enough samples
+        if len(calibration.predictions) >= MIN_CALIBRATION_SAMPLES:
+            old_threshold = calibration.adjusted_threshold
+            new_threshold = calibration.recalibrate_threshold()
+            
+            if verbose and abs(new_threshold - old_threshold) > 0.01:
+                stats = calibration.get_calibration_stats()
+                print(f"Calibration: Adjusted threshold from {old_threshold:.2f} to {new_threshold:.2f}")
+                print(f"Calibration: Mean accuracy={stats['mean_accuracy']:.1%}, "
+                      f"high-conf accuracy={stats['high_confidence_accuracy']:.1%}")
+        
+        # Save updated calibration data
+        success = _save_calibration_data(calibration)
+        
+        if verbose and success:
+            print(f"Calibration: Saved data ({len(calibration.predictions)} samples)")
+        
+        return success
+        
+    except Exception as e:
+        if verbose:
+            print(f"Failed to track prediction accuracy: {e}")
+        return False
+
+
+def get_calibration_stats(verbose: bool = False) -> Dict[str, Any]:
+    """
+    Get current calibration statistics (Iteration 116).
+    
+    Returns information about the confidence calibration system, including
+    prediction accuracy history and current threshold settings.
+    
+    Args:
+        verbose: If True, print diagnostic information
+    
+    Returns:
+        Dictionary with calibration statistics:
+            - adjusted_threshold: Current calibrated threshold
+            - baseline_threshold: Original threshold before calibration
+            - mean_accuracy: Average prediction accuracy
+            - high_confidence_accuracy: Accuracy when confidence >= threshold
+            - sample_count: Number of calibration samples
+            - last_update: Timestamp of last update
+    
+    Example:
+        >>> stats = get_calibration_stats(verbose=True)
+        >>> print(f"Current threshold: {stats['adjusted_threshold']:.2f}")
+        >>> print(f"Mean accuracy: {stats['mean_accuracy']:.1%}")
+    """
+    try:
+        calibration = _load_calibration_data()
+        stats = calibration.get_calibration_stats()
+        
+        result = {
+            'adjusted_threshold': calibration.adjusted_threshold,
+            'baseline_threshold': calibration.baseline_threshold,
+            'mean_accuracy': stats['mean_accuracy'],
+            'high_confidence_accuracy': stats['high_confidence_accuracy'],
+            'low_confidence_accuracy': stats['low_confidence_accuracy'],
+            'optimal_threshold': stats['optimal_threshold'],
+            'sample_count': stats['sample_count'],
+            'last_update': calibration.last_update
+        }
+        
+        if verbose:
+            print(f"Calibration Statistics:")
+            print(f"  Adjusted threshold: {result['adjusted_threshold']:.2f}")
+            print(f"  Baseline threshold: {result['baseline_threshold']:.2f}")
+            print(f"  Mean accuracy: {result['mean_accuracy']:.1%}")
+            print(f"  High-confidence accuracy: {result['high_confidence_accuracy']:.1%}")
+            print(f"  Sample count: {result['sample_count']}")
+        
+        return result
+        
+    except Exception:
+        # Return defaults if calibration data unavailable
+        return {
+            'adjusted_threshold': DEFAULT_CONFIDENCE_THRESHOLD,
+            'baseline_threshold': DEFAULT_CONFIDENCE_THRESHOLD,
+            'mean_accuracy': 0.0,
+            'high_confidence_accuracy': 0.0,
+            'low_confidence_accuracy': 0.0,
+            'optimal_threshold': DEFAULT_CONFIDENCE_THRESHOLD,
+            'sample_count': 0,
+            'last_update': 0.0
+        }
+
+
 def load_ml_training_data() -> List[TrainingData]:
     """
     Load training data specifically saved by online learning.
@@ -1356,9 +1737,12 @@ __all__ = [
     'predict_streaming_parameters',
     'update_model_from_execution',
     'update_model_from_streaming_execution',
+    'track_prediction_accuracy',
+    'get_calibration_stats',
     'load_ml_training_data',
     'PredictionResult',
     'StreamingPredictionResult',
+    'CalibrationData',
     'WorkloadFeatures',
     'TrainingData',
     'SimpleLinearPredictor',
