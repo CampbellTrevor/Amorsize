@@ -726,13 +726,10 @@ def optimize_streaming(
                     f"Insufficient speedup: {best_speedup:.2f}x < 1.2x threshold"
                 )
 
-            # Respect user preference even for serial execution
-            use_ordered_for_rejection = prefer_ordered if prefer_ordered is not None else True
-
             return StreamingOptimizationResult(
                 n_jobs=1,
                 chunksize=optimal_chunksize,
-                use_ordered=use_ordered_for_rejection,
+                use_ordered=use_ordered_default,
                 reason=f"Insufficient speedup: {best_speedup:.2f}x (threshold: 1.2x)",
                 estimated_speedup=1.0,
                 warnings=warnings,
