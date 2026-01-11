@@ -93,6 +93,15 @@ from .visualization import (
 )
 from .watch import WatchMonitor, WatchSnapshot, watch
 
+# Retry logic for production reliability (no extra dependencies)
+from .retry import (
+    RetryPolicy,
+    RetryExhaustedError,
+    with_retry,
+    retry_call,
+    create_batch_retry_wrapper,
+)
+
 # Monitoring integrations (optional, no extra dependencies)
 try:
     from .monitoring import (
@@ -411,4 +420,9 @@ __all__ = [
     "get_gcp_dashboard",
     "deploy_cloudwatch_dashboard",
     "deploy_cloudwatch_alarms",
+    "RetryPolicy",
+    "RetryExhaustedError",
+    "with_retry",
+    "retry_call",
+    "create_batch_retry_wrapper",
 ]
