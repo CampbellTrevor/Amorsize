@@ -305,9 +305,12 @@ class TestWatchFunction:
             interval=30.0,
             change_threshold_n_jobs=2,
             change_threshold_speedup=0.3,
+            change_threshold_chunksize=0.5,
             verbose=True,
             sample_size=10,
-            target_chunk_duration=0.5
+            target_chunk_duration=0.5,
+            enable_profiling=False,
+            use_cache=False
         )
         
         # Verify start was called
@@ -330,9 +333,12 @@ class TestWatchFunction:
             interval=60.0,
             change_threshold_n_jobs=1,
             change_threshold_speedup=0.2,
+            change_threshold_chunksize=0.5,
             verbose=False,
             sample_size=5,
-            target_chunk_duration=0.2
+            target_chunk_duration=0.2,
+            enable_profiling=False,
+            use_cache=False
         )
 
 

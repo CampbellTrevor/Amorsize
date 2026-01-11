@@ -16,6 +16,15 @@ from typing import Any, Callable, Iterator, List, Optional, Union
 from .optimizer import OptimizationResult, optimize
 
 
+# Constants for change detection thresholds
+MIN_SPEEDUP_FOR_RATIO = 0.01  # Minimum speedup to avoid division by zero in ratio calculation
+DEFAULT_CHUNKSIZE_CHANGE_THRESHOLD = 0.5  # 50% change threshold for chunksize alerts
+
+# Constants for output formatting
+MAX_WARNINGS_TO_DISPLAY = 2  # Maximum number of warnings to show in verbose mode
+WARNING_TRUNCATE_LENGTH = 100  # Character limit for truncating long warnings
+
+
 @dataclass
 class WatchSnapshot:
     """A snapshot of optimization results at a specific point in time."""
@@ -39,9 +48,12 @@ class WatchMonitor:
         interval: float = 60.0,
         change_threshold_n_jobs: int = 1,
         change_threshold_speedup: float = 0.2,
+        change_threshold_chunksize: float = DEFAULT_CHUNKSIZE_CHANGE_THRESHOLD,
         verbose: bool = False,
         sample_size: int = 5,
-        target_chunk_duration: float = 0.2
+        target_chunk_duration: float = 0.2,
+        enable_profiling: bool = False,
+        use_cache: bool = False
     ):
         """
         Initialize the watch monitor.
@@ -52,26 +64,44 @@ class WatchMonitor:
             interval: Time between optimization checks in seconds (default: 60s)
             change_threshold_n_jobs: Alert if n_jobs changes by this amount (default: 1)
             change_threshold_speedup: Alert if speedup changes by this ratio (default: 0.2 = 20%)
+            change_threshold_chunksize: Alert if chunksize changes by this ratio (default: 0.5 = 50%)
             verbose: Enable verbose output
             sample_size: Number of samples for dry run
             target_chunk_duration: Target chunk duration for optimization
+            enable_profiling: Enable profiling during optimization (default: False)
+            use_cache: Use optimization cache (default: False, recommended for watch mode)
         """
         self.func = func
         self.data = data
         self.interval = interval
         self.change_threshold_n_jobs = change_threshold_n_jobs
         self.change_threshold_speedup = change_threshold_speedup
+        self.change_threshold_chunksize = change_threshold_chunksize
         self.verbose = verbose
         self.sample_size = sample_size
         self.target_chunk_duration = target_chunk_duration
+        self.enable_profiling = enable_profiling
+        self.use_cache = use_cache
         
         self.snapshots: List[WatchSnapshot] = []
         self.running = False
         self.iteration = 0
         
-        # Register signal handler for graceful shutdown
-        signal.signal(signal.SIGINT, self._handle_interrupt)
-        signal.signal(signal.SIGTERM, self._handle_interrupt)
+        # Store original signal handlers to restore later
+        self._original_sigint_handler = None
+        self._original_sigterm_handler = None
+    
+    def _setup_signal_handlers(self):
+        """Set up signal handlers and store originals for later restoration."""
+        self._original_sigint_handler = signal.signal(signal.SIGINT, self._handle_interrupt)
+        self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_interrupt)
+    
+    def _restore_signal_handlers(self):
+        """Restore original signal handlers."""
+        if self._original_sigint_handler is not None:
+            signal.signal(signal.SIGINT, self._original_sigint_handler)
+        if self._original_sigterm_handler is not None:
+            signal.signal(signal.SIGTERM, self._original_sigterm_handler)
     
     def _handle_interrupt(self, signum, frame):
         """Handle interrupt signals for graceful shutdown."""
@@ -99,7 +129,7 @@ class WatchMonitor:
             )
         
         # Check speedup change
-        speedup_ratio = abs(curr.estimated_speedup - prev.estimated_speedup) / max(prev.estimated_speedup, 0.01)
+        speedup_ratio = abs(curr.estimated_speedup - prev.estimated_speedup) / max(prev.estimated_speedup, MIN_SPEEDUP_FOR_RATIO)
         if speedup_ratio >= self.change_threshold_speedup:
             changes.append(
                 f"Speedup changed: {prev.estimated_speedup:.2f}x → {curr.estimated_speedup:.2f}x "
@@ -109,7 +139,7 @@ class WatchMonitor:
         # Check chunksize change (only alert if significant relative change)
         if prev.chunksize > 0:
             chunksize_ratio = abs(curr.chunksize - prev.chunksize) / prev.chunksize
-            if chunksize_ratio >= 0.5:  # 50% change threshold
+            if chunksize_ratio >= self.change_threshold_chunksize:
                 changes.append(
                     f"Chunksize changed: {prev.chunksize} → {curr.chunksize} "
                     f"({chunksize_ratio*100:.0f}% change)"
@@ -155,8 +185,8 @@ class WatchMonitor:
         # Print warnings if any
         if result.warnings and self.verbose:
             print("\n  Warnings:")
-            for warning in result.warnings[:2]:  # Limit to first 2 warnings
-                print(f"    - {warning[:100]}")  # Truncate long warnings
+            for warning in result.warnings[:MAX_WARNINGS_TO_DISPLAY]:
+                print(f"    - {warning[:WARNING_TRUNCATE_LENGTH]}")
         
         print("-" * 80)
     
@@ -200,6 +230,7 @@ class WatchMonitor:
         Runs indefinitely until interrupted with Ctrl+C or SIGTERM.
         """
         self.running = True
+        self._setup_signal_handlers()  # Set up signal handlers when starting
         self._print_header()
         
         prev_result: Optional[OptimizationResult] = None
@@ -216,8 +247,8 @@ class WatchMonitor:
                         sample_size=self.sample_size,
                         target_chunk_duration=self.target_chunk_duration,
                         verbose=False,  # Suppress optimizer's verbose output
-                        profile=False,  # Skip profiling for faster monitoring
-                        use_cache=False  # Don't use cache in watch mode
+                        profile=self.enable_profiling,  # Configurable profiling
+                        use_cache=self.use_cache  # Configurable caching
                     )
                 except Exception as e:
                     print(f"\n❌ Optimization failed: {e}")
@@ -255,6 +286,7 @@ class WatchMonitor:
             pass
         finally:
             self._print_summary()
+            self._restore_signal_handlers()  # Restore original signal handlers
             self.running = False
 
 
@@ -264,9 +296,12 @@ def watch(
     interval: float = 60.0,
     change_threshold_n_jobs: int = 1,
     change_threshold_speedup: float = 0.2,
+    change_threshold_chunksize: float = DEFAULT_CHUNKSIZE_CHANGE_THRESHOLD,
     verbose: bool = False,
     sample_size: int = 5,
-    target_chunk_duration: float = 0.2
+    target_chunk_duration: float = 0.2,
+    enable_profiling: bool = False,
+    use_cache: bool = False
 ) -> None:
     """
     Watch a function's optimization parameters over time.
@@ -283,9 +318,12 @@ def watch(
         interval: Time between checks in seconds (default: 60s)
         change_threshold_n_jobs: Alert if n_jobs changes by this amount (default: 1)
         change_threshold_speedup: Alert if speedup changes by this ratio (default: 0.2)
+        change_threshold_chunksize: Alert if chunksize changes by this ratio (default: 0.5)
         verbose: Enable verbose output
         sample_size: Number of samples for dry run
         target_chunk_duration: Target chunk duration for optimization
+        enable_profiling: Enable profiling during optimization (default: False)
+        use_cache: Use optimization cache (default: False)
         
     Example:
         >>> from amorsize import watch
@@ -304,8 +342,11 @@ def watch(
         interval=interval,
         change_threshold_n_jobs=change_threshold_n_jobs,
         change_threshold_speedup=change_threshold_speedup,
+        change_threshold_chunksize=change_threshold_chunksize,
         verbose=verbose,
         sample_size=sample_size,
-        target_chunk_duration=target_chunk_duration
+        target_chunk_duration=target_chunk_duration,
+        enable_profiling=enable_profiling,
+        use_cache=use_cache
     )
     monitor.start()
