@@ -18,57 +18,6 @@ from .optimizer import optimize
 # Default estimated item time when not available from optimization result
 DEFAULT_ESTIMATED_ITEM_TIME = 0.01
 
-# Global hook manager for worker processes (set via initializer)
-_worker_hook_manager: Optional[HookManager] = None
-_worker_id_counter = multiprocessing.Value('i', 0)
-_worker_id_lock = multiprocessing.Lock()
-
-
-def _worker_initializer(hook_manager: Optional[HookManager]) -> None:
-    """
-    Initialize worker process with hook manager.
-    
-    This function is called once when each worker process starts.
-    It sets up the global hook manager and triggers ON_WORKER_START event.
-    
-    Args:
-        hook_manager: HookManager instance to use for this worker
-    """
-    global _worker_hook_manager
-    _worker_hook_manager = hook_manager
-    
-    # Trigger ON_WORKER_START hook
-    if hook_manager is not None and hook_manager.has_hooks(HookEvent.ON_WORKER_START):
-        # Get unique worker ID
-        with _worker_id_lock:
-            _worker_id_counter.value += 1
-            worker_id = _worker_id_counter.value
-        
-        hook_manager.trigger(HookContext(
-            event=HookEvent.ON_WORKER_START,
-            worker_id=worker_id,
-            metadata={"pid": os.getpid()}
-        ))
-
-
-def _worker_wrapper(func: Callable[[Any], Any], item: Any) -> Any:
-    """
-    Wrapper function that executes user function and triggers hooks.
-    
-    This wrapper is used to track individual item execution in workers.
-    It's primarily used for fine-grained monitoring but adds minimal overhead.
-    
-    Args:
-        func: User function to execute
-        item: Input item to process
-    
-    Returns:
-        Result of func(item)
-    """
-    # Simply execute the function - we track chunks, not individual items
-    # to minimize overhead
-    return func(item)
-
 
 def _execute_serial(
     func: Callable[[Any], Any],
@@ -188,6 +137,7 @@ def _execute_threaded(
         chunk_id = 0
         items_processed = 0
         chunk_start_idx = 0
+        chunk_start_time = time.time()
         
         for idx, future in enumerate(futures):
             result = future.result()
@@ -197,7 +147,9 @@ def _execute_threaded(
             # Check if we completed a chunk
             if (items_processed - chunk_start_idx >= chunksize) or (items_processed == total_items):
                 chunk_size = items_processed - chunk_start_idx
+                chunk_time = time.time() - chunk_start_time
                 chunk_start_idx = items_processed
+                chunk_start_time = time.time()
                 
                 # Trigger ON_CHUNK_COMPLETE hook
                 if hooks is not None and hooks.has_hooks(HookEvent.ON_CHUNK_COMPLETE):
@@ -205,6 +157,7 @@ def _execute_threaded(
                         event=HookEvent.ON_CHUNK_COMPLETE,
                         chunk_id=chunk_id,
                         chunk_size=chunk_size,
+                        chunk_time=chunk_time,
                         items_completed=items_processed,
                         total_items=total_items,
                         percent_complete=(items_processed / total_items * 100.0) if total_items > 0 else 0.0,
@@ -255,25 +208,12 @@ def _execute_multiprocess(
     data_list = list(data) if not isinstance(data, list) else data
     total_items = len(data_list)
     
-    # Determine if we need worker hooks
-    need_worker_hooks = (
-        hooks is not None and (
-            hooks.has_hooks(HookEvent.ON_WORKER_START) or
-            hooks.has_hooks(HookEvent.ON_WORKER_END)
-        )
-    )
-    
-    if not use_fine_grained_tracking and not need_worker_hooks:
+    if not use_fine_grained_tracking:
         # Fast path - use standard map without hooks
         with Pool(n_jobs) as pool:
             return pool.map(func, data_list, chunksize=chunksize)
     
     # Use imap for fine-grained tracking
-    # Note: We can't pass hooks to worker processes due to pickling issues,
-    # so ON_WORKER_START/END hooks can't be triggered in true worker context.
-    # They would need shared memory or a separate communication channel.
-    # For now, we focus on chunk and progress tracking which are valuable.
-    
     with Pool(n_jobs) as pool:
         results = []
         chunk_id = 0
@@ -465,11 +405,12 @@ def execute(
         ))
 
     # Determine if we need fine-grained tracking
+    # Note: ON_WORKER_START/END hooks are not yet supported due to multiprocessing
+    # pickling limitations. We focus on chunk and progress tracking which provide
+    # the most value for monitoring.
     use_fine_grained_tracking = hooks is not None and (
         hooks.has_hooks(HookEvent.ON_CHUNK_COMPLETE) or
-        hooks.has_hooks(HookEvent.ON_PROGRESS) or
-        hooks.has_hooks(HookEvent.ON_WORKER_START) or
-        hooks.has_hooks(HookEvent.ON_WORKER_END)
+        hooks.has_hooks(HookEvent.ON_PROGRESS)
     )
     
     # Step 2: Execute with optimal parameters

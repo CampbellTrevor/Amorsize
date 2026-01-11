@@ -20,13 +20,7 @@ import time
 from typing import List
 
 from amorsize import execute
-from amorsize.hooks import (
-    HookManager,
-    HookEvent,
-    HookContext,
-    create_progress_hook,
-    create_throughput_hook,
-)
+from amorsize.hooks import HookManager, HookEvent, HookContext
 
 
 # =============================================================================
