@@ -5,7 +5,7 @@ This module provides clear, helpful error messages with concrete examples and
 step-by-step solutions for users when optimization fails or encounters issues.
 """
 
-from typing import Optional, List
+from typing import List, Optional
 
 
 def get_picklability_error_message(
@@ -14,16 +14,16 @@ def get_picklability_error_message(
 ) -> str:
     """
     Generate an enhanced error message for function picklability issues.
-    
+
     Args:
         function_name: Name of the function that failed (if available)
         error_type: Type of pickling error (if available)
-    
+
     Returns:
         Detailed error message with actionable guidance
     """
     func_ref = f"'{function_name}'" if function_name else "Function"
-    
+
     message = f"{func_ref} cannot be pickled - multiprocessing requires picklable functions.\n\n"
     message += "COMMON CAUSES:\n"
     message += "  • Lambda functions: lambda x: x**2\n"
@@ -47,7 +47,7 @@ def get_picklability_error_message(
     message += "   from concurrent.futures import ThreadPoolExecutor\n"
     message += "   # Threads don't require pickling\n\n"
     message += "NOTE: Serial execution will be used (n_jobs=1)."
-    
+
     return message
 
 
@@ -58,19 +58,19 @@ def get_data_picklability_error_message(
 ) -> str:
     """
     Generate an enhanced error message for data picklability issues.
-    
+
     Args:
         index: Index of the unpicklable data item
         error_type: Type of pickling error (if available)
         item_type: Type of the unpicklable item (if available)
-    
+
     Returns:
         Detailed error message with actionable guidance
     """
     item_desc = f"Data item at index {index}"
     if item_type:
         item_desc += f" (type: {item_type})"
-    
+
     message = f"{item_desc} cannot be pickled.\n\n"
     message += "COMMON CAUSES:\n"
     message += "  • File handles: open('file.txt')\n"
@@ -101,7 +101,7 @@ def get_data_picklability_error_message(
     message += "   from multiprocessing import shared_memory\n"
     message += "   # For numpy arrays, etc.\n\n"
     message += "NOTE: Serial execution will be used (n_jobs=1)."
-    
+
     return message
 
 
@@ -113,17 +113,17 @@ def get_memory_constraint_message(
 ) -> str:
     """
     Generate an enhanced message for memory constraint issues.
-    
+
     Args:
         required_mb: Memory required per worker in MB
         available_mb: Available system memory in MB
         optimal_workers: Optimal worker count without memory constraints
         constrained_workers: Worker count limited by memory
-    
+
     Returns:
         Detailed message with actionable guidance
     """
-    message = f"Memory constraints limit parallelization:\n"
+    message = "Memory constraints limit parallelization:\n"
     message += f"  • Each worker needs: ~{required_mb:.1f} MB\n"
     message += f"  • Available memory: ~{available_mb:.1f} MB\n"
     message += f"  • Optimal workers: {optimal_workers}\n"
@@ -147,7 +147,7 @@ def get_memory_constraint_message(
     message += "   # Process with imap/imap_unordered (no accumulation)\n\n"
     message += "4. Add more RAM to your system\n\n"
     message += f"Current recommendation: n_jobs={constrained_workers}"
-    
+
     return message
 
 
@@ -159,17 +159,17 @@ def get_no_speedup_benefit_message(
 ) -> str:
     """
     Generate an enhanced message when parallelization provides no benefit.
-    
+
     Args:
         estimated_speedup: Estimated speedup (< 1.2 typically)
         avg_function_time_ms: Average function execution time in milliseconds
         overhead_ms: Overhead per worker in milliseconds
         min_function_time_ms: Minimum function time needed for benefit
-    
+
     Returns:
         Detailed message with actionable guidance
     """
-    message = f"Parallelization overhead exceeds benefit:\n"
+    message = "Parallelization overhead exceeds benefit:\n"
     message += f"  • Estimated speedup: {estimated_speedup:.2f}x (threshold: 1.2x)\n"
     message += f"  • Function time: {avg_function_time_ms:.2f}ms\n"
     message += f"  • Overhead per worker: {overhead_ms:.1f}ms\n\n"
@@ -193,7 +193,7 @@ def get_no_speedup_benefit_message(
     message += "   result = optimize(process_batch, batched_data)\n\n"
     message += f"4. Function should take more than {min_function_time_ms:.1f}ms for parallel benefit\n\n"
     message += "NOTE: Serial execution recommended (n_jobs=1)."
-    
+
     return message
 
 
@@ -204,16 +204,16 @@ def get_workload_too_small_message(
 ) -> str:
     """
     Generate an enhanced message when workload is too small to benefit.
-    
+
     Args:
         total_items: Total number of items to process
         speedup_with_2_workers: Speedup with 2 workers
         min_items_recommended: Minimum items recommended for parallel benefit
-    
+
     Returns:
         Detailed message with actionable guidance
     """
-    message = f"Workload too small for effective parallelization:\n"
+    message = "Workload too small for effective parallelization:\n"
     message += f"  • Total items: {total_items}\n"
     message += f"  • Speedup with 2 workers: {speedup_with_2_workers:.2f}x\n"
     message += f"  • Recommended minimum: {min_items_recommended}+ items\n\n"
@@ -235,24 +235,24 @@ def get_workload_too_small_message(
     message += "   if len(accumulated_items) >= 1000:\n"
     message += "       results = optimize(process, accumulated_items)\n\n"
     message += "NOTE: Serial execution recommended (n_jobs=1)."
-    
+
     return message
 
 
 def get_sampling_failure_message(error: Exception) -> str:
     """
     Generate an enhanced message for sampling failures.
-    
+
     Args:
         error: The exception that occurred during sampling
-    
+
     Returns:
         Detailed message with actionable guidance
     """
     error_name = type(error).__name__
     error_str = str(error)
-    
-    message = f"Sampling failed during optimization analysis:\n"
+
+    message = "Sampling failed during optimization analysis:\n"
     message += f"  • Error type: {error_name}\n"
     message += f"  • Error message: {error_str}\n\n"
     message += "COMMON CAUSES:\n"
@@ -282,37 +282,37 @@ def get_sampling_failure_message(error: Exception) -> str:
     message += "4. Use verbose mode for more details:\n"
     message += "   result = optimize(func, data, verbose=True)\n\n"
     message += "NOTE: Serial execution will be used (n_jobs=1)."
-    
+
     return message
 
 
 def format_warning_with_guidance(warning_type: str, **kwargs) -> List[str]:
     """
     Format warnings with additional helpful guidance.
-    
+
     Args:
         warning_type: Type of warning (e.g., 'io_bound', 'heterogeneous')
         **kwargs: Additional context for the warning
-    
+
     Returns:
         List of warning lines with guidance
     """
     warnings = []
-    
+
     if warning_type == 'io_bound':
         warnings.append("I/O-bound workload detected - multiprocessing may not be optimal")
         warnings.append("Consider using ThreadPoolExecutor for I/O operations:")
         warnings.append("  from concurrent.futures import ThreadPoolExecutor")
         warnings.append("  with ThreadPoolExecutor(max_workers=n_jobs) as pool:")
         warnings.append("      results = list(pool.map(func, data))")
-    
+
     elif warning_type == 'heterogeneous':
         cv = kwargs.get('cv', 0.0)
         warnings.append(f"Heterogeneous workload detected (CV={cv:.2f})")
         warnings.append("Variable execution times may cause load imbalance")
         warnings.append("Consider using imap_unordered for better work distribution:")
         warnings.append("  pool.imap_unordered(func, data, chunksize=1)")
-    
+
     elif warning_type == 'nested_parallelism':
         internal_threads = kwargs.get('internal_threads', 0)
         warnings.append(f"Function uses internal parallelism (~{internal_threads} threads)")
@@ -320,21 +320,21 @@ def format_warning_with_guidance(warning_type: str, **kwargs) -> List[str]:
         warnings.append("Set environment variables to control internal threading:")
         warnings.append("  export OMP_NUM_THREADS=1")
         warnings.append("  export MKL_NUM_THREADS=1")
-    
+
     elif warning_type == 'memory_pressure':
         warnings.append("High memory usage detected during sampling")
         warnings.append("Consider using streaming or batch processing:")
         warnings.append("  from amorsize import optimize_streaming")
         warnings.append("  # or")
         warnings.append("  from amorsize import process_in_batches")
-    
+
     return warnings
 
 
 def get_helpful_tips() -> str:
     """
     Get general helpful tips for optimization.
-    
+
     Returns:
         String with general optimization tips
     """
@@ -355,5 +355,5 @@ def get_helpful_tips() -> str:
     tips += "5. Compare strategies:\n"
     tips += "   from amorsize import compare_strategies\n"
     tips += "   comparison = compare_strategies(func, data)\n"
-    
+
     return tips

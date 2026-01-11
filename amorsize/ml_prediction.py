@@ -15,25 +15,23 @@ Key Features:
 """
 
 import copy
+import hashlib
 import json
 import math
-import os
-import time
-import hashlib
 import random
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .system_info import (
-    get_physical_cores,
     get_available_memory,
     get_multiprocessing_start_method,
-    get_spawn_cost_estimate
+    get_physical_cores,
 )
 
 # Import cost model for hardware-aware features (optional)
 try:
-    from .cost_model import detect_system_topology, SystemTopology
+    from .cost_model import SystemTopology, detect_system_topology
     _HAS_COST_MODEL = True
 except ImportError:
     _HAS_COST_MODEL = False
@@ -200,11 +198,11 @@ ENSEMBLE_WEIGHTS_FILE = "ml_ensemble_weights.json"
 class WorkloadCluster:
     """
     Represents a cluster of similar workloads (Iteration 121).
-    
+
     Workload clustering groups similar historical workloads together to enable
     cluster-specific k-NN predictions, improving accuracy by 15-25% for diverse
     workload mixes.
-    
+
     Attributes:
         cluster_id: Unique identifier for this cluster
         centroid: Feature vector representing cluster center
@@ -214,7 +212,7 @@ class WorkloadCluster:
         avg_speedup: Average speedup achieved by workloads in this cluster
         workload_type: Human-readable description of workload type (e.g., "CPU-intensive", "I/O-bound")
     """
-    
+
     def __init__(
         self,
         cluster_id: int,
@@ -232,19 +230,19 @@ class WorkloadCluster:
         self.typical_chunksize = typical_chunksize
         self.avg_speedup = avg_speedup
         self.workload_type = workload_type
-    
+
     def distance_to_centroid(self, feature_vector: List[float]) -> float:
         """
         Calculate Euclidean distance from a feature vector to this cluster's centroid.
-        
+
         Args:
             feature_vector: Feature vector to measure distance from
-            
+
         Returns:
             Euclidean distance to centroid
         """
         return math.sqrt(sum((a - b) ** 2 for a, b in zip(feature_vector, self.centroid)))
-    
+
     def __repr__(self):
         return (
             f"WorkloadCluster(id={self.cluster_id}, "
@@ -258,20 +256,20 @@ class WorkloadCluster:
 class FeatureSelector:
     """
     Manages feature selection for ML predictions (Iteration 123).
-    
+
     Reduces the feature space from 12 dimensions to 5-7 most predictive features,
     providing 30-50% faster predictions and reduced overfitting.
-    
+
     Uses correlation-based feature importance to select features that are most
     predictive of optimal n_jobs and chunksize parameters.
-    
+
     Attributes:
         selected_features: List of selected feature indices (0-11)
         feature_names: List of selected feature names
         importance_scores: Dictionary of feature importance scores
         num_training_samples: Number of samples used for selection
     """
-    
+
     def __init__(
         self,
         selected_features: Optional[List[int]] = None,
@@ -283,7 +281,7 @@ class FeatureSelector:
         self.feature_names = feature_names or []
         self.importance_scores = importance_scores or {}
         self.num_training_samples = num_training_samples
-    
+
     def select_features(
         self,
         training_data: List['TrainingData'],
@@ -291,10 +289,10 @@ class FeatureSelector:
     ) -> None:
         """
         Select the most important features from training data.
-        
+
         Uses correlation-based importance: features with highest correlation to
         optimal n_jobs and chunksize are selected.
-        
+
         Args:
             training_data: List of historical training samples
             target_num_features: Number of features to select (default: 7)
@@ -306,47 +304,47 @@ class FeatureSelector:
             self.importance_scores = {}
             self.num_training_samples = len(training_data)
             return
-        
+
         # Get all feature names
         all_feature_names = self._get_all_feature_names()
-        
+
         # Extract feature vectors and targets
         feature_vectors = [sample.features.to_vector() for sample in training_data]
         n_jobs_values = [sample.n_jobs for sample in training_data]
         chunksize_values = [sample.chunksize for sample in training_data]
-        
+
         num_features = 12  # Total features in WorkloadFeatures
-        
+
         # Calculate combined importance score for each feature
         # (average of absolute correlation with n_jobs and chunksize)
         feature_importance = []
-        
+
         for i in range(num_features):
             feature_values = [vec[i] for vec in feature_vectors]
-            
+
             # Calculate correlation with n_jobs
             n_jobs_corr = abs(self._calculate_correlation(feature_values, n_jobs_values))
-            
+
             # Calculate correlation with chunksize
             chunksize_corr = abs(self._calculate_correlation(feature_values, chunksize_values))
-            
+
             # Combined importance (average of both correlations)
             combined_importance = (n_jobs_corr + chunksize_corr) / 2.0
-            
+
             feature_importance.append((i, all_feature_names[i], combined_importance))
-        
+
         # Sort features by importance (descending)
         feature_importance.sort(key=lambda x: x[2], reverse=True)
-        
+
         # Select top N features
         selected = feature_importance[:target_num_features]
-        
+
         # Store results (keep indices sorted for consistent ordering)
         self.selected_features = sorted([idx for idx, _, _ in selected])
         self.feature_names = [all_feature_names[idx] for idx in self.selected_features]
         self.importance_scores = {name: score for _, name, score in selected}
         self.num_training_samples = len(training_data)
-    
+
     @staticmethod
     def _get_all_feature_names() -> List[str]:
         """Get list of all 12 feature names in order."""
@@ -364,50 +362,50 @@ class FeatureSelector:
             'memory_bandwidth',
             'has_numa'
         ]
-    
+
     def _calculate_correlation(self, x: List[float], y: List[float]) -> float:
         """
         Calculate Pearson correlation coefficient between two variables.
-        
+
         Args:
             x: First variable values
             y: Second variable values
-        
+
         Returns:
             Correlation coefficient in [-1, 1] range
         """
         if len(x) != len(y) or len(x) < 2:
             return 0.0
-        
+
         n = len(x)
-        
+
         # Calculate means
         mean_x = sum(x) / n
         mean_y = sum(y) / n
-        
+
         # Calculate covariance and standard deviations
         cov = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n))
         std_x = math.sqrt(sum((x[i] - mean_x) ** 2 for i in range(n)))
         std_y = math.sqrt(sum((y[i] - mean_y) ** 2 for i in range(n)))
-        
+
         # Avoid division by zero
         if std_x == 0 or std_y == 0:
             return 0.0
-        
+
         return cov / (std_x * std_y)
-    
+
     def apply_to_vector(self, feature_vector: List[float]) -> List[float]:
         """
         Apply feature selection to a feature vector.
-        
+
         Args:
             feature_vector: Full 12-dimensional feature vector
-        
+
         Returns:
             Reduced feature vector containing only selected features
         """
         return [feature_vector[i] for i in self.selected_features]
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary for JSON storage."""
         return {
@@ -416,7 +414,7 @@ class FeatureSelector:
             'importance_scores': self.importance_scores,
             'num_training_samples': self.num_training_samples
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FeatureSelector':
         """Deserialize from dictionary."""
@@ -426,7 +424,7 @@ class FeatureSelector:
             importance_scores=data.get('importance_scores'),
             num_training_samples=data.get('num_training_samples', 0)
         )
-    
+
     def __repr__(self):
         return (
             f"FeatureSelector(selected={len(self.selected_features)}/12 features, "
@@ -437,7 +435,7 @@ class FeatureSelector:
 class PredictionResult:
     """
     Container for ML prediction results.
-    
+
     Attributes:
         n_jobs: Predicted number of workers
         chunksize: Predicted chunk size
@@ -450,7 +448,7 @@ class PredictionResult:
         min_chunksize: Recommended minimum chunk size if adaptive chunking enabled (Iteration 119)
         max_chunksize: Recommended maximum chunk size if adaptive chunking enabled (Iteration 119)
     """
-    
+
     def __init__(
         self,
         n_jobs: int,
@@ -474,7 +472,7 @@ class PredictionResult:
         self.adaptation_rate = adaptation_rate
         self.min_chunksize = min_chunksize
         self.max_chunksize = max_chunksize
-    
+
     def __repr__(self):
         return (
             f"PredictionResult(n_jobs={self.n_jobs}, "
@@ -486,10 +484,10 @@ class PredictionResult:
 class StreamingPredictionResult(PredictionResult):
     """
     Container for ML prediction results specific to streaming workloads.
-    
+
     Extends PredictionResult with streaming-specific parameters like
     buffer size and ordering preference, plus adaptive chunking support.
-    
+
     Attributes:
         n_jobs: Predicted number of workers
         chunksize: Predicted chunk size
@@ -504,7 +502,7 @@ class StreamingPredictionResult(PredictionResult):
         min_chunksize: Recommended minimum chunk size if adaptive chunking enabled (Iteration 120)
         max_chunksize: Recommended maximum chunk size if adaptive chunking enabled (Iteration 120)
     """
-    
+
     def __init__(
         self,
         n_jobs: int,
@@ -534,7 +532,7 @@ class StreamingPredictionResult(PredictionResult):
         )
         self.buffer_size = buffer_size if buffer_size is not None else n_jobs * 3
         self.use_ordered = use_ordered
-    
+
     def __repr__(self):
         method = "imap" if self.use_ordered else "imap_unordered"
         adaptive_str = ""
@@ -552,18 +550,18 @@ class StreamingPredictionResult(PredictionResult):
 class CalibrationData:
     """
     Container for confidence calibration tracking data (Iteration 116).
-    
+
     Tracks prediction accuracy over time to enable adaptive confidence threshold
     adjustment. This allows the system to learn when high confidence actually
     correlates with accurate predictions.
-    
+
     Attributes:
         predictions: List of (confidence, accuracy) tuples from past predictions
         adjusted_threshold: Current calibrated confidence threshold
         last_update: Timestamp of last calibration update
         baseline_threshold: Original threshold before calibration
     """
-    
+
     def __init__(
         self,
         predictions: Optional[List[Tuple[float, float]]] = None,
@@ -575,22 +573,22 @@ class CalibrationData:
         self.adjusted_threshold = adjusted_threshold
         self.last_update = last_update if last_update is not None else time.time()
         self.baseline_threshold = baseline_threshold
-    
+
     def add_prediction_result(self, confidence: float, accuracy: float):
         """
         Add a new prediction result for calibration.
-        
+
         Args:
             confidence: Confidence score that was assigned (0-1)
             accuracy: Actual accuracy achieved (0-1, higher is better)
         """
         self.predictions.append((confidence, accuracy))
         self.last_update = time.time()
-    
+
     def get_calibration_stats(self) -> Dict[str, float]:
         """
         Calculate calibration statistics from prediction history.
-        
+
         Returns:
             Dictionary with calibration metrics:
                 - mean_accuracy: Average prediction accuracy
@@ -607,15 +605,15 @@ class CalibrationData:
                 'optimal_threshold': self.baseline_threshold,
                 'sample_count': 0
             }
-        
+
         # Calculate overall mean accuracy
         accuracies = [acc for _, acc in self.predictions]
         mean_accuracy = sum(accuracies) / len(accuracies)
-        
+
         # Split by current threshold
         high_conf_predictions = [(c, a) for c, a in self.predictions if c >= self.adjusted_threshold]
         low_conf_predictions = [(c, a) for c, a in self.predictions if c < self.adjusted_threshold]
-        
+
         high_conf_accuracy = (
             sum(a for _, a in high_conf_predictions) / len(high_conf_predictions)
             if high_conf_predictions else 0.0
@@ -624,12 +622,12 @@ class CalibrationData:
             sum(a for _, a in low_conf_predictions) / len(low_conf_predictions)
             if low_conf_predictions else 0.0
         )
-        
+
         # Find optimal threshold by maximizing accuracy above threshold
         # Try thresholds from 0.5 to 0.95 in steps of 0.05
         best_threshold = self.baseline_threshold
         best_score = 0.0
-        
+
         for threshold in [0.5 + i * 0.05 for i in range(10)]:
             above_threshold = [a for c, a in self.predictions if c >= threshold]
             if len(above_threshold) >= 3:  # Need at least 3 samples
@@ -639,7 +637,7 @@ class CalibrationData:
                 if score > best_score:
                     best_score = score
                     best_threshold = threshold
-        
+
         return {
             'mean_accuracy': mean_accuracy,
             'high_confidence_accuracy': high_conf_accuracy,
@@ -647,35 +645,35 @@ class CalibrationData:
             'optimal_threshold': best_threshold,
             'sample_count': len(self.predictions)
         }
-    
+
     def recalibrate_threshold(self) -> float:
         """
         Recalibrate confidence threshold based on prediction history.
-        
+
         Uses calibration statistics to adjust the threshold:
         - If high-confidence predictions are accurate, lower threshold slightly
         - If high-confidence predictions are inaccurate, raise threshold
-        
+
         Returns:
             New calibrated threshold
         """
         if len(self.predictions) < MIN_CALIBRATION_SAMPLES:
             # Not enough data for calibration yet
             return self.adjusted_threshold
-        
+
         stats = self.get_calibration_stats()
-        
+
         # If we have a clearly better threshold, move toward it
         optimal = stats['optimal_threshold']
         current = self.adjusted_threshold
-        
+
         # Use conservative adjustment factor to avoid oscillation
         adjustment = (optimal - current) * CALIBRATION_ADJUSTMENT_FACTOR
         new_threshold = current + adjustment
-        
+
         # Clamp to reasonable bounds [0.5, 0.95]
         new_threshold = max(0.5, min(0.95, new_threshold))
-        
+
         self.adjusted_threshold = new_threshold
         return new_threshold
 
@@ -683,10 +681,10 @@ class CalibrationData:
 class SystemFingerprint:
     """
     Hardware fingerprint for cross-system learning (Iteration 117).
-    
+
     Captures key hardware characteristics that influence multiprocessing
     performance, enabling model transfer across similar systems.
-    
+
     Attributes:
         physical_cores: Number of physical CPU cores
         l3_cache_mb: L3 cache size in megabytes
@@ -695,7 +693,7 @@ class SystemFingerprint:
         start_method: Multiprocessing start method (fork/spawn/forkserver)
         system_id: Unique identifier for this system configuration
     """
-    
+
     def __init__(
         self,
         physical_cores: int,
@@ -709,16 +707,16 @@ class SystemFingerprint:
         self.numa_nodes = numa_nodes
         self.memory_bandwidth_gb_s = memory_bandwidth_gb_s
         self.start_method = start_method
-        
+
         # Generate unique system ID from key characteristics
         # This helps identify identical systems vs similar systems
         system_str = f"{physical_cores}_{l3_cache_mb:.1f}_{numa_nodes}_{memory_bandwidth_gb_s:.1f}_{start_method}"
         self.system_id = hashlib.sha256(system_str.encode()).hexdigest()[:16]
-    
+
     def similarity(self, other: 'SystemFingerprint') -> float:
         """
         Calculate similarity score with another system (0-1 scale).
-        
+
         Uses weighted Euclidean distance in normalized feature space.
         Systems are considered similar if they have comparable:
         - Core count (most important)
@@ -726,10 +724,10 @@ class SystemFingerprint:
         - NUMA topology (important for memory access patterns)
         - Memory bandwidth (important for memory-bound workloads)
         - Start method (affects process spawn overhead)
-        
+
         Args:
             other: Another system fingerprint to compare with
-        
+
         Returns:
             Similarity score: 1.0 = identical, 0.0 = completely different
         """
@@ -737,23 +735,23 @@ class SystemFingerprint:
         # Use same ranges as WorkloadFeatures
         norm_cores_self = min(1.0, self.physical_cores / MAX_EXPECTED_CORES)
         norm_cores_other = min(1.0, other.physical_cores / MAX_EXPECTED_CORES)
-        
+
         # Log scale for cache (MIN_CACHE_MB to MAX_CACHE_MB range)
         norm_cache_self = self._normalize_log(self.l3_cache_mb, MIN_CACHE_MB, MAX_CACHE_MB)
         norm_cache_other = self._normalize_log(other.l3_cache_mb, MIN_CACHE_MB, MAX_CACHE_MB)
-        
+
         # Linear scale for NUMA nodes (1 to MAX_NUMA_NODES range)
         norm_numa_self = min(1.0, self.numa_nodes / MAX_NUMA_NODES)
         norm_numa_other = min(1.0, other.numa_nodes / MAX_NUMA_NODES)
-        
+
         # Log scale for bandwidth (MIN_BANDWIDTH_GB_S to MAX_BANDWIDTH_GB_S range)
         norm_bw_self = self._normalize_log(self.memory_bandwidth_gb_s, MIN_BANDWIDTH_GB_S, MAX_BANDWIDTH_GB_S)
         norm_bw_other = self._normalize_log(other.memory_bandwidth_gb_s, MIN_BANDWIDTH_GB_S, MAX_BANDWIDTH_GB_S)
-        
+
         # Start method: fork=0.0, spawn=1.0, forkserver=0.5
         norm_sm_self = {'fork': 0.0, 'spawn': 1.0, 'forkserver': 0.5}.get(self.start_method, 0.5)
         norm_sm_other = {'fork': 0.0, 'spawn': 1.0, 'forkserver': 0.5}.get(other.start_method, 0.5)
-        
+
         # Calculate weighted Euclidean distance
         # Weights reflect importance for multiprocessing performance
         weights = {
@@ -763,7 +761,7 @@ class SystemFingerprint:
             'bandwidth': 1.0,   # Moderate: affects memory-bound workloads
             'start_method': 1.0 # Moderate: affects spawn overhead
         }
-        
+
         squared_diff = (
             weights['cores'] * (norm_cores_self - norm_cores_other) ** 2 +
             weights['cache'] * (norm_cache_self - norm_cache_other) ** 2 +
@@ -771,17 +769,17 @@ class SystemFingerprint:
             weights['bandwidth'] * (norm_bw_self - norm_bw_other) ** 2 +
             weights['start_method'] * (norm_sm_self - norm_sm_other) ** 2
         )
-        
+
         # Calculate distance
         total_weight = sum(weights.values())
         distance = math.sqrt(squared_diff / total_weight)
-        
+
         # Convert distance to similarity (1.0 = identical, 0.0 = max distance)
         # Max possible distance is sqrt(1) = 1.0 in normalized space
         similarity = max(0.0, 1.0 - distance)
-        
+
         return similarity
-    
+
     @staticmethod
     def _normalize_log(value: float, min_val: float, max_val: float) -> float:
         """Normalize value to [0, 1] using log scale."""
@@ -792,7 +790,7 @@ class SystemFingerprint:
         log_max = math.log10(max_val)
         normalized = (log_val - log_min) / (log_max - log_min)
         return max(0.0, min(1.0, normalized))
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -803,7 +801,7 @@ class SystemFingerprint:
             'start_method': self.start_method,
             'system_id': self.system_id
         }
-    
+
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'SystemFingerprint':
         """Create from dictionary (JSON deserialization)."""
@@ -814,7 +812,7 @@ class SystemFingerprint:
             memory_bandwidth_gb_s=data['memory_bandwidth_gb_s'],
             start_method=data['start_method']
         )
-    
+
     def __repr__(self):
         return (
             f"SystemFingerprint(cores={self.physical_cores}, "
@@ -828,12 +826,12 @@ class SystemFingerprint:
 class WorkloadFeatures:
     """
     Extracted features from a workload for ML prediction.
-    
+
     Features are normalized to [0, 1] range for better model performance.
     Enhanced in Iteration 104 with additional features for 15-25% accuracy improvement.
     Enhanced in Iteration 114 with hardware-aware features (cache, NUMA, bandwidth).
     """
-    
+
     def __init__(
         self,
         data_size: int,
@@ -852,12 +850,12 @@ class WorkloadFeatures:
         self.physical_cores = physical_cores
         self.available_memory = available_memory
         self.start_method = start_method
-        
+
         # Raw features (new 3 - enhanced features from Iteration 104)
         self.pickle_size = pickle_size or 0
         self.coefficient_of_variation = coefficient_of_variation or 0.0
         self.function_complexity = function_complexity or 0
-        
+
         # Raw features (new 4 - hardware-aware features from Iteration 114)
         # These are extracted from system_topology if available
         if system_topology is not None and _HAS_COST_MODEL:
@@ -871,31 +869,31 @@ class WorkloadFeatures:
             self.numa_nodes = 1
             self.memory_bandwidth_gb_s = 25.0  # DDR4-3200 single channel estimate
             self.has_numa = 0
-        
+
         # Normalized features (0-1 range) - original 5
         # Log scale for data size (typical range: 10 to 1M items)
         self.norm_data_size = self._normalize_log(data_size, 10, 1_000_000)
-        
+
         # Log scale for execution time (typical range: 1μs to 1s per item)
         self.norm_time = self._normalize_log(estimated_item_time, 1e-6, 1.0)
-        
+
         # Linear scale for cores (typical range: 1 to 128)
         self.norm_cores = min(1.0, physical_cores / 128.0)
-        
+
         # Log scale for memory (typical range: 1GB to 1TB)
         self.norm_memory = self._normalize_log(available_memory, 1e9, 1e12)
-        
+
         # Start method as numeric (fork=0.0, spawn=1.0, forkserver=0.5)
         self.norm_start_method = {
             'fork': 0.0,
             'spawn': 1.0,
             'forkserver': 0.5
         }.get(start_method, 0.5)
-        
+
         # Normalized features (0-1 range) - new 3
         # Log scale for pickle size (typical range: 10 bytes to 10MB)
         self.norm_pickle_size = self._normalize_log(max(1, pickle_size or 1), 10, 1e7)
-        
+
         # Linear scale for CV (typical range: 0 to 2.0, higher means more heterogeneous)
         # CV values are typically:
         #   - CV < 0.3: homogeneous (consistent execution times)
@@ -903,27 +901,27 @@ class WorkloadFeatures:
         #   - CV > 0.7: highly heterogeneous (significant variance)
         # CV > 2.0 is rare but theoretically possible for extremely variable workloads
         self.norm_cv = min(1.0, (coefficient_of_variation or 0.0) / 2.0)
-        
+
         # Log scale for function complexity (bytecode size, typical: 100 to 10000 bytes)
         self.norm_complexity = self._normalize_log(max(1, function_complexity or 1), 100, 10000)
-        
+
         # Normalized features (0-1 range) - new 4 hardware-aware features (Iteration 114)
         # Log scale for L3 cache size (typical range: 1MB to 256MB)
         # Larger cache = better data locality for multi-core workloads
         self.norm_l3_cache = self._normalize_log(max(1e6, self.l3_cache_size), 1e6, 256e6)
-        
+
         # Linear scale for NUMA nodes (typical range: 1 to 8)
         # More NUMA nodes = higher cross-node memory access penalty
         self.norm_numa_nodes = min(1.0, self.numa_nodes / 8.0)
-        
+
         # Log scale for memory bandwidth (typical range: 10 GB/s to 1000 GB/s)
         # Higher bandwidth = better support for memory-intensive parallel workloads
         self.norm_memory_bandwidth = self._normalize_log(max(10.0, self.memory_bandwidth_gb_s), 10.0, 1000.0)
-        
+
         # Binary feature for NUMA presence (0 or 1)
         # Has NUMA = need to consider cross-node penalties
         self.norm_has_numa = float(self.has_numa)
-    
+
     @staticmethod
     def _normalize_log(value: float, min_val: float, max_val: float) -> float:
         """Normalize value to [0, 1] using log scale."""
@@ -934,11 +932,11 @@ class WorkloadFeatures:
         log_max = math.log10(max_val)
         normalized = (log_val - log_min) / (log_max - log_min)
         return max(0.0, min(1.0, normalized))
-    
+
     def to_vector(self) -> List[float]:
         """
         Convert features to a vector for model input.
-        
+
         Enhanced in Iteration 104 with 8 features (was 5).
         Enhanced in Iteration 114 with 12 features (was 8) - added hardware-aware features.
         """
@@ -956,11 +954,11 @@ class WorkloadFeatures:
             self.norm_memory_bandwidth,
             self.norm_has_numa
         ]
-    
+
     def distance(self, other: "WorkloadFeatures") -> float:
         """
         Calculate Euclidean distance to another feature vector.
-        
+
         Used to determine how similar two workloads are.
         Returns value in [0, sqrt(12)] range (12 features - updated in Iteration 114).
         """
@@ -972,14 +970,14 @@ class WorkloadFeatures:
 class TrainingData:
     """
     Training data point from historical optimization.
-    
+
     Supports both batch and streaming workloads. For streaming workloads,
     additional parameters like buffer_size and use_ordered are included.
-    
+
     Enhanced in Iteration 117 with system_fingerprint for cross-system learning.
     Enhanced in Iteration 119 with adaptive_chunking parameters for ML learning.
     """
-    
+
     def __init__(
         self,
         features: WorkloadFeatures,
@@ -1006,11 +1004,11 @@ class TrainingData:
         self.buffer_size = buffer_size
         self.use_ordered = use_ordered
         self.is_streaming = is_streaming
-        
+
         # Cross-system learning (Iteration 117)
         self.system_fingerprint = system_fingerprint
         self.weight = weight  # Allows weighting samples from similar systems
-        
+
         # Adaptive chunking parameters (Iteration 119)
         self.adaptive_chunking_enabled = adaptive_chunking_enabled
         self.adaptation_rate = adaptation_rate
@@ -1025,26 +1023,26 @@ def _cluster_workloads(
 ) -> List[WorkloadCluster]:
     """
     Cluster workloads using k-means algorithm (Iteration 121).
-    
+
     Groups similar workloads into clusters to enable cluster-specific k-NN
     predictions. This improves prediction accuracy by 15-25% for diverse
     workload mixes by finding more relevant neighbors within each cluster.
-    
+
     Args:
         training_data: List of historical training samples
         num_clusters: Number of clusters to create (auto-determined if None)
         verbose: Whether to print clustering progress
-    
+
     Returns:
         List of WorkloadCluster objects, sorted by size (largest first)
-    
+
     Algorithm:
         1. Extract feature vectors from all training samples
         2. Auto-determine optimal number of clusters (2 to MAX_CLUSTERS)
         3. Run k-means clustering with random initialization
         4. Assign workload type labels based on cluster characteristics
         5. Return cluster metadata for use in predictions
-    
+
     Example:
         >>> clusters = _cluster_workloads(predictor.training_data, verbose=True)
         >>> print(f"Found {len(clusters)} workload types:")
@@ -1055,32 +1053,32 @@ def _cluster_workloads(
         if verbose:
             print(f"Not enough samples for clustering (need {MIN_CLUSTERING_SAMPLES}, have {len(training_data)})")
         return []
-    
+
     # Extract feature vectors
     feature_vectors = [sample.features.to_vector() for sample in training_data]
     n_samples = len(feature_vectors)
     n_features = len(feature_vectors[0])
-    
+
     # Auto-determine number of clusters if not specified
     if num_clusters is None:
         # Use elbow method approximation: sqrt(n/2) clusters, capped at MAX_CLUSTERS
         num_clusters = min(MAX_CLUSTERS, max(2, int(math.sqrt(n_samples / 2))))
-    
+
     # Ensure minimum cluster size
     min_cluster_size = max(2, int(n_samples * MIN_CLUSTER_SIZE_FRACTION))
     num_clusters = min(num_clusters, n_samples // min_cluster_size)
-    
+
     if num_clusters < 2:
         if verbose:
-            print(f"Not enough samples to create multiple clusters")
+            print("Not enough samples to create multiple clusters")
         return []
-    
+
     if verbose:
         print(f"Clustering {n_samples} workloads into {num_clusters} clusters...")
-    
+
     # Initialize centroids using k-means++ for better convergence
     centroids = _kmeans_plus_plus_init(feature_vectors, num_clusters)
-    
+
     # Run k-means clustering
     for iteration in range(MAX_KMEANS_ITERATIONS):
         # Assign each sample to nearest centroid
@@ -1091,7 +1089,7 @@ def _cluster_workloads(
                 for centroid in centroids
             ]
             assignments.append(distances.index(min(distances)))
-        
+
         # Update centroids
         new_centroids = []
         for cluster_id in range(num_clusters):
@@ -1099,7 +1097,7 @@ def _cluster_workloads(
                 feature_vectors[i] for i, assignment in enumerate(assignments)
                 if assignment == cluster_id
             ]
-            
+
             if cluster_members:
                 # Calculate mean of cluster members
                 new_centroid = [
@@ -1110,20 +1108,20 @@ def _cluster_workloads(
             else:
                 # Empty cluster - reinitialize randomly using random module imported at top
                 new_centroids.append(random.choice(feature_vectors))
-        
+
         # Check convergence (max centroid movement)
         max_movement = max(
             math.sqrt(sum((a - b) ** 2 for a, b in zip(old, new)))
             for old, new in zip(centroids, new_centroids)
         )
-        
+
         centroids = new_centroids
-        
+
         if max_movement < KMEANS_CONVERGENCE_THRESHOLD:
             if verbose:
                 print(f"Converged after {iteration + 1} iterations")
             break
-    
+
     # Build cluster objects with metadata
     clusters = []
     for cluster_id in range(num_clusters):
@@ -1131,27 +1129,27 @@ def _cluster_workloads(
             i for i, assignment in enumerate(assignments)
             if assignment == cluster_id
         ]
-        
+
         if not member_indices:
             continue
-        
+
         # Calculate cluster statistics
         members = [training_data[i] for i in member_indices]
-        
+
         # Typical n_jobs (median to avoid outliers)
         n_jobs_values = sorted([m.n_jobs for m in members])
         typical_n_jobs = n_jobs_values[len(n_jobs_values) // 2]
-        
+
         # Typical chunksize (median)
         chunksize_values = sorted([m.chunksize for m in members])
         typical_chunksize = chunksize_values[len(chunksize_values) // 2]
-        
+
         # Average speedup
         avg_speedup = sum(m.speedup for m in members) / len(members)
-        
+
         # Determine workload type based on cluster characteristics
         workload_type = _classify_cluster_type(centroids[cluster_id], members)
-        
+
         cluster = WorkloadCluster(
             cluster_id=cluster_id,
             centroid=centroids[cluster_id],
@@ -1162,19 +1160,19 @@ def _cluster_workloads(
             workload_type=workload_type
         )
         clusters.append(cluster)
-    
+
     # Sort by cluster size (largest first)
     clusters.sort(key=lambda c: len(c.member_indices), reverse=True)
-    
+
     if verbose:
-        print(f"\nClustering results:")
+        print("\nClustering results:")
         for i, cluster in enumerate(clusters):
             print(f"  Cluster {i+1}: {cluster.workload_type} "
                   f"({len(cluster.member_indices)} samples, "
                   f"n_jobs={cluster.typical_n_jobs}, "
                   f"chunksize={cluster.typical_chunksize}, "
                   f"speedup={cluster.avg_speedup:.2f}x)")
-    
+
     return clusters
 
 
@@ -1184,20 +1182,20 @@ def _kmeans_plus_plus_init(
 ) -> List[List[float]]:
     """
     Initialize centroids using k-means++ algorithm for better convergence.
-    
+
     k-means++ chooses initial centroids that are far apart, leading to
     faster convergence and better final clusters.
-    
+
     Args:
         feature_vectors: List of feature vectors
         num_clusters: Number of centroids to initialize
-    
+
     Returns:
         List of initial centroid vectors
     """
     # Choose first centroid randomly (using random module imported at top)
     centroids = [random.choice(feature_vectors)]
-    
+
     # Choose remaining centroids
     for _ in range(num_clusters - 1):
         # Calculate distance from each point to nearest centroid
@@ -1208,7 +1206,7 @@ def _kmeans_plus_plus_init(
                 for centroid in centroids
             ]
             min_distances.append(min(distances))
-        
+
         # Choose next centroid with probability proportional to distance squared
         # This favors points that are far from existing centroids
         total_distance = sum(d ** 2 for d in min_distances)
@@ -1217,7 +1215,7 @@ def _kmeans_plus_plus_init(
             centroids.append(random.choice(feature_vectors))
         else:
             probabilities = [d ** 2 / total_distance for d in min_distances]
-            
+
             # Weighted random selection
             r = random.random()
             cumulative = 0.0
@@ -1226,7 +1224,7 @@ def _kmeans_plus_plus_init(
                 if r <= cumulative:
                     centroids.append(feature_vectors[i])
                     break
-    
+
     return centroids
 
 
@@ -1236,18 +1234,18 @@ def _classify_cluster_type(
 ) -> str:
     """
     Classify cluster into a human-readable workload type.
-    
+
     Uses cluster characteristics to determine workload type:
     - CPU-intensive: High execution time, low I/O
     - I/O-bound: High pickle size relative to execution time
     - Memory-intensive: Large data size, high memory usage
     - Mixed: Balanced characteristics
     - Quick tasks: Very short execution time
-    
+
     Args:
         centroid: Feature vector of cluster centroid (12 normalized features)
         members: Training samples in this cluster
-    
+
     Returns:
         Human-readable workload type string
     """
@@ -1259,12 +1257,11 @@ def _classify_cluster_type(
     norm_pickle = centroid[5]
     norm_cv = centroid[6]
     norm_complexity = centroid[7]
-    
+
     # Calculate average raw features for better classification
     avg_time = sum(m.features.estimated_item_time for m in members) / len(members)
     avg_pickle = sum(m.features.pickle_size for m in members) / len(members)
-    avg_data_size = sum(m.features.data_size for m in members) / len(members)
-    
+
     # Classification rules
     if norm_time > 0.6 and norm_pickle < 0.3:
         # High execution time, low serialization overhead
@@ -1291,17 +1288,17 @@ def _classify_cluster_type(
 class SimpleLinearPredictor:
     """
     k-Nearest Neighbors predictor for n_jobs and chunksize.
-    
+
     Uses weighted k-nearest neighbors approach with optional workload clustering:
     1. Find k most similar historical workloads (optionally within same cluster)
     2. Weight them by similarity (inverse distance)
     3. Predict as weighted average
-    
+
     Enhanced in Iteration 121 with workload clustering for 15-25% accuracy improvement.
-    
+
     This approach is simple, interpretable, and requires no external dependencies.
     """
-    
+
     def __init__(
         self,
         k: int = DEFAULT_K_VALUE,
@@ -1312,7 +1309,7 @@ class SimpleLinearPredictor:
     ):
         """
         Initialize predictor.
-        
+
         Args:
             k: Number of nearest neighbors to use for prediction (default: 5)
             enable_clustering: Whether to use workload clustering (Iteration 121)
@@ -1325,43 +1322,43 @@ class SimpleLinearPredictor:
         self.enable_clustering = enable_clustering
         self.clusters: List[WorkloadCluster] = []
         self._clusters_dirty = True  # Track if clusters need recomputation
-        
+
         # Feature selection (Iteration 123)
         self.enable_feature_selection = enable_feature_selection
         self.feature_selector = FeatureSelector()
         self._feature_selection_dirty = True  # Track if feature selection needs update
-        
+
         # k-NN hyperparameter tuning (Iteration 124)
         self.auto_tune_k = auto_tune_k
         self._optimal_k: Optional[int] = None  # Cached optimal k value
         self._k_tuning_dirty = True  # Track if k needs retuning
         self._last_k_tuning_size = 0  # Training data size at last k tuning
-        
+
         # Ensemble prediction (Iteration 125)
         self.enable_ensemble = enable_ensemble
         self.ensemble_weights: Dict[str, float] = copy.deepcopy(INITIAL_ENSEMBLE_WEIGHTS)
         self._load_ensemble_weights()  # Load persisted weights if available
-    
+
     def add_training_sample(self, sample: TrainingData):
         """
         Add a training sample to the model.
-        
+
         Marks clusters, feature selection, and k tuning as dirty so they'll be recomputed on next prediction.
         """
         self.training_data.append(sample)
         self._clusters_dirty = True
         self._feature_selection_dirty = True
-        
+
         # Mark k tuning as dirty if training data has grown significantly (Iteration 124)
         if self.auto_tune_k and self._last_k_tuning_size > 0:
             growth_rate = (len(self.training_data) - self._last_k_tuning_size) / self._last_k_tuning_size
             if growth_rate >= K_TUNING_RETUNE_THRESHOLD:
                 self._k_tuning_dirty = True
-    
+
     def _update_clusters(self, verbose: bool = False):
         """
         Update clusters if they're dirty and clustering is enabled.
-        
+
         Args:
             verbose: Whether to print clustering progress
         """
@@ -1372,11 +1369,11 @@ class SimpleLinearPredictor:
             else:
                 # Not enough samples for clustering yet
                 self.clusters = []
-    
+
     def _update_feature_selection(self, verbose: bool = False):
         """
         Update feature selection if dirty and feature selection is enabled.
-        
+
         Args:
             verbose: Whether to print feature selection info
         """
@@ -1386,59 +1383,59 @@ class SimpleLinearPredictor:
                 target_num_features=TARGET_SELECTED_FEATURES
             )
             self._feature_selection_dirty = False
-            
+
             if verbose and len(self.training_data) >= MIN_SAMPLES_FOR_FEATURE_SELECTION:
                 selected = len(self.feature_selector.selected_features)
                 print(f"Feature selection: Using {selected}/12 features")
                 print(f"Selected features: {', '.join(self.feature_selector.feature_names)}")
-    
+
     def _update_k_tuning(self, verbose: bool = False):
         """
         Update optimal k if dirty and auto tuning is enabled (Iteration 124).
-        
+
         Uses cross-validation to find the k value that minimizes prediction error.
-        
+
         Args:
             verbose: Whether to print k tuning info
         """
         if not self.auto_tune_k or not self._k_tuning_dirty:
             return
-        
+
         if len(self.training_data) < MIN_SAMPLES_FOR_K_TUNING:
             # Not enough samples for k tuning yet, use default
             self._optimal_k = self.k  # Use user-specified k
             return
-        
+
         # Find optimal k using cross-validation
         optimal_k = self._select_optimal_k(verbose=verbose)
         self._optimal_k = optimal_k
         self._k_tuning_dirty = False
         self._last_k_tuning_size = len(self.training_data)
-        
+
         if verbose:
             print(f"k-NN tuning: Optimal k={optimal_k} (tested range: {K_RANGE_MIN}-{K_RANGE_MAX})")
-    
+
     def _select_optimal_k(self, verbose: bool = False) -> int:
         """
         Select optimal k using cross-validation (Iteration 124).
-        
+
         Tests k values in range [K_RANGE_MIN, K_RANGE_MAX] and selects the one
         with lowest cross-validation error.
-        
+
         Uses Leave-One-Out CV for small datasets (<50 samples) for maximum
         data efficiency, and k-fold CV for larger datasets for efficiency.
-        
+
         Args:
             verbose: Whether to print CV progress
-        
+
         Returns:
             Optimal k value
         """
         n_samples = len(self.training_data)
-        
+
         # Determine CV strategy based on dataset size
         use_loocv = n_samples < 50
-        
+
         # Test range of k values
         # For LOOCV: need at least k+2 samples (k neighbors + 1 test + 1 validation)
         # For k-fold: need at least k+1 samples per fold
@@ -1446,17 +1443,17 @@ class SimpleLinearPredictor:
             max_k = min(K_RANGE_MAX, n_samples - 2)  # Reserve 2: 1 test + 1 for distance
         else:
             max_k = min(K_RANGE_MAX, n_samples // 2)  # Half for reasonable folding
-        
+
         # Ensure we have a valid range
         if max_k < K_RANGE_MIN:
             # Not enough samples to test even minimum k
             return DEFAULT_K_VALUE
-        
+
         k_values = range(K_RANGE_MIN, max_k + 1)
-        
+
         best_k = DEFAULT_K_VALUE
         best_score = float('inf')
-        
+
         for k_test in k_values:
             if use_loocv:
                 # Leave-One-Out Cross-Validation
@@ -1464,82 +1461,82 @@ class SimpleLinearPredictor:
             else:
                 # k-Fold Cross-Validation
                 score = self._kfold_cv_score(k_test, n_folds=K_TUNING_CV_FOLDS)
-            
+
             if verbose:
                 print(f"  k={k_test}: CV error={score:.4f}")
-            
+
             if score < best_score:
                 best_score = score
                 best_k = k_test
-        
+
         return best_k
-    
+
     def _loocv_score(self, k_test: int) -> float:
         """
         Calculate Leave-One-Out Cross-Validation score for given k.
-        
+
         Args:
             k_test: k value to test
-        
+
         Returns:
             Average prediction error (lower is better)
         """
         n_samples = len(self.training_data)
         errors = []
-        
+
         for i in range(n_samples):
             # Hold out sample i for testing
             test_sample = self.training_data[i]
             train_samples = self.training_data[:i] + self.training_data[i+1:]
-            
+
             # Find k nearest neighbors from training set
             neighbors = self._find_neighbors_from_list(
                 test_sample.features,
                 train_samples,
                 k_test
             )
-            
+
             if not neighbors:
                 continue
-            
+
             # Predict using these neighbors
             pred_n_jobs, pred_chunksize = self._weighted_average(neighbors)
-            
+
             # Calculate error (normalized RMSE for both parameters)
             # Normalize by actual values to make errors comparable
             n_jobs_error = abs(pred_n_jobs - test_sample.n_jobs) / max(1, test_sample.n_jobs)
             chunksize_error = abs(pred_chunksize - test_sample.chunksize) / max(1, test_sample.chunksize)
-            
+
             # Combined error (average of relative errors)
             error = (n_jobs_error + chunksize_error) / 2.0
             errors.append(error)
-        
+
         # Return average error
         return sum(errors) / len(errors) if errors else float('inf')
-    
+
     def _kfold_cv_score(self, k_test: int, n_folds: int = 5) -> float:
         """
         Calculate k-Fold Cross-Validation score for given k.
-        
+
         Args:
             k_test: k value to test
             n_folds: Number of folds for cross-validation
-        
+
         Returns:
             Average prediction error (lower is better)
         """
         n_samples = len(self.training_data)
         fold_size = n_samples // n_folds
         errors = []
-        
+
         for fold_idx in range(n_folds):
             # Split data into train and test
             test_start = fold_idx * fold_size
             test_end = test_start + fold_size if fold_idx < n_folds - 1 else n_samples
-            
+
             test_samples = self.training_data[test_start:test_end]
             train_samples = self.training_data[:test_start] + self.training_data[test_end:]
-            
+
             # Evaluate on this fold
             for test_sample in test_samples:
                 neighbors = self._find_neighbors_from_list(
@@ -1547,21 +1544,21 @@ class SimpleLinearPredictor:
                     train_samples,
                     k_test
                 )
-                
+
                 if not neighbors:
                     continue
-                
+
                 # Predict and calculate error
                 pred_n_jobs, pred_chunksize = self._weighted_average(neighbors)
-                
+
                 n_jobs_error = abs(pred_n_jobs - test_sample.n_jobs) / max(1, test_sample.n_jobs)
                 chunksize_error = abs(pred_chunksize - test_sample.chunksize) / max(1, test_sample.chunksize)
-                
+
                 error = (n_jobs_error + chunksize_error) / 2.0
                 errors.append(error)
-        
+
         return sum(errors) / len(errors) if errors else float('inf')
-    
+
     def _find_neighbors_from_list(
         self,
         features: WorkloadFeatures,
@@ -1570,21 +1567,21 @@ class SimpleLinearPredictor:
     ) -> List[Tuple[float, TrainingData]]:
         """
         Find k nearest neighbors from a specific list of candidate samples.
-        
+
         Similar to _find_nearest_neighbors but works with a custom candidate list
         (used during cross-validation).
-        
+
         Note: This method does not use feature selection to maintain consistency
         during cross-validation. Feature selection is applied to the full training
         set in the main prediction path, but during CV we want to evaluate the
         model's performance on the complete feature space to avoid overfitting
         to the selected features.
-        
+
         Args:
             features: Workload features to find neighbors for
             candidate_samples: List of samples to search in
             k: Number of neighbors to find
-        
+
         Returns:
             List of (distance, training_data) tuples, sorted by distance
         """
@@ -1595,82 +1592,82 @@ class SimpleLinearPredictor:
         for sample in candidate_samples:
             dist = features.distance(sample.features)
             distances.append((dist, sample))
-        
+
         # Sort by distance and take k nearest
         distances.sort(key=lambda x: x[0])
         return distances[:k]
-    
+
     def _load_ensemble_weights(self):
         """
         Load persisted ensemble weights from disk (Iteration 125).
-        
+
         If no persisted weights exist, use initial weights.
         This allows the ensemble to remember which strategies work best
         across program executions.
-        
+
         Validates loaded weights for security: ensures only expected strategies
         with reasonable numeric values are loaded.
         """
         if not self.enable_ensemble:
             return
-        
+
         try:
             from .cache import get_cache_dir
             cache_dir = get_cache_dir()
             weights_path = cache_dir / ENSEMBLE_WEIGHTS_FILE
-            
+
             if weights_path.exists():
                 with open(weights_path, 'r') as f:
                     data = json.load(f)
                     loaded_weights = data.get('weights', {})
-                    
+
                     # Validate loaded weights (security)
                     if not isinstance(loaded_weights, dict):
                         return  # Invalid format, use initial weights
-                    
+
                     # Only load weights for expected strategies
                     valid_strategies = {'knn', 'linear', 'cluster'}
                     validated_weights = {}
-                    
+
                     for strategy, weight in loaded_weights.items():
                         # Check strategy name is expected
                         if strategy not in valid_strategies:
                             continue
-                        
+
                         # Check weight is numeric and reasonable
                         if not isinstance(weight, (int, float)):
                             continue
-                        
+
                         # Enforce reasonable bounds [MIN_STRATEGY_WEIGHT, 10.0]
                         # Weights above 10.0 are unrealistic and could indicate corruption
                         if MIN_STRATEGY_WEIGHT <= weight <= 10.0:
                             validated_weights[strategy] = float(weight)
-                    
+
                     # Only use validated weights if we got all expected strategies
                     if len(validated_weights) >= 2:  # Need at least 2 strategies
                         self.ensemble_weights = validated_weights
         except Exception:
             # If loading fails, just use initial weights
             pass
-    
+
     def _save_ensemble_weights(self):
         """
         Save ensemble weights to disk for persistence (Iteration 125).
         """
         if not self.enable_ensemble:
             return
-        
+
         try:
             from .cache import get_cache_dir
             cache_dir = get_cache_dir()
             weights_path = cache_dir / ENSEMBLE_WEIGHTS_FILE
-            
+
             with open(weights_path, 'w') as f:
                 json.dump({'weights': self.ensemble_weights}, f, indent=2)
         except Exception:
             # Silently fail if saving fails
             pass
-    
+
     def _predict_knn_strategy(
         self,
         features: WorkloadFeatures,
@@ -1679,23 +1676,23 @@ class SimpleLinearPredictor:
     ) -> Optional[Tuple[float, float]]:
         """
         Predict using k-NN strategy with inverse distance weighting (Iteration 125).
-        
+
         This is the original prediction strategy enhanced with clustering.
-        
+
         Args:
             features: Workload features to predict for
             k: Number of neighbors to use
             cluster: Optional cluster to search within
-        
+
         Returns:
             Tuple of (n_jobs, chunksize) predictions, or None if insufficient data
         """
         neighbors = self._find_nearest_neighbors(features, k, cluster=cluster)
         if not neighbors:
             return None
-        
+
         return self._weighted_average(neighbors)
-    
+
     def _predict_linear_strategy(
         self,
         features: WorkloadFeatures,
@@ -1703,15 +1700,15 @@ class SimpleLinearPredictor:
     ) -> Optional[Tuple[float, float]]:
         """
         Predict using linear regression strategy (Iteration 125).
-        
+
         Uses simple linear trends from similar workloads to predict parameters.
         This strategy works well when there are clear linear relationships
         between features and optimal parameters.
-        
+
         Args:
             features: Workload features to predict for
             k: Number of neighbors to use for trend estimation
-        
+
         Returns:
             Tuple of (n_jobs, chunksize) predictions, or None if insufficient data
         """
@@ -1719,33 +1716,33 @@ class SimpleLinearPredictor:
         neighbors = self._find_nearest_neighbors(features, min(k * 2, len(self.training_data)))
         if not neighbors or len(neighbors) < 3:
             return None
-        
+
         # Extract feature vectors and target values
         # Focus on key predictive features: execution_time, data_size, pickle_size
         exec_times = []
         data_sizes = []
         n_jobs_values = []
         chunksize_values = []
-        
+
         for _, sample in neighbors:
             exec_times.append(sample.features.estimated_item_time)
             data_sizes.append(sample.features.data_size)
             n_jobs_values.append(float(sample.n_jobs))
             chunksize_values.append(float(sample.chunksize))
-        
+
         # Simple linear prediction based on execution time correlation
         # (most predictive single feature)
         target_exec_time = features.estimated_item_time
-        
+
         # Find two closest neighbors by execution time for linear interpolation
         exec_time_diffs = [(abs(t - target_exec_time), i) for i, t in enumerate(exec_times)]
         exec_time_diffs.sort()
-        
+
         if len(exec_time_diffs) < 2:
             return None
-        
+
         idx1, idx2 = exec_time_diffs[0][1], exec_time_diffs[1][1]
-        
+
         # Linear interpolation/extrapolation
         t1, t2 = exec_times[idx1], exec_times[idx2]
         if abs(t2 - t1) < 1e-10:
@@ -1757,9 +1754,9 @@ class SimpleLinearPredictor:
             alpha = (target_exec_time - t1) / (t2 - t1)
             pred_n_jobs = n_jobs_values[idx1] + alpha * (n_jobs_values[idx2] - n_jobs_values[idx1])
             pred_chunksize = chunksize_values[idx1] + alpha * (chunksize_values[idx2] - chunksize_values[idx1])
-        
+
         return (max(1.0, pred_n_jobs), max(1.0, pred_chunksize))
-    
+
     def _predict_cluster_strategy(
         self,
         features: WorkloadFeatures,
@@ -1767,35 +1764,35 @@ class SimpleLinearPredictor:
     ) -> Optional[Tuple[float, float]]:
         """
         Predict using cluster-aware median strategy (Iteration 125).
-        
+
         Uses median values from the best matching cluster. This strategy
         is robust to outliers and works well for identifying typical
         parameters for a workload category.
-        
+
         Args:
             features: Workload features to predict for
             cluster: Optional cluster to use (if None, finds best cluster)
-        
+
         Returns:
             Tuple of (n_jobs, chunksize) predictions, or None if no clusters
         """
         if cluster is None:
             cluster = self._find_best_cluster(features)
-        
+
         if cluster is None or not cluster.member_indices:
             return None
-        
+
         # Get all samples in the cluster
         cluster_samples = [self.training_data[i] for i in cluster.member_indices]
-        
+
         if len(cluster_samples) < 3:
             # Not enough samples for reliable median
             return None
-        
+
         # Calculate median n_jobs and chunksize for cluster
         n_jobs_values = sorted([s.n_jobs for s in cluster_samples])
         chunksize_values = sorted([s.chunksize for s in cluster_samples])
-        
+
         mid = len(n_jobs_values) // 2
         if len(n_jobs_values) % 2 == 0:
             median_n_jobs = (n_jobs_values[mid-1] + n_jobs_values[mid]) / 2.0
@@ -1803,9 +1800,9 @@ class SimpleLinearPredictor:
         else:
             median_n_jobs = float(n_jobs_values[mid])
             median_chunksize = float(chunksize_values[mid])
-        
+
         return (median_n_jobs, median_chunksize)
-    
+
     def _ensemble_predict(
         self,
         features: WorkloadFeatures,
@@ -1815,17 +1812,17 @@ class SimpleLinearPredictor:
     ) -> Optional[Tuple[float, float, Dict[str, Tuple[float, float]]]]:
         """
         Make ensemble prediction combining multiple strategies (Iteration 125).
-        
+
         Combines k-NN, linear, and cluster-aware strategies using weighted voting
         based on historical accuracy. Each strategy's weight is adjusted over time
         based on its prediction accuracy.
-        
+
         Args:
             features: Workload features to predict for
             k: Number of neighbors to use
             cluster: Optional best matching cluster
             verbose: Whether to print ensemble details
-        
+
         Returns:
             Tuple of (n_jobs, chunksize, strategy_predictions) or None if all strategies fail
             strategy_predictions is a dict mapping strategy name to its individual prediction
@@ -1836,46 +1833,46 @@ class SimpleLinearPredictor:
             if result is None:
                 return None
             return (result[0], result[1], {'knn': result})
-        
+
         # Get predictions from each strategy
         strategy_predictions = {}
-        
+
         # Strategy 1: k-NN with inverse distance weighting
         knn_pred = self._predict_knn_strategy(features, k, cluster)
         if knn_pred is not None:
             strategy_predictions['knn'] = knn_pred
-        
+
         # Strategy 2: Linear regression based on execution time
         linear_pred = self._predict_linear_strategy(features, k)
         if linear_pred is not None:
             strategy_predictions['linear'] = linear_pred
-        
+
         # Strategy 3: Cluster-aware median
         if self.enable_clustering:
             cluster_pred = self._predict_cluster_strategy(features, cluster)
             if cluster_pred is not None:
                 strategy_predictions['cluster'] = cluster_pred
-        
+
         if not strategy_predictions:
             return None
-        
+
         if verbose:
             print(f"Ensemble predictions from {len(strategy_predictions)} strategies:")
             for name, (nj, cs) in strategy_predictions.items():
                 weight = self.ensemble_weights.get(name, 1.0)
                 print(f"  {name}: n_jobs={nj:.1f}, chunksize={cs:.1f} (weight={weight:.2f})")
-        
+
         # Weighted voting: combine predictions based on strategy weights
         total_weight = 0.0
         weighted_n_jobs = 0.0
         weighted_chunksize = 0.0
-        
+
         for strategy_name, (pred_n_jobs, pred_chunksize) in strategy_predictions.items():
             weight = self.ensemble_weights.get(strategy_name, 1.0)
             total_weight += weight
             weighted_n_jobs += weight * pred_n_jobs
             weighted_chunksize += weight * pred_chunksize
-        
+
         if total_weight < 1e-10:
             # All weights are zero (shouldn't happen), use equal weighting
             final_n_jobs = sum(p[0] for p in strategy_predictions.values()) / len(strategy_predictions)
@@ -1883,9 +1880,9 @@ class SimpleLinearPredictor:
         else:
             final_n_jobs = weighted_n_jobs / total_weight
             final_chunksize = weighted_chunksize / total_weight
-        
+
         return (final_n_jobs, final_chunksize, strategy_predictions)
-    
+
     def update_ensemble_weights(
         self,
         features: WorkloadFeatures,
@@ -1895,10 +1892,10 @@ class SimpleLinearPredictor:
     ):
         """
         Update ensemble weights based on prediction accuracy (Iteration 125).
-        
+
         This allows the ensemble to learn which strategies work best for
         this system and workload mix, adapting over time.
-        
+
         Args:
             features: Workload features that were predicted for
             actual_n_jobs: Actual optimal n_jobs that was found
@@ -1907,77 +1904,77 @@ class SimpleLinearPredictor:
         """
         if not self.enable_ensemble or not strategy_predictions:
             return
-        
+
         # Calculate error for each strategy
         for strategy_name, (pred_n_jobs, pred_chunksize) in strategy_predictions.items():
             # Normalized error (0-1 scale)
             n_jobs_error = abs(pred_n_jobs - actual_n_jobs) / max(1, actual_n_jobs)
             chunksize_error = abs(pred_chunksize - actual_chunksize) / max(1, actual_chunksize)
             avg_error = (n_jobs_error + chunksize_error) / 2.0
-            
+
             # Accuracy: 1.0 - error (capped at [0, 1])
             accuracy = max(0.0, min(1.0, 1.0 - avg_error))
-            
+
             # Update weight using exponential moving average
             # Higher accuracy increases weight, lower accuracy decreases weight
             current_weight = self.ensemble_weights.get(strategy_name, 1.0)
-            
+
             # Target weight: scale accuracy to [MIN_STRATEGY_WEIGHT, 2.0]
             # This keeps weights in a reasonable range
             target_weight = MIN_STRATEGY_WEIGHT + accuracy * (2.0 - MIN_STRATEGY_WEIGHT)
-            
+
             # Gradual update with learning rate
             new_weight = current_weight + ENSEMBLE_LEARNING_RATE * (target_weight - current_weight)
-            
+
             # Enforce minimum weight
             new_weight = max(MIN_STRATEGY_WEIGHT, new_weight)
-            
+
             self.ensemble_weights[strategy_name] = new_weight
-        
+
         # Persist updated weights
         self._save_ensemble_weights()
-    
+
     def _apply_feature_selection(self, feature_vector: List[float]) -> List[float]:
         """
         Apply feature selection to a feature vector if enabled.
-        
+
         Args:
             feature_vector: Full 12-dimensional feature vector
-        
+
         Returns:
             Feature vector (reduced if feature selection enabled, otherwise full)
         """
         if self.enable_feature_selection and len(self.training_data) >= MIN_SAMPLES_FOR_FEATURE_SELECTION:
             return self.feature_selector.apply_to_vector(feature_vector)
         return feature_vector
-    
+
     def _find_best_cluster(self, features: WorkloadFeatures) -> Optional[WorkloadCluster]:
         """
         Find the best matching cluster for given workload features.
-        
+
         Args:
             features: Workload features to classify
-        
+
         Returns:
             Best matching cluster, or None if no clusters available
         """
         if not self.clusters:
             return None
-        
+
         feature_vec = features.to_vector()
-        
+
         # Find cluster with nearest centroid
         min_distance = float('inf')
         best_cluster = None
-        
+
         for cluster in self.clusters:
             distance = cluster.distance_to_centroid(feature_vec)
             if distance < min_distance:
                 min_distance = distance
                 best_cluster = cluster
-        
+
         return best_cluster
-    
+
     def predict(
         self,
         features: WorkloadFeatures,
@@ -1986,69 +1983,69 @@ class SimpleLinearPredictor:
     ) -> Optional[PredictionResult]:
         """
         Predict optimal parameters for given workload features.
-        
+
         Enhanced in Iteration 121 with cluster-aware k-NN for better accuracy.
         Enhanced in Iteration 123 with feature selection for 30-50% faster predictions.
         Enhanced in Iteration 124 with automatic k tuning for 10-20% accuracy improvement.
         Enhanced in Iteration 125 with ensemble predictions for 15-25% additional accuracy improvement.
-        
+
         Args:
             features: Workload features to predict for
             confidence_threshold: Minimum confidence required (0-1)
             verbose: Whether to print prediction details
-        
+
         Returns:
             PredictionResult if confident enough, None otherwise
         """
         if len(self.training_data) < MIN_TRAINING_SAMPLES:
             return None
-        
+
         # Update feature selection if needed (Iteration 123)
         self._update_feature_selection(verbose=verbose)
-        
+
         # Update k tuning if needed (Iteration 124)
         self._update_k_tuning(verbose=verbose)
-        
+
         # Update clusters if needed (Iteration 121)
         self._update_clusters(verbose=verbose)
-        
+
         # Use optimal k if available, otherwise fall back to user-specified k
         k_to_use = self._optimal_k if self._optimal_k is not None else self.k
-        
+
         # Find best matching cluster (Iteration 121)
         best_cluster = self._find_best_cluster(features) if self.enable_clustering else None
-        
+
         if best_cluster and verbose:
             print(f"Classified as: {best_cluster.workload_type} "
                   f"(cluster {best_cluster.cluster_id + 1}/{len(self.clusters)})")
-        
+
         # Make prediction using ensemble if enabled (Iteration 125)
         ensemble_result = self._ensemble_predict(features, k_to_use, best_cluster, verbose=verbose)
-        
+
         if ensemble_result is None:
             return None
-        
+
         n_jobs_pred, chunksize_pred, strategy_predictions = ensemble_result
-        
+
         # Find k nearest neighbors for confidence calculation (use original k-NN)
         neighbors = self._find_nearest_neighbors(features, k_to_use, cluster=best_cluster)
-        
+
         if not neighbors:
             return None
-        
+
         # Calculate confidence based on:
         # 1. Number of neighbors found
         # 2. Similarity of neighbors (low distance = high confidence)
         # 3. Consistency of neighbor predictions
         confidence = self._calculate_confidence(neighbors, features)
-        
+
         if confidence < confidence_threshold:
             return None
-        
+
         # Calculate feature match score (0-1, higher is better)
         # This is the average similarity of the k neighbors
         avg_distance = sum(d for d, _ in neighbors) / len(neighbors)
-        
+
         # Convert distance to similarity [1, 0]
         # Distance range depends on whether feature selection is enabled
         if self.enable_feature_selection and len(self.training_data) >= MIN_SAMPLES_FOR_FEATURE_SELECTION:
@@ -2057,28 +2054,28 @@ class SimpleLinearPredictor:
         else:
             # Without feature selection: full 12 features
             num_features = 12
-        
+
         feature_match_score = max(0.0, 1.0 - (avg_distance / math.sqrt(num_features)))
-        
+
         reason = (
             f"Predicted from {len(neighbors)} similar historical workloads "
             f"(confidence: {confidence:.1%}, match score: {feature_match_score:.1%})"
         )
-        
+
         if best_cluster:
             reason += f" in {best_cluster.workload_type} cluster"
-        
+
         if self.auto_tune_k and self._optimal_k is not None:
             reason += f" using optimal k={k_to_use}"
-        
+
         if self.enable_ensemble and len(strategy_predictions) > 1:
             reason += f" via ensemble ({len(strategy_predictions)} strategies)"
-        
+
         # Predict adaptive chunking parameters (Iteration 119)
         # Only recommend adaptive chunking if CV is high (heterogeneous workload)
         # and we have training samples that used adaptive chunking successfully
         adaptive_params = self._predict_adaptive_chunking(neighbors, features)
-        
+
         return PredictionResult(
             n_jobs=n_jobs_pred,
             chunksize=chunksize_pred,
@@ -2091,7 +2088,7 @@ class SimpleLinearPredictor:
             min_chunksize=adaptive_params['min_chunksize'],
             max_chunksize=adaptive_params['max_chunksize']
         )
-    
+
     def _find_nearest_neighbors(
         self,
         features: WorkloadFeatures,
@@ -2100,14 +2097,14 @@ class SimpleLinearPredictor:
     ) -> List[Tuple[float, TrainingData]]:
         """
         Find k nearest neighbors by Euclidean distance.
-        
+
         Enhanced in Iteration 121 with cluster-aware search for better accuracy.
-        
+
         Args:
             features: Workload features to find neighbors for
             k: Number of neighbors to find
             cluster: If provided, only search within this cluster (Iteration 121)
-        
+
         Returns:
             List of (distance, training_data) tuples, sorted by distance
         """
@@ -2118,7 +2115,7 @@ class SimpleLinearPredictor:
         else:
             # Global search: consider all training data
             candidates = self.training_data
-        
+
         # Calculate distances to all candidates
         # Optimization: Pre-compute query vector once if using feature selection
         if self.enable_feature_selection and len(self.training_data) >= MIN_SAMPLES_FOR_FEATURE_SELECTION:
@@ -2135,11 +2132,11 @@ class SimpleLinearPredictor:
             for sample in candidates:
                 dist = features.distance(sample.features)
                 distances.append((dist, sample))
-        
+
         # Sort by distance and take k nearest
         distances.sort(key=lambda x: x[0])
         return distances[:k]
-    
+
     def _calculate_confidence(
         self,
         neighbors: List[Tuple[float, TrainingData]],
@@ -2147,18 +2144,18 @@ class SimpleLinearPredictor:
     ) -> float:
         """
         Calculate confidence score for prediction.
-        
+
         Confidence is based on:
         1. Proximity of neighbors (closer = higher confidence)
         2. Number of neighbors (more = higher confidence)
         3. Consistency of predictions (low variance = higher confidence)
-        
+
         Returns:
             Confidence score in [0, 1]
         """
         if not neighbors:
             return 0.0
-        
+
         # Factor 1: Proximity score
         # Average distance of neighbors, normalized to [0, 1]
         avg_distance = sum(d for d, _ in neighbors) / len(neighbors)
@@ -2170,16 +2167,15 @@ class SimpleLinearPredictor:
             num_features = 12  # Full feature set
         max_distance = math.sqrt(num_features)
         proximity_score = max(0.0, 1.0 - (avg_distance / max_distance))
-        
+
         # Factor 2: Sample size score
         # More training samples = higher confidence
         sample_size_score = min(1.0, len(self.training_data) / 20.0)
-        
+
         # Factor 3: Consistency score
         # Check variance in predictions
         n_jobs_values = [sample.n_jobs for _, sample in neighbors]
-        chunksize_values = [sample.chunksize for _, sample in neighbors]
-        
+
         # Calculate coefficient of variation for n_jobs
         if len(n_jobs_values) > 1 and sum(n_jobs_values) > 0:
             mean_n_jobs = sum(n_jobs_values) / len(n_jobs_values)
@@ -2189,55 +2185,55 @@ class SimpleLinearPredictor:
             consistency_score = max(0.0, 1.0 - cv_n_jobs)
         else:
             consistency_score = 1.0
-        
+
         # Combine factors (weighted average)
         confidence = (
             0.5 * proximity_score +
             0.2 * sample_size_score +
             0.3 * consistency_score
         )
-        
+
         return min(1.0, max(0.0, confidence))
-    
+
     def _weighted_average(
         self,
         neighbors: List[Tuple[float, TrainingData]]
     ) -> Tuple[int, int]:
         """
         Calculate weighted average of neighbor predictions.
-        
+
         Weights are inverse of distance (closer neighbors have more influence).
         Enhanced in Iteration 117 to also consider cross-system weights.
-        
+
         Returns:
             Tuple of (n_jobs, chunksize)
         """
         # Calculate weights (inverse distance with KNN_DISTANCE_EPSILON to avoid division by zero)
         distance_weights = [1.0 / (dist + KNN_DISTANCE_EPSILON) for dist, _ in neighbors]
-        
+
         # Apply cross-system weights (Iteration 117)
         # Combine distance-based weight with sample weight (for cross-system data)
         combined_weights = [
             dw * sample.weight for dw, (_, sample) in zip(distance_weights, neighbors)
         ]
-        
+
         total_weight = sum(combined_weights)
-        
+
         # Weighted average
         n_jobs_weighted = sum(
             w * sample.n_jobs for w, (_, sample) in zip(combined_weights, neighbors)
         ) / total_weight
-        
+
         chunksize_weighted = sum(
             w * sample.chunksize for w, (_, sample) in zip(combined_weights, neighbors)
         ) / total_weight
-        
+
         # Round to integers and ensure minimum values
         n_jobs = max(1, round(n_jobs_weighted))
         chunksize = max(1, round(chunksize_weighted))
-        
+
         return n_jobs, chunksize
-    
+
     def _predict_adaptive_chunking(
         self,
         neighbors: List[Tuple[float, TrainingData]],
@@ -2245,15 +2241,15 @@ class SimpleLinearPredictor:
     ) -> Dict[str, Any]:
         """
         Predict adaptive chunking parameters based on neighbors.
-        
+
         Adaptive chunking is recommended when:
         1. Workload has high coefficient of variation (CV > ADAPTIVE_CHUNKING_CV_THRESHOLD)
         2. Similar historical workloads benefited from adaptive chunking
-        
+
         Args:
             neighbors: k-nearest neighbors with their distances
             features: Current workload features
-        
+
         Returns:
             Dictionary with adaptive chunking recommendations:
                 - enabled: Whether to enable adaptive chunking
@@ -2264,13 +2260,13 @@ class SimpleLinearPredictor:
         # Check if workload is heterogeneous (high CV)
         cv = features.coefficient_of_variation
         is_heterogeneous = cv > ADAPTIVE_CHUNKING_CV_THRESHOLD
-        
+
         # Check if neighbors used adaptive chunking successfully
         neighbors_with_adaptive = [
             (dist, sample) for dist, sample in neighbors
             if sample.adaptive_chunking_enabled is True
         ]
-        
+
         # Recommend adaptive chunking if workload is heterogeneous
         # AND either we have no data or neighbors used it successfully
         if not is_heterogeneous:
@@ -2281,11 +2277,11 @@ class SimpleLinearPredictor:
                 'min_chunksize': None,
                 'max_chunksize': None
             }
-        
+
         # For heterogeneous workloads, recommend adaptive chunking
         # If we have neighbors that used it, learn from them
         # Otherwise use sensible defaults
-        
+
         if neighbors_with_adaptive:
             # Learn from similar workloads that used adaptive chunking
             # Calculate weighted average of their parameters
@@ -2294,7 +2290,7 @@ class SimpleLinearPredictor:
                 dw * sample.weight for dw, (_, sample) in zip(distance_weights, neighbors_with_adaptive)
             ]
             total_weight = sum(combined_weights)
-            
+
             # Weighted average of adaptation rate
             adaptation_rates = [
                 sample.adaptation_rate for _, sample in neighbors_with_adaptive
@@ -2302,14 +2298,14 @@ class SimpleLinearPredictor:
             ]
             if adaptation_rates and total_weight > 0:
                 adaptation_rate = sum(
-                    w * sample.adaptation_rate 
+                    w * sample.adaptation_rate
                     for w, (_, sample) in zip(combined_weights, neighbors_with_adaptive)
                     if sample.adaptation_rate is not None
                 ) / total_weight
             else:
                 # Default: moderate adaptation for CV 0.3-0.7, aggressive for CV > 0.7
                 adaptation_rate = 0.3 if cv < 0.7 else 0.5
-            
+
             # Weighted average of min_chunksize
             min_chunksizes = [
                 sample.min_chunksize for _, sample in neighbors_with_adaptive
@@ -2317,13 +2313,13 @@ class SimpleLinearPredictor:
             ]
             if min_chunksizes and total_weight > 0:
                 min_chunksize = max(1, round(sum(
-                    w * sample.min_chunksize 
+                    w * sample.min_chunksize
                     for w, (_, sample) in zip(combined_weights, neighbors_with_adaptive)
                     if sample.min_chunksize is not None
                 ) / total_weight))
             else:
                 min_chunksize = 1  # Default minimum
-            
+
             # Weighted average of max_chunksize (if specified)
             max_chunksizes = [
                 sample.max_chunksize for _, sample in neighbors_with_adaptive
@@ -2331,7 +2327,7 @@ class SimpleLinearPredictor:
             ]
             if max_chunksizes and total_weight > 0:
                 max_chunksize = max(min_chunksize + 1, round(sum(
-                    w * sample.max_chunksize 
+                    w * sample.max_chunksize
                     for w, (_, sample) in zip(combined_weights, neighbors_with_adaptive)
                     if sample.max_chunksize is not None
                 ) / total_weight))
@@ -2346,28 +2342,28 @@ class SimpleLinearPredictor:
                 adaptation_rate = 0.4  # Moderate-aggressive
             else:
                 adaptation_rate = 0.3  # Moderate adaptation
-            
+
             min_chunksize = 1
             max_chunksize = None  # No limit
-        
+
         return {
             'enabled': True,
             'adaptation_rate': adaptation_rate,
             'min_chunksize': min_chunksize,
             'max_chunksize': max_chunksize
         }
-    
+
     def analyze_feature_importance(self) -> Dict[str, float]:
         """
         Analyze which features contribute most to prediction differences.
-        
+
         Uses variance-based importance: features with higher variance across
         training samples have more potential to discriminate between different
         optimal parameters.
-        
+
         Returns:
             Dictionary mapping feature names to importance scores (0-1, higher = more important)
-        
+
         Example:
             >>> predictor = SimpleLinearPredictor()
             >>> # ... add training samples ...
@@ -2377,7 +2373,7 @@ class SimpleLinearPredictor:
         if len(self.training_data) < 2:
             # Need at least 2 samples to compute variance
             return {}
-        
+
         # Updated in Iteration 118 to include all 12 features
         # (added l3_cache_size, numa_nodes, memory_bandwidth, has_numa from Iteration 114)
         feature_names = [
@@ -2394,20 +2390,20 @@ class SimpleLinearPredictor:
             'memory_bandwidth',
             'has_numa'
         ]
-        
+
         # Extract feature vectors
         feature_vectors = [sample.features.to_vector() for sample in self.training_data]
-        
+
         # Compute variance for each feature across all samples
         feature_variances = []
         num_features = len(feature_vectors[0])
-        
+
         for i in range(num_features):
             values = [vec[i] for vec in feature_vectors]
             mean_val = sum(values) / len(values)
             variance = sum((x - mean_val) ** 2 for x in values) / len(values)
             feature_variances.append(variance)
-        
+
         # Normalize variances to [0, 1] range
         max_variance = max(feature_variances) if feature_variances else 1.0
         if max_variance > 0:
@@ -2417,22 +2413,22 @@ class SimpleLinearPredictor:
             }
         else:
             normalized_importance = {name: 0.0 for name in feature_names}
-        
+
         return normalized_importance
-    
+
     def analyze_feature_importance_correlation(self) -> Dict[str, Dict[str, float]]:
         """
         Analyze feature importance using correlation with optimal parameters.
-        
+
         This method calculates how strongly each feature correlates with the
         optimal n_jobs and chunksize values. Features with high correlation
         are more predictive of the optimal parameters.
-        
+
         Returns:
             Dictionary with 'n_jobs' and 'chunksize' keys, each mapping feature
             names to correlation scores (0-1, higher = stronger correlation).
             Also includes 'combined' which averages both correlations.
-        
+
         Example:
             >>> predictor = SimpleLinearPredictor()
             >>> # ... add training samples ...
@@ -2444,7 +2440,7 @@ class SimpleLinearPredictor:
         if len(self.training_data) < 2:
             # Need at least 2 samples to compute correlation
             return {'n_jobs': {}, 'chunksize': {}, 'combined': {}}
-        
+
         feature_names = [
             'data_size',
             'execution_time',
@@ -2459,83 +2455,83 @@ class SimpleLinearPredictor:
             'memory_bandwidth',
             'has_numa'
         ]
-        
+
         # Extract feature vectors and targets
         feature_vectors = [sample.features.to_vector() for sample in self.training_data]
         n_jobs_values = [sample.n_jobs for sample in self.training_data]
         chunksize_values = [sample.chunksize for sample in self.training_data]
-        
+
         num_features = len(feature_vectors[0])
-        
+
         # Calculate correlation for each feature with n_jobs
         n_jobs_correlations = []
         for i in range(num_features):
             feature_values = [vec[i] for vec in feature_vectors]
             corr = self._calculate_correlation(feature_values, n_jobs_values)
             n_jobs_correlations.append(abs(corr))  # Use absolute value
-        
+
         # Calculate correlation for each feature with chunksize
         chunksize_correlations = []
         for i in range(num_features):
             feature_values = [vec[i] for vec in feature_vectors]
             corr = self._calculate_correlation(feature_values, chunksize_values)
             chunksize_correlations.append(abs(corr))  # Use absolute value
-        
+
         # Normalize correlations to [0, 1] range
         # Handle case where all correlations are 0.0 (avoid division by zero)
         max_n_jobs_corr = max(n_jobs_correlations) if n_jobs_correlations and max(n_jobs_correlations) > 0 else 1.0
         max_chunksize_corr = max(chunksize_correlations) if chunksize_correlations and max(chunksize_correlations) > 0 else 1.0
-        
+
         n_jobs_importance = {}
         chunksize_importance = {}
         combined_importance = {}
-        
+
         for i, name in enumerate(feature_names):
             n_jobs_score = n_jobs_correlations[i] / max_n_jobs_corr
             chunksize_score = chunksize_correlations[i] / max_chunksize_corr
-            
+
             n_jobs_importance[name] = n_jobs_score
             chunksize_importance[name] = chunksize_score
             # Combined is average of both correlations
             combined_importance[name] = (n_jobs_score + chunksize_score) / 2.0
-        
+
         return {
             'n_jobs': n_jobs_importance,
             'chunksize': chunksize_importance,
             'combined': combined_importance
         }
-    
+
     def _calculate_correlation(self, x: List[float], y: List[float]) -> float:
         """
         Calculate Pearson correlation coefficient between two variables.
-        
+
         Args:
             x: First variable values
             y: Second variable values
-        
+
         Returns:
             Correlation coefficient in [-1, 1] range
         """
         if len(x) != len(y) or len(x) < 2:
             return 0.0
-        
+
         n = len(x)
-        
+
         # Calculate means
         mean_x = sum(x) / n
         mean_y = sum(y) / n
-        
+
         # Calculate covariance and standard deviations
         cov = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n))
         std_x = math.sqrt(sum((x[i] - mean_x) ** 2 for i in range(n)))
         std_y = math.sqrt(sum((y[i] - mean_y) ** 2 for i in range(n)))
-        
+
         # Avoid division by zero
         if std_x == 0 or std_y == 0:
             return 0.0
-        
+
         return cov / (std_x * std_y)
-    
+
     def track_prediction_performance(
         self,
         features: WorkloadFeatures,
@@ -2546,17 +2542,17 @@ class SimpleLinearPredictor:
     ) -> Dict[str, float]:
         """
         Track prediction accuracy by comparing predicted vs actual parameters.
-        
+
         This helps monitor model performance over time and identify when
         the model needs retraining or when confidence thresholds should be adjusted.
-        
+
         Args:
             features: Features used for prediction
             predicted_n_jobs: Model's prediction for n_jobs
             predicted_chunksize: Model's prediction for chunksize
             actual_n_jobs: Actual optimal n_jobs from dry-run
             actual_chunksize: Actual optimal chunksize from dry-run
-        
+
         Returns:
             Dictionary with performance metrics:
                 - n_jobs_error: Absolute error in n_jobs prediction
@@ -2564,7 +2560,7 @@ class SimpleLinearPredictor:
                 - chunksize_error: Absolute error in chunksize prediction
                 - chunksize_relative_error: Relative error (0-1, lower is better)
                 - overall_accuracy: Combined accuracy score (0-1, higher is better)
-        
+
         Example:
             >>> predictor = SimpleLinearPredictor()
             >>> # ... make prediction ...
@@ -2577,15 +2573,15 @@ class SimpleLinearPredictor:
         # Calculate absolute errors
         n_jobs_error = abs(predicted_n_jobs - actual_n_jobs)
         chunksize_error = abs(predicted_chunksize - actual_chunksize)
-        
+
         # Calculate relative errors (0-1, capped at 1.0)
         n_jobs_relative = min(1.0, n_jobs_error / max(1, actual_n_jobs))
         chunksize_relative = min(1.0, chunksize_error / max(1, actual_chunksize))
-        
+
         # Overall accuracy: average of (1 - relative_error) for both parameters
         # This gives a score where 1.0 = perfect, 0.0 = completely wrong
         overall_accuracy = 1.0 - ((n_jobs_relative + chunksize_relative) / 2.0)
-        
+
         return {
             'n_jobs_error': n_jobs_error,
             'n_jobs_relative_error': n_jobs_relative,
@@ -2593,21 +2589,21 @@ class SimpleLinearPredictor:
             'chunksize_relative_error': chunksize_relative,
             'overall_accuracy': overall_accuracy
         }
-    
+
     def get_cluster_statistics(self) -> Dict[str, Any]:
         """
         Get statistics about workload clusters (Iteration 121).
-        
+
         Provides insights into how workloads are grouped and cluster characteristics.
         Useful for understanding prediction behavior and identifying workload patterns.
-        
+
         Returns:
             Dictionary with cluster statistics:
                 - num_clusters: Number of clusters
                 - total_samples: Total training samples
                 - clusters: List of cluster details (id, type, size, typical params)
                 - clustering_enabled: Whether clustering is active
-        
+
         Example:
             >>> predictor = SimpleLinearPredictor(enable_clustering=True)
             >>> # ... add training samples ...
@@ -2618,7 +2614,7 @@ class SimpleLinearPredictor:
         """
         # Update clusters if needed
         self._update_clusters(verbose=False)
-        
+
         if not self.clusters:
             return {
                 'num_clusters': 0,
@@ -2626,7 +2622,7 @@ class SimpleLinearPredictor:
                 'clusters': [],
                 'clustering_enabled': self.enable_clustering
             }
-        
+
         clusters_info = []
         for cluster in self.clusters:
             clusters_info.append({
@@ -2637,7 +2633,7 @@ class SimpleLinearPredictor:
                 'typical_chunksize': cluster.typical_chunksize,
                 'avg_speedup': cluster.avg_speedup
             })
-        
+
         return {
             'num_clusters': len(self.clusters),
             'total_samples': len(self.training_data),
@@ -2657,20 +2653,20 @@ def _get_ml_cache_dir() -> Path:
 def _load_calibration_data() -> CalibrationData:
     """
     Load confidence calibration data from cache (Iteration 116).
-    
+
     Returns:
         CalibrationData object with historical calibration information
     """
     cache_dir = _get_ml_cache_dir()
     calibration_file = cache_dir / CALIBRATION_FILE
-    
+
     if not calibration_file.exists():
         return CalibrationData()
-    
+
     try:
         with open(calibration_file, 'r') as f:
             data = json.load(f)
-        
+
         return CalibrationData(
             predictions=[(p['confidence'], p['accuracy']) for p in data.get('predictions', [])],
             adjusted_threshold=data.get('adjusted_threshold', DEFAULT_CONFIDENCE_THRESHOLD),
@@ -2685,16 +2681,16 @@ def _load_calibration_data() -> CalibrationData:
 def _save_calibration_data(calibration: CalibrationData) -> bool:
     """
     Save confidence calibration data to cache (Iteration 116).
-    
+
     Args:
         calibration: CalibrationData object to save
-    
+
     Returns:
         True if successfully saved, False otherwise
     """
     cache_dir = _get_ml_cache_dir()
     calibration_file = cache_dir / CALIBRATION_FILE
-    
+
     try:
         # Prepare data for JSON serialization
         data = {
@@ -2707,12 +2703,12 @@ def _save_calibration_data(calibration: CalibrationData) -> bool:
             'baseline_threshold': calibration.baseline_threshold,
             'version': '1.0'  # For future compatibility
         }
-        
+
         # Atomic write: write to temp file then rename
         temp_file = calibration_file.with_suffix('.tmp')
         with open(temp_file, 'w') as f:
             json.dump(data, f, indent=2)
-        
+
         # Atomic rename
         temp_file.replace(calibration_file)
         return True
@@ -2723,20 +2719,20 @@ def _save_calibration_data(calibration: CalibrationData) -> bool:
 def _get_current_system_fingerprint() -> SystemFingerprint:
     """
     Create fingerprint for the current system (Iteration 117).
-    
+
     Captures hardware characteristics for cross-system learning:
     - Physical core count
     - L3 cache size
     - NUMA topology
     - Memory bandwidth
     - Multiprocessing start method
-    
+
     Returns:
         SystemFingerprint for current system
     """
     physical_cores = get_physical_cores()
     start_method = get_multiprocessing_start_method()
-    
+
     # Get hardware topology if available
     if _HAS_COST_MODEL:
         try:
@@ -2754,7 +2750,7 @@ def _get_current_system_fingerprint() -> SystemFingerprint:
         l3_cache_mb = 8.0
         numa_nodes = 1
         memory_bandwidth_gb_s = 25.0
-    
+
     return SystemFingerprint(
         physical_cores=physical_cores,
         l3_cache_mb=l3_cache_mb,
@@ -2767,20 +2763,20 @@ def _get_current_system_fingerprint() -> SystemFingerprint:
 def _save_system_fingerprint(fingerprint: SystemFingerprint) -> bool:
     """
     Save system fingerprint to cache (Iteration 117).
-    
+
     Stores the current system's hardware characteristics for cross-system
     learning. This fingerprint is used to identify similar systems and
     enable model transfer.
-    
+
     Args:
         fingerprint: SystemFingerprint object to save
-    
+
     Returns:
         True if successfully saved, False otherwise
     """
     cache_dir = _get_ml_cache_dir()
     fingerprint_file = cache_dir / SYSTEM_FINGERPRINT_FILE
-    
+
     try:
         # Prepare data for JSON serialization
         data = {
@@ -2788,12 +2784,12 @@ def _save_system_fingerprint(fingerprint: SystemFingerprint) -> bool:
             'last_updated': time.time(),
             'version': '1.0'  # For future compatibility
         }
-        
+
         # Atomic write: write to temp file then rename
         temp_file = fingerprint_file.with_suffix('.tmp')
         with open(temp_file, 'w') as f:
             json.dump(data, f, indent=2)
-        
+
         # Atomic rename
         temp_file.replace(fingerprint_file)
         return True
@@ -2804,20 +2800,20 @@ def _save_system_fingerprint(fingerprint: SystemFingerprint) -> bool:
 def _load_system_fingerprint() -> Optional[SystemFingerprint]:
     """
     Load system fingerprint from cache (Iteration 117).
-    
+
     Returns:
         SystemFingerprint if found, None if not cached or invalid
     """
     cache_dir = _get_ml_cache_dir()
     fingerprint_file = cache_dir / SYSTEM_FINGERPRINT_FILE
-    
+
     try:
         if not fingerprint_file.exists():
             return None
-        
+
         with open(fingerprint_file, 'r') as f:
             data = json.load(f)
-        
+
         return SystemFingerprint.from_dict(data['fingerprint'])
     except Exception:
         return None
@@ -2826,7 +2822,7 @@ def _load_system_fingerprint() -> Optional[SystemFingerprint]:
 def _compute_function_signature(func: Callable) -> str:
     """
     Compute a signature for a function to group related optimizations.
-    
+
     Similar to cache.py's function hash, but we use this for grouping
     training data by function.
     """
@@ -2842,14 +2838,14 @@ def _compute_function_signature(func: Callable) -> str:
 def _compute_function_complexity(func: Callable) -> int:
     """
     Compute a complexity metric for a function based on bytecode size.
-    
+
     This is a simple but effective proxy for function complexity:
     - More bytecode = more complex logic
     - Helps ML model differentiate simple vs complex functions
-    
+
     Args:
         func: Function to analyze
-    
+
     Returns:
         Size of function bytecode in bytes (0 if cannot be computed)
     """
@@ -2865,56 +2861,56 @@ def _compute_function_complexity(func: Callable) -> int:
 def load_training_data_from_cache() -> List[TrainingData]:
     """
     Load training data from optimization cache.
-    
+
     Scans the cache directory for successful optimization results
     and extracts training data from them. Also loads data from online
     learning (actual execution results).
-    
+
     Enhanced in Iteration 104 to extract pickle_size, coefficient_of_variation,
     and function_complexity features when available.
-    
+
     Enhanced in Iteration 112 to include online learning data from actual executions.
-    
+
     Returns:
         List of TrainingData samples from both cache and online learning
     """
     training_data = []
-    
+
     try:
         # Import cache module to access cache directory
         from .cache import get_cache_dir
-        
+
         cache_dir = get_cache_dir()
-        
+
         # Scan all cache files
         for cache_file in cache_dir.glob("opt_*.json"):
             try:
                 with open(cache_file, 'r') as f:
                     cache_entry = json.load(f)
-                
+
                 # Extract features and results
                 # Cache entries contain system info and optimization results
                 if 'n_jobs' not in cache_entry or 'chunksize' not in cache_entry:
                     continue
-                
+
                 # Estimate data size from cache key (bucketed)
                 # This is approximate but sufficient for ML training
                 data_size = cache_entry.get('data_size', 1000)
-                
+
                 # Estimate execution time (if available from diagnostic data)
                 # Use a default if not available
                 exec_time = cache_entry.get('avg_execution_time', 0.01)
-                
+
                 # Get system info
                 physical_cores = cache_entry.get('physical_cores', get_physical_cores())
                 available_memory = cache_entry.get('available_memory', get_available_memory())
                 start_method = cache_entry.get('start_method', get_multiprocessing_start_method())
-                
+
                 # Get enhanced features (new in Iteration 104)
                 pickle_size = cache_entry.get('pickle_size', None)
                 coefficient_of_variation = cache_entry.get('coefficient_of_variation', None)
                 function_complexity = cache_entry.get('function_complexity', None)
-                
+
                 # Create features
                 # Note: system_topology is not stored in cache files
                 # Will use default values for hardware features when loading old data
@@ -2929,7 +2925,7 @@ def load_training_data_from_cache() -> List[TrainingData]:
                     function_complexity=function_complexity,
                     system_topology=None  # Not stored in cache, use defaults
                 )
-                
+
                 # Create training sample
                 sample = TrainingData(
                     features=features,
@@ -2938,13 +2934,13 @@ def load_training_data_from_cache() -> List[TrainingData]:
                     speedup=cache_entry.get('estimated_speedup', 1.0),
                     timestamp=cache_entry.get('timestamp', time.time())
                 )
-                
+
                 training_data.append(sample)
-                
+
             except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 # Skip corrupted or incompatible cache entries
                 continue
-    
+
     except (OSError, IOError, PermissionError):
         # If cache access fails, return empty list
         # This is not a critical error - prediction will just fall back to dry-run
@@ -2952,13 +2948,13 @@ def load_training_data_from_cache() -> List[TrainingData]:
     except ImportError:
         # get_cache_dir may not be available
         pass
-    
+
     # Also load online learning training data (from actual executions)
     # This data is typically more accurate as it reflects real performance
     # load_ml_training_data() already has its own exception handling
     online_learning_data = load_ml_training_data()
     training_data.extend(online_learning_data)
-    
+
     return training_data
 
 
@@ -2974,13 +2970,13 @@ def predict_parameters(
 ) -> Optional[PredictionResult]:
     """
     Predict optimal n_jobs and chunksize using ML model.
-    
+
     This function attempts to predict parameters without dry-run sampling
     by learning from historical optimization data.
-    
+
     Enhanced in Iteration 104 with additional features for improved accuracy.
     Enhanced in Iteration 116 with confidence calibration for adaptive thresholds.
-    
+
     Args:
         func: Function to optimize (used for grouping related workloads)
         data_size: Number of items in the dataset
@@ -2990,10 +2986,10 @@ def predict_parameters(
         pickle_size: Average pickle size of return objects (bytes) - optional
         coefficient_of_variation: CV of execution times (0-2) - optional
         use_calibration: If True, use calibrated confidence threshold (Iteration 116)
-    
+
     Returns:
         PredictionResult if confident enough, None if should fall back to dry-run
-    
+
     Example:
         >>> result = predict_parameters(my_func, 10000, 0.001)
         >>> if result and result.confidence > 0.7:
@@ -3018,10 +3014,10 @@ def predict_parameters(
             effective_threshold = confidence_threshold
     else:
         effective_threshold = confidence_threshold
-    
+
     # Compute function complexity
     function_complexity = _compute_function_complexity(func)
-    
+
     # Detect system topology for hardware-aware features (Iteration 114)
     system_topology = None
     if _HAS_COST_MODEL:
@@ -3031,7 +3027,7 @@ def predict_parameters(
         except Exception:
             # Graceful fallback if topology detection fails
             system_topology = None
-    
+
     # Extract features for current workload
     features = WorkloadFeatures(
         data_size=data_size,
@@ -3044,37 +3040,37 @@ def predict_parameters(
         function_complexity=function_complexity,
         system_topology=system_topology
     )
-    
+
     # Load training data from cache
     training_data = load_training_data_from_cache()
-    
+
     if verbose:
         print(f"ML Prediction: Loaded {len(training_data)} training samples from cache")
         if _HAS_COST_MODEL and system_topology:
-            print(f"ML Prediction: Using 12 features (enhanced with hardware topology)")
+            print("ML Prediction: Using 12 features (enhanced with hardware topology)")
         else:
-            print(f"ML Prediction: Using 12 features (with default hardware values)")
-    
+            print("ML Prediction: Using 12 features (with default hardware values)")
+
     if len(training_data) < MIN_TRAINING_SAMPLES:
         if verbose:
             print(f"ML Prediction: Insufficient training data ({len(training_data)} < {MIN_TRAINING_SAMPLES})")
         return None
-    
+
     # Create predictor and add training data
     predictor = SimpleLinearPredictor(k=min(5, len(training_data)))
     for sample in training_data:
         predictor.add_training_sample(sample)
-    
+
     # Make prediction using effective (possibly calibrated) threshold
     prediction = predictor.predict(features, effective_threshold)
-    
+
     if verbose:
         if prediction:
             print(f"ML Prediction: Success - n_jobs={prediction.n_jobs}, "
                   f"chunksize={prediction.chunksize}, confidence={prediction.confidence:.1%}")
         else:
             print(f"ML Prediction: Low confidence (< {effective_threshold:.1%}), falling back to dry-run")
-    
+
     return prediction
 
 
@@ -3090,10 +3086,10 @@ def predict_streaming_parameters(
 ) -> Optional[StreamingPredictionResult]:
     """
     Predict optimal streaming parameters (n_jobs, chunksize, buffer_size) using ML model.
-    
+
     This function extends predict_parameters() to also predict streaming-specific
     parameters like buffer_size and ordering preference (imap vs imap_unordered).
-    
+
     Args:
         func: Function to optimize (used for grouping related workloads)
         data_size: Number of items in the dataset
@@ -3103,10 +3099,10 @@ def predict_streaming_parameters(
         pickle_size: Average pickle size of return objects (bytes) - optional
         coefficient_of_variation: CV of execution times (0-2) - optional
         prefer_ordered: User preference for ordering (None = auto-decide)
-    
+
     Returns:
         StreamingPredictionResult if confident enough, None if should fall back to dry-run
-    
+
     Example:
         >>> result = predict_streaming_parameters(my_func, 10000, 0.001)
         >>> if result and result.confidence > 0.7:
@@ -3124,32 +3120,31 @@ def predict_streaming_parameters(
         pickle_size=pickle_size,
         coefficient_of_variation=coefficient_of_variation
     )
-    
+
     if base_prediction is None:
         if verbose:
             print("ML Streaming Prediction: Base prediction failed, falling back to dry-run")
         return None
-    
+
     # Calculate buffer size based on n_jobs
     # Default: n_jobs * DEFAULT_BUFFER_SIZE_MULTIPLIER for good throughput
     buffer_size = base_prediction.n_jobs * DEFAULT_BUFFER_SIZE_MULTIPLIER
-    
+
     # Adjust buffer size based on estimated memory usage
-    physical_cores = get_physical_cores()
     available_memory = get_available_memory()
-    
+
     if pickle_size and pickle_size > 0:
         # Conservative buffer: use STREAMING_BUFFER_MEMORY_FRACTION of available memory
         max_buffer_memory = available_memory * STREAMING_BUFFER_MEMORY_FRACTION
         max_buffer_items = int(max_buffer_memory / pickle_size)
-        
+
         # Clamp buffer size to memory constraint
         if max_buffer_items < buffer_size:
             buffer_size = max(base_prediction.n_jobs, max_buffer_items)
             if verbose:
                 print(f"ML Streaming Prediction: Adjusted buffer_size to {buffer_size} "
                       f"based on memory constraints")
-    
+
     # Determine ordering preference
     # Use unordered (imap_unordered) if user doesn't care and it's beneficial
     use_ordered = True
@@ -3172,7 +3167,7 @@ def predict_streaming_parameters(
         if verbose:
             method = "imap" if use_ordered else "imap_unordered"
             print(f"ML Streaming Prediction: Using user preference: {method}")
-    
+
     # Create streaming-specific result with adaptive chunking support
     streaming_result = StreamingPredictionResult(
         n_jobs=base_prediction.n_jobs,
@@ -3188,17 +3183,17 @@ def predict_streaming_parameters(
         min_chunksize=base_prediction.min_chunksize,
         max_chunksize=base_prediction.max_chunksize
     )
-    
+
     if verbose:
         method = "imap" if use_ordered else "imap_unordered"
-        print(f"ML Streaming Prediction: Success")
+        print("ML Streaming Prediction: Success")
         print(f"  n_jobs={streaming_result.n_jobs}, "
               f"chunksize={streaming_result.chunksize}, "
               f"buffer_size={streaming_result.buffer_size}")
         print(f"  method={method}, confidence={streaming_result.confidence:.1%}")
         if streaming_result.adaptive_chunking_enabled:
             print(f"  adaptive_chunking: enabled (rate={streaming_result.adaptation_rate:.2f})")
-    
+
     return streaming_result
 
 
@@ -3219,11 +3214,11 @@ def update_model_from_execution(
 ) -> bool:
     """
     Update ML model with actual execution results (online learning).
-    
+
     This function implements online learning by adding actual execution results
     to the training data, allowing the model to continuously improve without
     manual retraining.
-    
+
     Args:
         func: The function that was executed
         data_size: Number of items processed
@@ -3238,10 +3233,10 @@ def update_model_from_execution(
         min_chunksize: Minimum chunk size if adaptive chunking was used (Iteration 119)
         max_chunksize: Maximum chunk size if adaptive chunking was used (Iteration 119)
         verbose: If True, print diagnostic information
-    
+
     Returns:
         True if successfully updated, False otherwise
-    
+
     Example:
         >>> # After executing with optimized parameters
         >>> result = optimize(my_func, data, verbose=True)
@@ -3256,7 +3251,7 @@ def update_model_from_execution(
     try:
         # Compute function complexity
         function_complexity = _compute_function_complexity(func)
-        
+
         # Detect system topology for hardware-aware features (Iteration 114)
         system_topology = None
         if _HAS_COST_MODEL:
@@ -3266,7 +3261,7 @@ def update_model_from_execution(
             except Exception:
                 # Graceful fallback if topology detection fails
                 system_topology = None
-        
+
         # Create features for this execution
         features = WorkloadFeatures(
             data_size=data_size,
@@ -3279,14 +3274,14 @@ def update_model_from_execution(
             function_complexity=function_complexity,
             system_topology=system_topology
         )
-        
+
         # Capture system fingerprint for cross-system learning (Iteration 117)
         system_fingerprint = _get_current_system_fingerprint()
-        
+
         # Save system fingerprint if not already saved
         if _load_system_fingerprint() is None:
             _save_system_fingerprint(system_fingerprint)
-        
+
         # Create training sample from execution results
         training_sample = TrainingData(
             features=features,
@@ -3300,11 +3295,11 @@ def update_model_from_execution(
             min_chunksize=min_chunksize,
             max_chunksize=max_chunksize
         )
-        
+
         # Save to cache in ML-specific format for training
         # This uses the same cache infrastructure but with execution results
         cache_dir = _get_ml_cache_dir()
-        
+
         # Generate unique filename using the format constant
         func_hash = _compute_function_signature(func)
         timestamp_ms = int(time.time() * 1000)  # Milliseconds for uniqueness
@@ -3312,7 +3307,7 @@ def update_model_from_execution(
             func_hash=func_hash,
             timestamp=timestamp_ms
         )
-        
+
         # Prepare data for JSON serialization
         training_data = {
             'version': ML_TRAINING_DATA_VERSION,  # Version field for future migrations
@@ -3339,20 +3334,20 @@ def update_model_from_execution(
             'min_chunksize': min_chunksize,
             'max_chunksize': max_chunksize
         }
-        
+
         # Write to file atomically
         temp_file = cache_file.with_suffix('.tmp')
         with open(temp_file, 'w') as f:
             json.dump(training_data, f, indent=2)
         temp_file.replace(cache_file)
-        
+
         if verbose:
-            print(f"✓ Online Learning: Added training sample to model")
+            print("✓ Online Learning: Added training sample to model")
             print(f"  n_jobs={actual_n_jobs}, chunksize={actual_chunksize}, speedup={actual_speedup:.2f}x")
             print(f"  Training data saved to: {cache_file.name}")
-        
+
         return True
-        
+
     except (OSError, IOError, PermissionError) as e:
         # File system errors
         if verbose:
@@ -3389,11 +3384,11 @@ def update_model_from_streaming_execution(
 ) -> bool:
     """
     Update ML model with actual streaming execution results (online learning for streaming).
-    
+
     This function implements online learning specifically for streaming workloads,
     capturing streaming-specific parameters like buffer_size and use_ordered (imap vs imap_unordered),
     plus adaptive chunking parameters for heterogeneous workloads.
-    
+
     Args:
         func: The function that was executed in streaming mode
         data_size: Number of items processed
@@ -3410,10 +3405,10 @@ def update_model_from_streaming_execution(
         min_chunksize: Minimum chunk size used if adaptive chunking enabled (Iteration 120)
         max_chunksize: Maximum chunk size used if adaptive chunking enabled (Iteration 120)
         verbose: If True, print diagnostic information
-    
+
     Returns:
         True if successfully updated, False otherwise
-    
+
     Example:
         >>> # After streaming execution with optimized parameters
         >>> result = optimize_streaming(my_func, data, enable_ml_prediction=True)
@@ -3427,12 +3422,12 @@ def update_model_from_streaming_execution(
         ...     adaptive_chunking_enabled=True,
         ...     adaptation_rate=0.3
         ... )
-    
+
     New in Iteration 115:
         This function enables streaming workloads to benefit from online learning,
         just like batch workloads. The model learns optimal buffer sizes and ordering
         preferences over time for better predictions.
-    
+
     New in Iteration 120:
         Added adaptive chunking parameter tracking for streaming workloads. ML can now
         learn optimal adaptation rates for heterogeneous streaming workloads.
@@ -3440,7 +3435,7 @@ def update_model_from_streaming_execution(
     try:
         # Compute function complexity
         function_complexity = _compute_function_complexity(func)
-        
+
         # Detect system topology for hardware-aware features (Iteration 114)
         system_topology = None
         if _HAS_COST_MODEL:
@@ -3450,7 +3445,7 @@ def update_model_from_streaming_execution(
             except Exception:
                 # Graceful fallback if topology detection fails
                 system_topology = None
-        
+
         # Create features for this execution
         features = WorkloadFeatures(
             data_size=data_size,
@@ -3463,7 +3458,7 @@ def update_model_from_streaming_execution(
             function_complexity=function_complexity,
             system_topology=system_topology
         )
-        
+
         # Create training sample from streaming execution results
         training_sample = TrainingData(
             features=features,
@@ -3479,16 +3474,16 @@ def update_model_from_streaming_execution(
             min_chunksize=min_chunksize,
             max_chunksize=max_chunksize
         )
-        
+
         # Save to cache in ML-specific format for training
         cache_dir = _get_ml_cache_dir()
-        
+
         # Generate unique filename using the format constant
         func_hash = _compute_function_signature(func)
         timestamp_ms = int(time.time() * 1000)  # Milliseconds for uniqueness
         # Use "streaming" prefix to distinguish from batch training data
         cache_file = cache_dir / f"ml_training_streaming_{func_hash}_{timestamp_ms}.json"
-        
+
         # Prepare data for JSON serialization (includes streaming parameters)
         training_data = {
             'version': ML_TRAINING_DATA_VERSION,  # Version field for future migrations
@@ -3517,23 +3512,23 @@ def update_model_from_streaming_execution(
             'min_chunksize': min_chunksize,
             'max_chunksize': max_chunksize
         }
-        
+
         # Write to file atomically
         temp_file = cache_file.with_suffix('.tmp')
         with open(temp_file, 'w') as f:
             json.dump(training_data, f, indent=2)
         temp_file.replace(cache_file)
-        
+
         if verbose:
-            print(f"✓ Streaming Online Learning: Added training sample to model")
+            print("✓ Streaming Online Learning: Added training sample to model")
             print(f"  n_jobs={actual_n_jobs}, chunksize={actual_chunksize}, speedup={actual_speedup:.2f}x")
             print(f"  buffer_size={buffer_size}, use_ordered={use_ordered}")
             if adaptive_chunking_enabled:
                 print(f"  adaptive_chunking: enabled (rate={adaptation_rate:.2f})")
             print(f"  Training data saved to: {cache_file.name}")
-        
+
         return True
-        
+
     except (OSError, IOError, PermissionError) as e:
         # File system errors
         if verbose:
@@ -3559,27 +3554,27 @@ def track_prediction_accuracy(
 ) -> bool:
     """
     Track accuracy of a prediction for confidence calibration (Iteration 116).
-    
+
     This function updates the calibration system with the accuracy of a prediction,
     enabling the system to adaptively adjust confidence thresholds over time.
-    
+
     Call this function after:
     1. Making a prediction with predict_parameters()
     2. Running the actual optimization (dry-run or execution)
     3. Obtaining the actual optimal parameters
-    
+
     The system will use this information to recalibrate confidence thresholds,
     making the ML vs dry-run trade-off more intelligent over time.
-    
+
     Args:
         predicted_result: The prediction that was made
         actual_n_jobs: Actual optimal n_jobs from dry-run/execution
         actual_chunksize: Actual optimal chunksize from dry-run/execution
         verbose: If True, print diagnostic information
-    
+
     Returns:
         True if successfully tracked, False otherwise
-    
+
     Example:
         >>> # Make a prediction
         >>> prediction = predict_parameters(my_func, 10000, 0.001)
@@ -3593,48 +3588,48 @@ def track_prediction_accuracy(
     try:
         # Load current calibration data
         calibration = _load_calibration_data()
-        
+
         # Calculate prediction accuracy
         n_jobs_error = abs(predicted_result.n_jobs - actual_n_jobs)
         chunksize_error = abs(predicted_result.chunksize - actual_chunksize)
-        
+
         # Calculate relative errors
         n_jobs_relative = min(1.0, n_jobs_error / max(1, actual_n_jobs))
         chunksize_relative = min(1.0, chunksize_error / max(1, actual_chunksize))
-        
+
         # Overall accuracy: 1.0 = perfect, 0.0 = completely wrong
         accuracy = 1.0 - ((n_jobs_relative + chunksize_relative) / 2.0)
-        
+
         # Add to calibration data
         calibration.add_prediction_result(
             confidence=predicted_result.confidence,
             accuracy=accuracy
         )
-        
+
         if verbose:
             print(f"Calibration: Tracked prediction accuracy {accuracy:.1%} "
                   f"(confidence was {predicted_result.confidence:.1%})")
             print(f"Calibration: n_jobs error={n_jobs_error}, chunksize error={chunksize_error}")
-        
+
         # Recalibrate threshold if we have enough samples
         if len(calibration.predictions) >= MIN_CALIBRATION_SAMPLES:
             old_threshold = calibration.adjusted_threshold
             new_threshold = calibration.recalibrate_threshold()
-            
+
             if verbose and abs(new_threshold - old_threshold) > 0.01:
                 stats = calibration.get_calibration_stats()
                 print(f"Calibration: Adjusted threshold from {old_threshold:.2f} to {new_threshold:.2f}")
                 print(f"Calibration: Mean accuracy={stats['mean_accuracy']:.1%}, "
                       f"high-conf accuracy={stats['high_confidence_accuracy']:.1%}")
-        
+
         # Save updated calibration data
         success = _save_calibration_data(calibration)
-        
+
         if verbose and success:
             print(f"Calibration: Saved data ({len(calibration.predictions)} samples)")
-        
+
         return success
-        
+
     except Exception as e:
         if verbose:
             print(f"Failed to track prediction accuracy: {e}")
@@ -3644,13 +3639,13 @@ def track_prediction_accuracy(
 def get_calibration_stats(verbose: bool = False) -> Dict[str, Any]:
     """
     Get current calibration statistics (Iteration 116).
-    
+
     Returns information about the confidence calibration system, including
     prediction accuracy history and current threshold settings.
-    
+
     Args:
         verbose: If True, print diagnostic information
-    
+
     Returns:
         Dictionary with calibration statistics:
             - adjusted_threshold: Current calibrated threshold
@@ -3659,7 +3654,7 @@ def get_calibration_stats(verbose: bool = False) -> Dict[str, Any]:
             - high_confidence_accuracy: Accuracy when confidence >= threshold
             - sample_count: Number of calibration samples
             - last_update: Timestamp of last update
-    
+
     Example:
         >>> stats = get_calibration_stats(verbose=True)
         >>> print(f"Current threshold: {stats['adjusted_threshold']:.2f}")
@@ -3668,7 +3663,7 @@ def get_calibration_stats(verbose: bool = False) -> Dict[str, Any]:
     try:
         calibration = _load_calibration_data()
         stats = calibration.get_calibration_stats()
-        
+
         result = {
             'adjusted_threshold': calibration.adjusted_threshold,
             'baseline_threshold': calibration.baseline_threshold,
@@ -3679,17 +3674,17 @@ def get_calibration_stats(verbose: bool = False) -> Dict[str, Any]:
             'sample_count': stats['sample_count'],
             'last_update': calibration.last_update
         }
-        
+
         if verbose:
-            print(f"Calibration Statistics:")
+            print("Calibration Statistics:")
             print(f"  Adjusted threshold: {result['adjusted_threshold']:.2f}")
             print(f"  Baseline threshold: {result['baseline_threshold']:.2f}")
             print(f"  Mean accuracy: {result['mean_accuracy']:.1%}")
             print(f"  High-confidence accuracy: {result['high_confidence_accuracy']:.1%}")
             print(f"  Sample count: {result['sample_count']}")
-        
+
         return result
-        
+
     except Exception:
         # Return defaults if calibration data unavailable
         return {
@@ -3711,43 +3706,43 @@ def load_ml_training_data(
 ) -> List[TrainingData]:
     """
     Load training data specifically saved by online learning.
-    
+
     This loads data from ml_training_*.json files saved by
     update_model_from_execution(), which contain actual execution results.
-    
+
     Enhanced in Iteration 117 with cross-system learning support.
     When enable_cross_system=True, loads training data from similar systems
     and weights it based on hardware similarity.
-    
+
     Args:
         enable_cross_system: If True, load and weight data from similar systems
         min_similarity: Minimum similarity score (0-1) to include cross-system data
         verbose: If True, print diagnostic information
-    
+
     Returns:
         List of TrainingData samples from online learning (local + cross-system)
     """
     training_data = []
-    
+
     # Get current system fingerprint for cross-system weighting
     current_system = None
     if enable_cross_system:
         current_system = _get_current_system_fingerprint()
         if verbose:
             print(f"Cross-System Learning: Current system: {current_system}")
-    
+
     try:
         cache_dir = _get_ml_cache_dir()
-        
+
         # Load ML-specific training files
         for cache_file in cache_dir.glob("ml_training_*.json"):
             try:
                 with open(cache_file, 'r') as f:
                     data = json.load(f)
-                
+
                 # Apply migrations to bring data to current version
                 data = _migrate_training_data(data, verbose=verbose)
-                
+
                 # Extract features
                 feat_dict = data.get('features', {})
                 # Note: system_topology is not stored in cache files
@@ -3763,7 +3758,7 @@ def load_ml_training_data(
                     function_complexity=feat_dict.get('function_complexity'),
                     system_topology=None  # Not stored in cache, use defaults
                 )
-                
+
                 # Load system fingerprint if available (Iteration 117)
                 sample_system = None
                 system_fingerprint_dict = data.get('system_fingerprint')
@@ -3773,7 +3768,7 @@ def load_ml_training_data(
                     except (KeyError, TypeError):
                         # Old data without fingerprint or corrupted fingerprint
                         sample_system = None
-                
+
                 # Calculate sample weight based on system similarity
                 weight = 1.0  # Default weight for local system data
                 if enable_cross_system and current_system and sample_system:
@@ -3781,21 +3776,21 @@ def load_ml_training_data(
                     if sample_system.system_id != current_system.system_id:
                         # Different system - calculate similarity
                         similarity = current_system.similarity(sample_system)
-                        
+
                         if similarity < min_similarity:
                             # System too different, skip this sample
                             if verbose:
                                 print(f"Cross-System Learning: Skipping sample from "
                                       f"{sample_system} (similarity={similarity:.2f})")
                             continue
-                        
+
                         # Apply cross-system weight based on similarity
                         weight = CROSS_SYSTEM_WEIGHT * similarity
-                        
+
                         if verbose:
                             print(f"Cross-System Learning: Including sample from similar system "
                                   f"(similarity={similarity:.2f}, weight={weight:.2f})")
-                
+
                 # Create training sample (with streaming support from Iteration 115)
                 sample = TrainingData(
                     features=features,
@@ -3814,48 +3809,48 @@ def load_ml_training_data(
                     min_chunksize=data.get('min_chunksize'),
                     max_chunksize=data.get('max_chunksize')
                 )
-                
+
                 training_data.append(sample)
-                
-            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
                 # Skip corrupted or invalid files
                 # Could log these in verbose mode for debugging
                 if verbose:
                     print(f"Warning: Skipping corrupted training file: {cache_file.name}")
                 continue
-            except (OSError, IOError) as e:
+            except (OSError, IOError):
                 # Skip files with read errors
                 continue
-    
+
     except (OSError, IOError, PermissionError):
         # If cache directory access fails, return empty list
         # This is not a critical error - prediction will just have less data
         pass
-    
+
     if verbose and enable_cross_system:
-        local_count = sum(1 for s in training_data 
+        local_count = sum(1 for s in training_data
                          if s.system_fingerprint and current_system and
                          s.system_fingerprint.system_id == current_system.system_id)
         cross_system_count = len(training_data) - local_count
         print(f"Cross-System Learning: Loaded {len(training_data)} total samples "
               f"({local_count} local, {cross_system_count} cross-system)")
-    
+
     return training_data
 
 
 def _migrate_training_data_v1_to_v2(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Migrate training data from version 1 to version 2.
-    
+
     Version 1: Original format (Iterations 115-121)
     Version 2: Added version field and migration support (Iteration 122)
-    
+
     Args:
         data: Training data dictionary in version 1 format
-    
+
     Returns:
         Training data dictionary in version 2 format
-    
+
     Changes:
         - Added 'version' field set to 2
         - No other schema changes (version 2 is backward compatible)
@@ -3869,24 +3864,24 @@ def _migrate_training_data_v1_to_v2(data: Dict[str, Any]) -> Dict[str, Any]:
 def _migrate_training_data(data: Dict[str, Any], verbose: bool = False) -> Dict[str, Any]:
     """
     Automatically migrate training data to the current version.
-    
+
     This function detects the version of loaded training data and applies
     all necessary migrations to bring it to the current format.
-    
+
     Args:
         data: Training data dictionary (any version)
         verbose: If True, print migration information
-    
+
     Returns:
         Training data dictionary in current version format
-    
+
     Migration Chain:
         v1 → v2: Add version field (backward compatible)
-        
+
     Future versions should extend this chain:
         v2 → v3: Apply _migrate_training_data_v2_to_v3()
         v3 → v4: Apply _migrate_training_data_v3_to_v4()
-    
+
     Example:
         >>> data = json.load(f)
         >>> data = _migrate_training_data(data, verbose=True)
@@ -3894,40 +3889,40 @@ def _migrate_training_data(data: Dict[str, Any], verbose: bool = False) -> Dict[
     """
     # Detect current version (use constant for default if no version field)
     current_version = data.get('version', DEFAULT_VERSION_IF_MISSING)
-    
+
     if current_version == ML_TRAINING_DATA_VERSION:
         # Already at current version
         return data
-    
+
     if verbose:
         print(f"Migrating training data from v{current_version} to v{ML_TRAINING_DATA_VERSION}")
-    
+
     # Apply migration chain
     migrated = data
-    
+
     if current_version == 1:
         # v1 → v2
         migrated = _migrate_training_data_v1_to_v2(migrated)
         current_version = 2
-    
+
     # Future migrations would go here:
     # if current_version == 2:
     #     migrated = _migrate_training_data_v2_to_v3(migrated)
     #     current_version = 3
-    
+
     if verbose:
         print(f"✓ Migration complete: v{data.get('version', 1)} → v{current_version}")
-    
+
     return migrated
 
 
 def get_ml_training_data_version() -> int:
     """
     Get the current ML training data format version.
-    
+
     Returns:
         Current version number
-    
+
     Example:
         >>> version = get_ml_training_data_version()
         >>> print(f"ML training data format version: {version}")

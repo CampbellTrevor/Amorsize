@@ -10,8 +10,8 @@ The module gracefully handles missing matplotlib dependency.
 """
 
 import warnings
-from typing import List, Optional, Dict, Any
 from pathlib import Path
+from typing import Dict, List, Optional
 
 # Try to import matplotlib, but don't fail if it's not available
 try:
@@ -27,7 +27,7 @@ except ImportError:
 def check_matplotlib() -> bool:
     """
     Check if matplotlib is available.
-    
+
     Returns:
         True if matplotlib is installed, False otherwise
     """
@@ -59,7 +59,7 @@ def plot_comparison_times(
 ) -> Optional[str]:
     """
     Create a bar chart comparing execution times across strategies.
-    
+
     Args:
         config_names: Names of configurations
         execution_times: Execution times for each config (seconds)
@@ -67,10 +67,10 @@ def plot_comparison_times(
         title: Chart title
         figsize: Figure size in inches (width, height)
         show_values: Whether to display values on bars
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> names = ["Serial", "4 workers", "8 workers"]
         >>> times = [10.0, 3.2, 2.1]
@@ -79,21 +79,21 @@ def plot_comparison_times(
     """
     if len(config_names) != len(execution_times):
         raise ValueError("config_names and execution_times must have same length")
-    
+
     if not config_names:
         raise ValueError("At least one configuration is required")
-    
+
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
-    
+
     # Create bar chart
     bars = ax.bar(range(len(config_names)), execution_times, color='steelblue', alpha=0.8)
-    
+
     # Highlight the best (fastest) configuration
     best_idx = execution_times.index(min(execution_times))
     bars[best_idx].set_color('green')
     bars[best_idx].set_alpha(1.0)
-    
+
     # Customize the plot
     ax.set_xlabel('Configuration', fontsize=12)
     ax.set_ylabel('Execution Time (seconds)', fontsize=12)
@@ -101,7 +101,7 @@ def plot_comparison_times(
     ax.set_xticks(range(len(config_names)))
     ax.set_xticklabels(config_names, rotation=45, ha='right')
     ax.grid(axis='y', alpha=0.3, linestyle='--')
-    
+
     # Add value labels on bars if requested
     if show_values:
         for i, (bar, time) in enumerate(zip(bars, execution_times)):
@@ -114,14 +114,14 @@ def plot_comparison_times(
                 va='bottom',
                 fontsize=10
             )
-    
+
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
-    
+
     # Save the figure
     if output_path is None:
         output_path = "amorsize_comparison_times.png"
-    
+
     try:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -144,7 +144,7 @@ def plot_speedup_comparison(
 ) -> Optional[str]:
     """
     Create a bar chart comparing speedups relative to baseline.
-    
+
     Args:
         config_names: Names of configurations
         speedups: Speedup factors relative to serial (e.g., 2.5x means 2.5x faster)
@@ -153,10 +153,10 @@ def plot_speedup_comparison(
         figsize: Figure size in inches (width, height)
         show_values: Whether to display values on bars
         baseline_name: Name of the baseline configuration (usually "Serial")
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> names = ["Serial", "4 workers", "8 workers"]
         >>> speedups = [1.0, 3.1, 4.8]
@@ -165,13 +165,13 @@ def plot_speedup_comparison(
     """
     if len(config_names) != len(speedups):
         raise ValueError("config_names and speedups must have same length")
-    
+
     if not config_names:
         raise ValueError("At least one configuration is required")
-    
+
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
-    
+
     # Color bars based on speedup value
     colors = []
     for speedup in speedups:
@@ -183,13 +183,13 @@ def plot_speedup_comparison(
             colors.append('yellow')  # Moderate improvement
         else:
             colors.append('green')  # Good improvement
-    
+
     # Create bar chart
     bars = ax.bar(range(len(config_names)), speedups, color=colors, alpha=0.8)
-    
+
     # Add horizontal line at 1.0x (baseline)
     ax.axhline(y=1.0, color='gray', linestyle='--', linewidth=2, label=f'{baseline_name} baseline')
-    
+
     # Customize the plot
     ax.set_xlabel('Configuration', fontsize=12)
     ax.set_ylabel('Speedup (x)', fontsize=12)
@@ -198,7 +198,7 @@ def plot_speedup_comparison(
     ax.set_xticklabels(config_names, rotation=45, ha='right')
     ax.grid(axis='y', alpha=0.3, linestyle='--')
     ax.legend()
-    
+
     # Add value labels on bars if requested
     if show_values:
         for i, (bar, speedup) in enumerate(zip(bars, speedups)):
@@ -211,14 +211,14 @@ def plot_speedup_comparison(
                 va='bottom',
                 fontsize=10
             )
-    
+
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
-    
+
     # Save the figure
     if output_path is None:
         output_path = "amorsize_speedup_comparison.png"
-    
+
     try:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -242,7 +242,7 @@ def plot_overhead_breakdown(
 ) -> Optional[str]:
     """
     Create a stacked bar chart showing overhead breakdown.
-    
+
     Args:
         n_workers_list: List of worker counts
         compute_times: Pure computation times for each worker count
@@ -252,10 +252,10 @@ def plot_overhead_breakdown(
         output_path: Path to save the plot (if None, returns path to temp file)
         title: Chart title
         figsize: Figure size in inches (width, height)
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> workers = [1, 2, 4, 8]
         >>> compute = [10.0, 5.0, 2.5, 1.3]
@@ -265,32 +265,32 @@ def plot_overhead_breakdown(
         >>> plot_overhead_breakdown(workers, compute, spawn, ipc, chunk, "overhead.png")
         'overhead.png'
     """
-    if not (len(n_workers_list) == len(compute_times) == len(spawn_overheads) == 
+    if not (len(n_workers_list) == len(compute_times) == len(spawn_overheads) ==
             len(ipc_overheads) == len(chunking_overheads)):
         raise ValueError("All input lists must have the same length")
-    
+
     if not n_workers_list:
         raise ValueError("At least one data point is required")
-    
+
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
-    
+
     # Create stacked bar chart
     x_pos = range(len(n_workers_list))
-    
+
     # Stack the bars (bottom to top: compute, spawn, ipc, chunking)
-    bars1 = ax.bar(x_pos, compute_times, label='Computation', color='steelblue', alpha=0.8)
-    bars2 = ax.bar(x_pos, spawn_overheads, bottom=compute_times, 
-                   label='Spawn Overhead', color='orange', alpha=0.8)
-    
+    ax.bar(x_pos, compute_times, label='Computation', color='steelblue', alpha=0.8)
+    ax.bar(x_pos, spawn_overheads, bottom=compute_times,
+           label='Spawn Overhead', color='orange', alpha=0.8)
+
     bottom2 = [c + s for c, s in zip(compute_times, spawn_overheads)]
-    bars3 = ax.bar(x_pos, ipc_overheads, bottom=bottom2,
-                   label='IPC Overhead', color='red', alpha=0.8)
-    
+    ax.bar(x_pos, ipc_overheads, bottom=bottom2,
+           label='IPC Overhead', color='red', alpha=0.8)
+
     bottom3 = [b + i for b, i in zip(bottom2, ipc_overheads)]
-    bars4 = ax.bar(x_pos, chunking_overheads, bottom=bottom3,
-                   label='Chunking Overhead', color='purple', alpha=0.8)
-    
+    ax.bar(x_pos, chunking_overheads, bottom=bottom3,
+           label='Chunking Overhead', color='purple', alpha=0.8)
+
     # Customize the plot
     ax.set_xlabel('Number of Workers', fontsize=12)
     ax.set_ylabel('Time (seconds)', fontsize=12)
@@ -299,14 +299,14 @@ def plot_overhead_breakdown(
     ax.set_xticklabels([str(n) for n in n_workers_list])
     ax.legend(loc='upper right')
     ax.grid(axis='y', alpha=0.3, linestyle='--')
-    
+
     # Adjust layout
     plt.tight_layout()
-    
+
     # Save the figure
     if output_path is None:
         output_path = "amorsize_overhead_breakdown.png"
-    
+
     try:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -328,7 +328,7 @@ def plot_scaling_curve(
 ) -> Optional[str]:
     """
     Create a line plot showing how execution time scales with worker count.
-    
+
     Args:
         n_workers_list: List of worker counts
         execution_times: Execution times for each worker count
@@ -336,10 +336,10 @@ def plot_scaling_curve(
         output_path: Path to save the plot (if None, returns path to temp file)
         title: Chart title
         figsize: Figure size in inches (width, height)
-    
+
     Returns:
         Path to saved plot file, or None if saving failed
-        
+
     Example:
         >>> workers = [1, 2, 4, 8, 16]
         >>> times = [10.0, 5.5, 3.2, 2.0, 1.5]
@@ -349,17 +349,17 @@ def plot_scaling_curve(
     """
     if len(n_workers_list) != len(execution_times):
         raise ValueError("n_workers_list and execution_times must have same length")
-    
+
     if not n_workers_list:
         raise ValueError("At least one data point is required")
-    
+
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
-    
+
     # Plot actual execution times
-    ax.plot(n_workers_list, execution_times, marker='o', linewidth=2, 
+    ax.plot(n_workers_list, execution_times, marker='o', linewidth=2,
             markersize=8, color='steelblue', label='Actual')
-    
+
     # Plot theoretical speedup if provided
     if theoretical_speedups is not None:
         if len(theoretical_speedups) != len(n_workers_list):
@@ -368,26 +368,26 @@ def plot_scaling_curve(
             ax.plot(n_workers_list, theoretical_speedups, marker='s', linewidth=2,
                    markersize=6, color='green', linestyle='--', alpha=0.7,
                    label='Theoretical (Amdahl)')
-    
+
     # Customize the plot
     ax.set_xlabel('Number of Workers', fontsize=12)
     ax.set_ylabel('Execution Time (seconds)', fontsize=12)
     ax.set_title(title, fontsize=14, fontweight='bold')
     ax.legend()
     ax.grid(True, alpha=0.3, linestyle='--')
-    
+
     # Use log scale if range is large
     if max(execution_times) / min(execution_times) > 10:
         ax.set_yscale('log')
         ax.set_ylabel('Execution Time (seconds, log scale)', fontsize=12)
-    
+
     # Adjust layout
     plt.tight_layout()
-    
+
     # Save the figure
     if output_path is None:
         output_path = "amorsize_scaling_curve.png"
-    
+
     try:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -405,16 +405,16 @@ def visualize_comparison_result(
 ) -> Dict[str, Optional[str]]:
     """
     Generate all visualization plots for a comparison result.
-    
+
     Args:
         comparison_result: ComparisonResult object from compare_strategies()
         output_dir: Directory to save plots (if None, saves to current directory)
         plots: List of plot types to generate. Options: 'times', 'speedups', 'all'
                If None, generates all plots.
-    
+
     Returns:
         Dictionary mapping plot type to file path (or None if generation failed)
-        
+
     Example:
         >>> from amorsize.comparison import compare_strategies, ComparisonConfig
         >>> configs = [
@@ -432,48 +432,48 @@ def visualize_comparison_result(
             UserWarning
         )
         return {}
-    
+
     # Determine which plots to generate
     if plots is None or 'all' in plots:
         plot_types = ['times', 'speedups']
     else:
         plot_types = plots
-    
+
     # Prepare output directory
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Extract data from comparison result
     config_names = [config.name for config in comparison_result.configs]
     execution_times = comparison_result.execution_times
     speedups = comparison_result.speedups
-    
+
     # Generate plots
     result_paths = {}
-    
+
     if 'times' in plot_types:
         if output_dir is not None:
             times_path = str(output_dir / "comparison_times.png")
         else:
             times_path = "comparison_times.png"
-        
+
         result_paths['times'] = plot_comparison_times(
             config_names,
             execution_times,
             output_path=times_path
         )
-    
+
     if 'speedups' in plot_types:
         if output_dir is not None:
             speedups_path = str(output_dir / "speedup_comparison.png")
         else:
             speedups_path = "speedup_comparison.png"
-        
+
         result_paths['speedups'] = plot_speedup_comparison(
             config_names,
             speedups,
             output_path=speedups_path
         )
-    
+
     return result_paths

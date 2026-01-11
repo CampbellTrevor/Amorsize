@@ -5,10 +5,10 @@ This module provides convenience functions that combine optimization
 and execution in a single call, making it easier to use Amorsize.
 """
 
-from typing import Any, Callable, Iterator, List, Union, Optional
 from multiprocessing import Pool
-from .optimizer import optimize
+from typing import Any, Callable, Iterator, List, Optional, Union
 
+from .optimizer import optimize
 
 # Default estimated item time when not available from optimization result
 DEFAULT_ESTIMATED_ITEM_TIME = 0.01
@@ -31,7 +31,7 @@ def execute(
 ) -> Union[List[Any], tuple]:
     """
     Optimize and execute a function on data in parallel.
-    
+
     This is a convenience function that combines optimize() and multiprocessing.Pool
     in a single call. It automatically:
     1. Analyzes the function and data to find optimal parameters
@@ -39,12 +39,12 @@ def execute(
     3. Executes the function with the optimal chunksize
     4. Returns the results
     5. Optionally updates ML model with actual execution results (online learning)
-    
+
     This eliminates the boilerplate of manually creating and managing the Pool.
-    
+
     For serial execution (n_jobs=1), the function is executed directly without
     creating a Pool, which is more efficient.
-    
+
     Args:
         func: The function to parallelize. Must accept a single argument and
               be picklable (no lambdas, no local functions with closures).
@@ -66,25 +66,25 @@ def execute(
         enable_online_learning: If True, update ML model with actual execution results
                 to improve future predictions. This helps the model learn from real
                 workload behavior over time (default: False).
-    
+
     Returns:
         List of results from applying func to each item in data.
         If return_optimization_result=True, returns tuple of (results, OptimizationResult).
-    
+
     Raises:
         ValueError: If any parameter fails validation (same as optimize()).
-    
+
     Example:
         >>> def expensive_function(x):
         ...     result = 0
         ...     for i in range(1000):
         ...         result += x ** 2
         ...     return result
-        
+
         >>> data = range(10000)
         >>> results = execute(expensive_function, data, verbose=True)
         >>> print(f"Processed {len(results)} items")
-        
+
         >>> # To get optimization details:
         >>> results, opt_result = execute(
         ...     expensive_function,
@@ -93,7 +93,7 @@ def execute(
         ...     profile=True
         ... )
         >>> print(opt_result.explain())
-        
+
         >>> # To enable online learning (improves ML predictions over time):
         >>> results = execute(
         ...     expensive_function,
@@ -101,7 +101,7 @@ def execute(
         ...     enable_online_learning=True,
         ...     verbose=True
         ... )
-    
+
     Note:
         This function creates a new Pool for each call. If you need to reuse
         a Pool across multiple calls, use optimize() directly and manage
@@ -121,11 +121,11 @@ def execute(
         progress_callback=progress_callback,
         prefer_threads_for_io=prefer_threads_for_io
     )
-    
+
     if verbose:
         print(f"\nExecuting with n_jobs={opt_result.n_jobs}, chunksize={opt_result.chunksize}, executor={opt_result.executor_type}")
         print(f"Estimated speedup: {opt_result.estimated_speedup}")
-    
+
     # Step 2: Execute with optimal parameters
     if opt_result.n_jobs == 1:
         # Serial execution - don't create any executor
@@ -146,32 +146,31 @@ def execute(
             print(f"Creating multiprocessing.Pool with {opt_result.n_jobs} workers")
         with Pool(opt_result.n_jobs) as pool:
             results = pool.map(func, opt_result.data, chunksize=opt_result.chunksize)
-    
+
     if verbose:
         print(f"Execution complete: processed {len(results)} items")
-    
+
     # Step 3: Update ML model with actual results if online learning is enabled
     if enable_online_learning:
         try:
-            import time
             # Import online learning function
             from .ml_prediction import update_model_from_execution
-            
+
             # Calculate data size from results (avoids consuming iterator)
             data_size = len(results)
-            
+
             # Estimate actual per-item time from optimization result
             # This is approximate but useful for training
             estimated_item_time = getattr(opt_result, 'avg_execution_time', DEFAULT_ESTIMATED_ITEM_TIME)
-            
+
             # Get additional features if available from optimization result
             pickle_size = getattr(opt_result, 'pickle_size', None)
             coefficient_of_variation = getattr(opt_result, 'coefficient_of_variation', None)
-            
+
             # Actual speedup is estimated_speedup (we don't measure actual time here for simplicity)
             # In a production system, you could measure actual time and calculate true speedup
             actual_speedup = opt_result.estimated_speedup
-            
+
             # Update model
             success = update_model_from_execution(
                 func=func,
@@ -184,14 +183,14 @@ def execute(
                 coefficient_of_variation=coefficient_of_variation,
                 verbose=verbose
             )
-            
+
             if verbose and success:
                 print("✓ ML model updated with execution results (online learning)")
-        
+
         except Exception as e:
             if verbose:
                 print(f"⚠ Online learning update failed: {e}")
-    
+
     # Step 4: Return results (and optionally optimization details)
     if return_optimization_result:
         return results, opt_result

@@ -9,23 +9,26 @@ This module allows users to:
 """
 
 import json
-import os
 import platform
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-from .system_info import get_physical_cores, get_available_memory, get_multiprocessing_start_method
+from .system_info import (
+    get_available_memory,
+    get_multiprocessing_start_method,
+    get_physical_cores,
+)
 
 
 class ConfigData:
     """
     Container for configuration data with metadata.
-    
+
     Stores parallelization parameters along with system information,
     timestamps, and optional user notes for documentation.
     """
-    
+
     def __init__(
         self,
         n_jobs: int,
@@ -42,7 +45,7 @@ class ConfigData:
     ):
         """
         Initialize configuration data.
-        
+
         Args:
             n_jobs: Number of workers
             chunksize: Items per chunk
@@ -65,19 +68,19 @@ class ConfigData:
         self.avg_execution_time = avg_execution_time
         self.notes = notes
         self.source = source
-        
+
         # Auto-populate system info if not provided
         if system_info is None:
             self.system_info = _capture_system_info()
         else:
             self.system_info = system_info
-        
+
         # Auto-populate timestamp if not provided
         if timestamp is None:
             self.timestamp = datetime.now().isoformat()
         else:
             self.timestamp = timestamp
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary format."""
         # Import version dynamically to avoid circular imports
@@ -86,7 +89,7 @@ class ConfigData:
             version = __version__
         except ImportError:
             version = '0.1.0'  # Fallback
-        
+
         return {
             'n_jobs': self.n_jobs,
             'chunksize': self.chunksize,
@@ -101,7 +104,7 @@ class ConfigData:
             'timestamp': self.timestamp,
             'amorsize_version': version
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ConfigData':
         """Create configuration from dictionary."""
@@ -118,13 +121,13 @@ class ConfigData:
             timestamp=data.get('timestamp'),
             source=data.get('source', 'unknown')
         )
-    
+
     def __repr__(self) -> str:
         return (
             f"ConfigData(n_jobs={self.n_jobs}, chunksize={self.chunksize}, "
             f"executor_type='{self.executor_type}', source='{self.source}')"
         )
-    
+
     def __str__(self) -> str:
         lines = [
             f"Configuration ({self.source}):",
@@ -133,7 +136,7 @@ class ConfigData:
             f"  executor_type:    {self.executor_type}",
             f"  estimated_speedup: {self.estimated_speedup:.2f}x"
         ]
-        
+
         if self.function_name:
             lines.append(f"  function:         {self.function_name}")
         if self.data_size is not None:
@@ -142,15 +145,15 @@ class ConfigData:
             lines.append(f"  avg_time_per_item: {self.avg_execution_time:.6f}s")
         if self.notes:
             lines.append(f"  notes:            {self.notes}")
-        
+
         lines.append(f"  timestamp:        {self.timestamp}")
-        
+
         if self.system_info:
-            lines.append(f"\nSystem Information:")
+            lines.append("\nSystem Information:")
             lines.append(f"  platform:         {self.system_info.get('platform', 'unknown')}")
             lines.append(f"  physical_cores:   {self.system_info.get('physical_cores', '?')}")
             lines.append(f"  start_method:     {self.system_info.get('start_method', 'unknown')}")
-        
+
         return "\n".join(lines)
 
 
@@ -174,32 +177,32 @@ def save_config(
 ) -> None:
     """
     Save configuration to file.
-    
+
     Args:
         config: ConfigData object to save
         filepath: Path to save file
         format: File format ('json', 'yaml', or 'auto' to detect from extension)
         overwrite: If True, overwrite existing file. If False, raise error.
-    
+
     Raises:
         FileExistsError: If file exists and overwrite=False
         ValueError: If format is unsupported
         IOError: If file cannot be written
-    
+
     Examples:
         >>> config = ConfigData(n_jobs=4, chunksize=100)
         >>> save_config(config, 'my_config.json')
         >>> save_config(config, 'my_config.yaml', format='yaml')
     """
     filepath = Path(filepath)
-    
+
     # Check if file exists
     if filepath.exists() and not overwrite:
         raise FileExistsError(
             f"Configuration file already exists: {filepath}. "
             f"Use overwrite=True to replace it."
         )
-    
+
     # Detect format from extension if auto
     if format == "auto":
         ext = filepath.suffix.lower()
@@ -210,13 +213,13 @@ def save_config(
         else:
             # Default to JSON if extension is unclear
             format = "json"
-    
+
     # Convert config to dictionary
     data = config.to_dict()
-    
+
     # Create parent directory if it doesn't exist
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Save to file
     if format == "json":
         with open(filepath, 'w') as f:
@@ -237,29 +240,29 @@ def save_config(
 def load_config(filepath: Union[str, Path], format: str = "auto") -> ConfigData:
     """
     Load configuration from file.
-    
+
     Args:
         filepath: Path to configuration file
         format: File format ('json', 'yaml', or 'auto' to detect from extension)
-    
+
     Returns:
         ConfigData object loaded from file
-    
+
     Raises:
         FileNotFoundError: If file doesn't exist
         ValueError: If format is unsupported or file is invalid
         IOError: If file cannot be read
-    
+
     Examples:
         >>> config = load_config('my_config.json')
         >>> print(f"Using n_jobs={config.n_jobs}, chunksize={config.chunksize}")
     """
     filepath = Path(filepath)
-    
+
     # Check if file exists
     if not filepath.exists():
         raise FileNotFoundError(f"Configuration file not found: {filepath}")
-    
+
     # Detect format from extension if auto
     if format == "auto":
         ext = filepath.suffix.lower()
@@ -270,7 +273,7 @@ def load_config(filepath: Union[str, Path], format: str = "auto") -> ConfigData:
         else:
             # Try JSON first as it's more common
             format = "json"
-    
+
     # Load from file
     try:
         if format == "json":
@@ -287,21 +290,21 @@ def load_config(filepath: Union[str, Path], format: str = "auto") -> ConfigData:
                 )
         else:
             raise ValueError(f"Unsupported format: {format}. Use 'json' or 'yaml'.")
-        
+
         # Validate required fields
         if not isinstance(data, dict):
             raise ValueError("Configuration file must contain a dictionary/object")
-        
+
         required_fields = ['n_jobs', 'chunksize']
         missing_fields = [f for f in required_fields if f not in data]
         if missing_fields:
             raise ValueError(
                 f"Configuration file missing required fields: {', '.join(missing_fields)}"
             )
-        
+
         # Create ConfigData from dictionary
         return ConfigData.from_dict(data)
-        
+
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in configuration file: {e}")
     except Exception as e:
@@ -313,13 +316,13 @@ def load_config(filepath: Union[str, Path], format: str = "auto") -> ConfigData:
 def list_configs(directory: Union[str, Path] = ".") -> list:
     """
     List all configuration files in a directory.
-    
+
     Args:
         directory: Directory to search (default: current directory)
-    
+
     Returns:
         List of configuration file paths
-    
+
     Examples:
         >>> configs = list_configs('configs/')
         >>> for config_path in configs:
@@ -327,25 +330,25 @@ def list_configs(directory: Union[str, Path] = ".") -> list:
         ...     print(f"{config_path}: {config.n_jobs} workers")
     """
     directory = Path(directory)
-    
+
     if not directory.exists():
         return []
-    
+
     # Find all JSON and YAML files
     config_files = []
     for ext in ['*.json', '*.yaml', '*.yml']:
         config_files.extend(directory.glob(ext))
-    
+
     return sorted(config_files)
 
 
 def get_default_config_dir() -> Path:
     """
     Get default directory for storing configurations.
-    
+
     Returns:
         Path to default config directory (~/.amorsize/configs)
-    
+
     The directory is created if it doesn't exist.
     """
     config_dir = Path.home() / '.amorsize' / 'configs'

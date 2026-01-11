@@ -5,113 +5,113 @@ A Python utility that analyzes the cost-benefit ratio of parallelization
 and returns optimal n_jobs and chunksize parameters.
 """
 
-from .optimizer import optimize, DiagnosticProfile, OptimizationResult
-from .executor import execute
-from .batch import process_in_batches, estimate_safe_batch_size
-from .streaming import optimize_streaming, StreamingOptimizationResult
-from .benchmark import validate_optimization, quick_validate, BenchmarkResult
-from .validation import validate_system, ValidationResult
-from .comparison import compare_strategies, compare_with_optimizer, ComparisonConfig, ComparisonResult
-from .visualization import (
-    plot_comparison_times,
-    plot_speedup_comparison,
-    plot_overhead_breakdown,
-    plot_scaling_curve,
-    visualize_comparison_result,
-    check_matplotlib
+from .adaptive_chunking import AdaptiveChunkingPool, create_adaptive_pool
+from .batch import estimate_safe_batch_size, process_in_batches
+from .benchmark import BenchmarkResult, quick_validate, validate_optimization
+from .cache import (
+    CacheStats,
+    CacheValidationResult,
+    clear_benchmark_cache,
+    clear_cache,
+    export_cache,
+    get_benchmark_cache_stats,
+    get_cache_dir,
+    get_cache_stats,
+    import_cache,
+    prewarm_cache,
+    prune_expired_cache,
+    repair_cache,
+    validate_cache,
+    validate_cache_entry,
 )
-from .history import (
-    save_result,
-    load_result,
-    list_results,
-    delete_result,
-    compare_entries,
-    clear_history,
-    HistoryEntry
-)
-from .tuning import (
-    tune_parameters,
-    quick_tune,
-    bayesian_tune_parameters,
-    TuningResult
+from .comparison import (
+    ComparisonConfig,
+    ComparisonResult,
+    compare_strategies,
+    compare_with_optimizer,
 )
 from .config import (
-    save_config,
-    load_config,
-    list_configs,
+    ConfigData,
     get_default_config_dir,
-    ConfigData
+    list_configs,
+    load_config,
+    save_config,
 )
+from .cost_model import (
+    CacheInfo,
+    MemoryBandwidthInfo,
+    NUMAInfo,
+    SystemTopology,
+    calculate_advanced_amdahl_speedup,
+    detect_system_topology,
+)
+from .executor import execute
+from .history import (
+    HistoryEntry,
+    clear_history,
+    compare_entries,
+    delete_result,
+    list_results,
+    load_result,
+    save_result,
+)
+from .optimizer import DiagnosticProfile, OptimizationResult, optimize
 from .performance import (
-    run_performance_benchmark,
-    run_performance_suite,
+    PerformanceResult,
+    WorkloadSpec,
     compare_performance_results,
     get_standard_workloads,
-    WorkloadSpec,
-    PerformanceResult
+    run_performance_benchmark,
+    run_performance_suite,
 )
-from .cache import (
-    clear_cache,
-    prune_expired_cache,
-    get_cache_dir,
-    clear_benchmark_cache,
-    get_cache_stats,
-    get_benchmark_cache_stats,
-    CacheStats,
-    prewarm_cache,
-    export_cache,
-    import_cache,
-    validate_cache_entry,
-    validate_cache,
-    repair_cache,
-    CacheValidationResult
-)
-from .structured_logging import configure_logging
-from .adaptive_chunking import AdaptiveChunkingPool, create_adaptive_pool
 from .pool_manager import (
     PoolManager,
     get_global_pool_manager,
     managed_pool,
-    shutdown_global_pool_manager
+    shutdown_global_pool_manager,
 )
-from .cost_model import (
-    detect_system_topology,
-    calculate_advanced_amdahl_speedup,
-    CacheInfo,
-    NUMAInfo,
-    MemoryBandwidthInfo,
-    SystemTopology
+from .streaming import StreamingOptimizationResult, optimize_streaming
+from .structured_logging import configure_logging
+from .tuning import TuningResult, bayesian_tune_parameters, quick_tune, tune_parameters
+from .validation import ValidationResult, validate_system
+from .visualization import (
+    check_matplotlib,
+    plot_comparison_times,
+    plot_overhead_breakdown,
+    plot_scaling_curve,
+    plot_speedup_comparison,
+    visualize_comparison_result,
 )
 
 # ML prediction functions (optional feature)
 try:
     from .ml_prediction import (
-        predict_parameters,
-        predict_streaming_parameters,
-        update_model_from_execution,
-        update_model_from_streaming_execution,
-        track_prediction_accuracy,
-        get_calibration_stats,
-        load_ml_training_data,
-        get_ml_training_data_version,
-        PredictionResult,
-        StreamingPredictionResult,
-        CalibrationData,
-        SystemFingerprint,
-        WorkloadCluster,
-        MIN_TRAINING_SAMPLES,
-        DEFAULT_CONFIDENCE_THRESHOLD,
-        MIN_SYSTEM_SIMILARITY,
         CROSS_SYSTEM_WEIGHT,
-        MIN_CLUSTERING_SAMPLES,
-        MAX_CLUSTERS,
-        ENABLE_K_TUNING,
-        K_RANGE_MIN,
-        K_RANGE_MAX,
-        MIN_SAMPLES_FOR_K_TUNING,
+        DEFAULT_CONFIDENCE_THRESHOLD,
         DEFAULT_K_VALUE,
         ENABLE_ENSEMBLE_PREDICTION,
-        MIN_SAMPLES_FOR_ENSEMBLE
+        ENABLE_K_TUNING,
+        K_RANGE_MAX,
+        K_RANGE_MIN,
+        MAX_CLUSTERS,
+        MIN_CLUSTERING_SAMPLES,
+        MIN_SAMPLES_FOR_ENSEMBLE,
+        MIN_SAMPLES_FOR_K_TUNING,
+        MIN_SYSTEM_SIMILARITY,
+        MIN_TRAINING_SAMPLES,
+        CalibrationData,
+        PredictionResult,
+        StreamingPredictionResult,
+        SystemFingerprint,
+        WorkloadCluster,
+        get_calibration_stats,
+        get_ml_training_data_version,
+        load_ml_training_data,
+        predict_parameters,
+        predict_streaming_parameters,
+        track_prediction_accuracy,
+        update_model_from_execution,
+        update_model_from_streaming_execution,
     )
     _has_ml_prediction = True
 except ImportError:
@@ -154,13 +154,13 @@ except ImportError:
 
 # ML training data pruning functions (optional feature, requires ml_prediction)
 try:
+    from .ml_pruning import DEFAULT_SIMILARITY_THRESHOLD as PRUNING_SIMILARITY_THRESHOLD
     from .ml_pruning import (
-        prune_training_data,
-        auto_prune_training_data,
-        PruningResult,
-        DEFAULT_SIMILARITY_THRESHOLD as PRUNING_SIMILARITY_THRESHOLD,
         MIN_SAMPLES_FOR_PRUNING,
-        TARGET_PRUNING_RATIO
+        TARGET_PRUNING_RATIO,
+        PruningResult,
+        auto_prune_training_data,
+        prune_training_data,
     )
     _has_ml_pruning = True
 except ImportError:
@@ -178,12 +178,12 @@ except ImportError:
 # Distributed cache functions (optional, requires redis-py)
 try:
     from .distributed_cache import (
+        clear_distributed_cache,
         configure_distributed_cache,
         disable_distributed_cache,
-        is_distributed_cache_enabled,
-        clear_distributed_cache,
         get_distributed_cache_stats,
-        prewarm_distributed_cache
+        is_distributed_cache_enabled,
+        prewarm_distributed_cache,
     )
     _has_distributed_cache = True
 except ImportError:
@@ -205,7 +205,7 @@ except ImportError:
 __version__ = "0.1.0"
 __all__ = [
     "optimize",
-    "execute", 
+    "execute",
     "process_in_batches",
     "estimate_safe_batch_size",
     "optimize_streaming",
