@@ -18,6 +18,7 @@ from .system_info import (
     get_swap_usage
 )
 from .sampling import perform_dry_run, estimate_total_items, reconstruct_iterator, estimate_internal_threads, check_parallel_environment_vars
+from .structured_logging import get_logger
 
 
 class DiagnosticProfile:
@@ -775,6 +776,15 @@ def optimize(
     # Report start
     _report_progress("Starting optimization", 0.0)
     
+    # Log optimization start
+    logger = get_logger()
+    func_name = getattr(func, '__name__', None)
+    try:
+        data_size_for_log = len(data) if hasattr(data, '__len__') else None
+    except (TypeError, AttributeError):
+        data_size_for_log = None
+    logger.log_optimization_start(func_name=func_name, data_size=data_size_for_log)
+    
     # Step 0.5: Check cache if enabled (but only if profile not requested)
     # We skip caching when profiling is requested because the cache doesn't
     # store full diagnostic profiles
@@ -802,6 +812,15 @@ def optimize(
             if cache_entry is not None:
                 if verbose:
                     print(f"✓ Cache hit! Using cached optimization result (saved {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cache_entry.timestamp))})")
+                
+                # Log cache hit
+                logger.log_optimization_complete(
+                    n_jobs=cache_entry.n_jobs,
+                    chunksize=cache_entry.chunksize,
+                    speedup=cache_entry.estimated_speedup,
+                    executor_type=cache_entry.executor_type,
+                    cache_hit=True
+                )
                 
                 # Return cached result immediately
                 # Note: We still need to handle generator reconstruction
@@ -991,6 +1010,7 @@ def optimize(
     if sampling_result.error:
         if diag:
             diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+        logger.log_rejection("sampling_failed", {"error": str(sampling_result.error)})
         _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
@@ -1009,6 +1029,7 @@ def optimize(
         if diag:
             diag.rejection_reasons.append("Function is not picklable - multiprocessing requires picklable functions")
             diag.recommendations.append("Use dill or cloudpickle to serialize complex functions")
+        logger.log_rejection("function_not_picklable", {"executor_type": executor_type})
         _report_progress("Optimization complete", 1.0)
         return OptimizationResult(
             n_jobs=1,
@@ -1050,6 +1071,14 @@ def optimize(
     return_size = sampling_result.return_size
     peak_memory = sampling_result.peak_memory
     avg_pickle_time = sampling_result.avg_pickle_time
+    
+    # Log sampling completion
+    logger.log_sampling_complete(
+        sample_count=sampling_result.sample_count,
+        avg_time=avg_time,
+        is_picklable=sampling_result.is_picklable,
+        workload_type=sampling_result.workload_type
+    )
     
     if verbose:
         print(f"Average execution time: {avg_time:.4f}s")
@@ -1119,6 +1148,14 @@ def optimize(
     logical_cores = get_logical_cores()
     spawn_cost = get_spawn_cost(use_benchmark=use_spawn_benchmark)
     chunking_overhead = get_chunking_overhead(use_benchmark=use_chunking_benchmark)
+    
+    # Log system info
+    logger.log_system_info(
+        physical_cores=physical_cores,
+        logical_cores=logical_cores,
+        available_memory_bytes=available_memory,
+        start_method=get_multiprocessing_start_method()
+    )
     
     # Populate diagnostic profile with system info
     if diag:
@@ -1396,6 +1433,15 @@ def optimize(
         diag.recommendations.append(f"Use {optimal_n_jobs} workers with chunksize {optimal_chunksize} for ~{estimated_speedup:.2f}x speedup")
         if diag.speedup_efficiency < 0.5:
             diag.recommendations.append("Efficiency is low - consider if parallelization overhead is acceptable")
+    
+    # Log successful optimization
+    logger.log_optimization_complete(
+        n_jobs=optimal_n_jobs,
+        chunksize=optimal_chunksize,
+        speedup=estimated_speedup,
+        executor_type=executor_type,
+        cache_hit=False
+    )
     
     _report_progress("Optimization complete", 1.0)
     

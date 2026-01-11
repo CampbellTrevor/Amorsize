@@ -66,6 +66,7 @@ from .cache import (
     repair_cache,
     CacheValidationResult
 )
+from .structured_logging import configure_logging
 
 __version__ = "0.1.0"
 __all__ = [
@@ -127,5 +128,6 @@ __all__ = [
     "ConfigData",
     "WorkloadSpec",
     "PerformanceResult",
-    "CacheValidationResult"
+    "CacheValidationResult",
+    "configure_logging"
 ]
