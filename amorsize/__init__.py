@@ -74,6 +74,14 @@ from .pool_manager import (
     managed_pool,
     shutdown_global_pool_manager
 )
+from .cost_model import (
+    detect_system_topology,
+    calculate_advanced_amdahl_speedup,
+    CacheInfo,
+    NUMAInfo,
+    MemoryBandwidthInfo,
+    SystemTopology
+)
 
 # ML prediction functions (optional feature)
 try:
@@ -197,5 +205,11 @@ __all__ = [
     "PoolManager",
     "get_global_pool_manager",
     "managed_pool",
-    "shutdown_global_pool_manager"
+    "shutdown_global_pool_manager",
+    "detect_system_topology",
+    "calculate_advanced_amdahl_speedup",
+    "CacheInfo",
+    "NUMAInfo",
+    "MemoryBandwidthInfo",
+    "SystemTopology"
 ]
