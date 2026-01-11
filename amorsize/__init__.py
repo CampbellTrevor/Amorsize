@@ -102,6 +102,16 @@ from .retry import (
     create_batch_retry_wrapper,
 )
 
+# Circuit breaker for preventing cascade failures (no extra dependencies)
+from .circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerPolicy,
+    CircuitBreakerError,
+    CircuitState,
+    with_circuit_breaker,
+    circuit_breaker_call,
+)
+
 # Monitoring integrations (optional, no extra dependencies)
 try:
     from .monitoring import (
@@ -425,4 +435,10 @@ __all__ = [
     "with_retry",
     "retry_call",
     "create_batch_retry_wrapper",
+    "CircuitBreaker",
+    "CircuitBreakerPolicy",
+    "CircuitBreakerError",
+    "CircuitState",
+    "with_circuit_breaker",
+    "circuit_breaker_call",
 ]
