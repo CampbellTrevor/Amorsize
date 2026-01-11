@@ -67,6 +67,13 @@ TARGET_PRUNING_RATIO = 0.35
 # Samples must be at least this far apart to both be kept
 MIN_INTER_SAMPLE_DISTANCE = 0.2  # Reduced from 0.3 for better retention
 
+# Absolute minimum number of samples to keep (prevents over-pruning)
+# This constraint is applied AFTER clustering to ensure we never drop below
+# a reasonable minimum dataset size, even if clustering produces a single mega-cluster.
+# Without this, a single cluster could result in keeping only MIN_SAMPLES_PER_CLUSTER
+# (e.g., 5 samples) regardless of original dataset size (e.g., 100 samples).
+MIN_TOTAL_SAMPLES_TO_KEEP = 20
+
 
 @dataclass
 class PruningResult:
@@ -258,8 +265,8 @@ def _select_representative_samples(
                 is_diverse = False
                 break
         
-        if is_diverse or len(diverse_kept) < MIN_SAMPLES_PER_CLUSTER:
-            # Keep this sample (either diverse or needed for minimum)
+        # Keep sample if: diverse, or needed to reach MIN_SAMPLES_PER_CLUSTER, or needed to reach max_samples
+        if is_diverse or len(diverse_kept) < MIN_SAMPLES_PER_CLUSTER or len(diverse_kept) < max_samples:
             diverse_kept.append(idx)
             
             if len(diverse_kept) >= max_samples:
@@ -304,9 +311,10 @@ def prune_training_data(
     
     Pruning Strategy:
     - Similar samples are grouped into clusters
-    - Within each cluster, keep 2-20 most important samples
+    - Within each cluster, keep 5-20 most important samples
     - Importance is based on recency and performance
     - Diversity is enforced to prevent overfitting
+    - Absolute minimum of 20 samples kept to prevent over-pruning
     
     Args:
         training_data: List of training samples to prune
@@ -370,6 +378,11 @@ def prune_training_data(
     # Step 2: Calculate max samples per cluster based on target pruning ratio
     total_samples = len(training_data)
     target_kept_samples = int(total_samples * (1.0 - target_pruning_ratio))
+    
+    # Apply absolute minimum constraint to prevent over-pruning
+    # This ensures we never drop below a reasonable dataset size,
+    # even if clustering produces a single mega-cluster
+    target_kept_samples = max(target_kept_samples, MIN_TOTAL_SAMPLES_TO_KEEP)
     
     # Distribute target across clusters (proportional to cluster size)
     # But ensure we don't under-budget due to minimums
