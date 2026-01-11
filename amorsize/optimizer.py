@@ -1182,9 +1182,40 @@ def optimize(
     
     # Check for errors during sampling
     if sampling_result.error:
-        error_message = get_sampling_failure_message(sampling_result.error)
-        if diag:
-            diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+        # Check if the error might be related to unpicklable data
+        # If data items were detected as unpicklable, provide specific guidance
+        if not sampling_result.data_items_picklable:
+            # Get data-specific error message with pickling guidance
+            error_type = type(sampling_result.data_pickle_error).__name__ if sampling_result.data_pickle_error else None
+            item_type = None
+            if sampling_result.sample and sampling_result.unpicklable_data_index is not None:
+                try:
+                    if sampling_result.unpicklable_data_index < len(sampling_result.sample):
+                        item = sampling_result.sample[sampling_result.unpicklable_data_index]
+                        item_type = type(item).__name__
+                except (IndexError, AttributeError, TypeError):
+                    pass
+            
+            error_message = get_data_picklability_error_message(
+                sampling_result.unpicklable_data_index or 0,
+                error_type,
+                item_type
+            )
+            if diag:
+                diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+                # Add actionable recommendations from the error message
+                diag.recommendations.append("Use cloudpickle or dill for more flexible serialization")
+                diag.recommendations.append("Pass serializable identifiers instead of unpicklable objects")
+                diag.recommendations.append("Extract only serializable data from complex objects")
+        else:
+            # Generic sampling failure
+            error_message = get_sampling_failure_message(sampling_result.error)
+            if diag:
+                diag.rejection_reasons.append(f"Sampling failed: {str(sampling_result.error)}")
+                # Add basic troubleshooting recommendations
+                diag.recommendations.append("Test your function with sample data manually")
+                diag.recommendations.append("Validate data types and handle edge cases in your function")
+        
         logger.log_rejection("sampling_failed", {"error": str(sampling_result.error)})
         _report_progress("Optimization complete", 1.0)
         if verbose:
@@ -1209,7 +1240,10 @@ def optimize(
         error_message = get_picklability_error_message(func_name)
         if diag:
             diag.rejection_reasons.append("Function is not picklable - multiprocessing requires picklable functions")
-            diag.recommendations.append("See detailed guidance in warnings")
+            # Add actionable recommendations that match the error message content
+            diag.recommendations.append("Convert lambda to regular function at module level")
+            diag.recommendations.append("Move nested functions to module level")
+            diag.recommendations.append("Use cloudpickle for more flexible serialization")
         logger.log_rejection("function_not_picklable", {"executor_type": executor_type})
         _report_progress("Optimization complete", 1.0)
         if verbose:
@@ -1249,7 +1283,10 @@ def optimize(
         
         if diag:
             diag.rejection_reasons.append(f"Data items are not picklable - multiprocessing requires picklable data")
-            diag.recommendations.append("See detailed guidance in warnings")
+            # Add actionable recommendations that match the error message content
+            diag.recommendations.append("Use cloudpickle or dill for more flexible serialization")
+            diag.recommendations.append("Pass file paths/connection strings instead of file handles/connections")
+            diag.recommendations.append("Extract only serializable data from complex objects")
         
         _report_progress("Optimization complete", 1.0)
         if verbose:
