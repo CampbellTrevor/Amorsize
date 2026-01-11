@@ -484,6 +484,59 @@ def _show_user_friendly_explanation(result) -> None:
             print(f"  {colorize('•', Colors.YELLOW)} {reason}")
 
 
+def _export_diagnostics(result, export_path: str, export_format: str = "json", verbose: bool = False):
+    """
+    Export diagnostic information to a file.
+
+    Args:
+        result: OptimizationResult or (results, OptimizationResult) tuple
+        export_path: Path to export file
+        export_format: Format to use ("json" or "yaml")
+        verbose: Whether to print verbose output
+
+    Raises:
+        IOError: If export fails
+    """
+    # Determine mode and extract result
+    mode = "optimize"
+    if isinstance(result, tuple):
+        mode = "execute"
+        _, opt_result = result
+        result = opt_result
+
+    # Prepare structured output
+    output = _prepare_structured_output(result, mode)
+
+    # Detect format from file extension if not specified
+    if export_format == "auto":
+        if export_path.endswith('.yaml') or export_path.endswith('.yml'):
+            export_format = "yaml"
+        else:
+            export_format = "json"
+
+    # Export to file
+    try:
+        with open(export_path, 'w') as f:
+            if export_format == "yaml":
+                try:
+                    import yaml
+                    yaml.dump(output, f, default_flow_style=False, sort_keys=False)
+                except ImportError:
+                    # Fall back to JSON if YAML not available
+                    if verbose:
+                        import sys
+                        print(colorize("Warning: PyYAML not installed. Exporting as JSON instead.", Colors.YELLOW), file=sys.stderr)
+                    json.dump(output, f, indent=2)
+            else:
+                # Default to JSON
+                json.dump(output, f, indent=2)
+
+        if verbose:
+            print(f"\n{colorize('✓', Colors.GREEN)} Diagnostics exported to {colorize(export_path, Colors.BOLD)}")
+    except (IOError, OSError) as e:
+        raise IOError(f"Failed to export diagnostics to {export_path}: {e}")
+
+
 def format_output_json(result, mode: str):
     """
     Format optimization result as JSON.
@@ -753,6 +806,18 @@ def cmd_optimize(args: argparse.Namespace):
         # Default to human-readable text
         format_output_human(result, "optimize", args)
 
+    # Export diagnostics if requested
+    if hasattr(args, 'export') and args.export:
+        try:
+            export_format = getattr(args, 'export_format', 'auto')
+            _export_diagnostics(result, args.export, export_format, verbose=args.verbose)
+        except IOError as e:
+            print(f"\n{colorize('✗', Colors.RED)} Error exporting diagnostics: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
+
     # Save configuration if requested
     if hasattr(args, 'save_config') and args.save_config:
         try:
@@ -903,6 +968,18 @@ def cmd_execute(args: argparse.Namespace):
     else:
         # Default to human-readable text
         format_output_human(result, "execute", args)
+
+    # Export diagnostics if requested
+    if hasattr(args, 'export') and args.export:
+        try:
+            export_format = getattr(args, 'export_format', 'auto')
+            _export_diagnostics(result, args.export, export_format, verbose=args.verbose)
+        except IOError as e:
+            print(f"\n{colorize('✗', Colors.RED)} Error exporting diagnostics: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
 
 
 def cmd_validate(args: argparse.Namespace):
@@ -1458,6 +1535,11 @@ Examples:
   python -m amorsize optimize math.sqrt --data-range 1000 --format table
   python -m amorsize optimize math.sqrt --data-range 1000 --format markdown
 
+  # Export comprehensive diagnostics
+  python -m amorsize optimize math.sqrt --data-range 1000 --export diagnostics.json
+  python -m amorsize optimize math.sqrt --data-range 1000 --export report.yaml --profile
+  python -m amorsize execute mymodule.func --data-file input.txt --export results.json
+
   # Read data from stdin
   cat data.txt | python -m amorsize execute mymodule:process --data-stdin
         """
@@ -1543,6 +1625,20 @@ Examples:
         '--json',
         action='store_true',
         help='Output results as JSON (deprecated: use --format json)'
+    )
+    parent_parser.add_argument(
+        '--export',
+        type=str,
+        metavar='FILE',
+        help='Export comprehensive diagnostics to file (JSON or YAML based on extension)'
+    )
+    parent_parser.add_argument(
+        '--export-format',
+        type=str,
+        choices=['auto', 'json', 'yaml'],
+        default='auto',
+        metavar='FORMAT',
+        help='Export file format: auto (from extension), json, or yaml (default: auto)'
     )
     parent_parser.add_argument(
         '--verbose',
