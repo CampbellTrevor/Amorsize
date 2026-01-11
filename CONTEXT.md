@@ -1,37 +1,39 @@
-# Context for Next Agent - Iteration 160
+# Context for Next Agent - Iteration 161
 
-## What Was Accomplished in Iteration 160
+## What Was Accomplished in Iteration 161
 
-**DEAD LETTER QUEUE (DLQ) COMPLETE** - Successfully implemented Dead Letter Queue functionality for collecting and managing permanently failed items, completing the fault tolerance quartet.
+**CLOUDWATCH MONITORING TEST FIX** - Fixed 6 failing CloudWatch monitoring tests by correcting the boto3 mocking approach, improving test robustness and reliability.
 
 ### Implementation Summary
 
-1. **DLQ Module** - `amorsize/dead_letter_queue.py` (470 lines, new module)
-   - **DLQPolicy Class**: Configuration for DLQ behavior (directory, format, size limits)
-   - **DLQEntry Class**: Data structure for failed items with full error context
-   - **DeadLetterQueue Class**: Thread-safe queue management with persistence
-   - **Helper Function**: replay_failed_items() for recovery workflows
+**Issue Identified:**
+CloudWatch monitoring tests were failing with `AttributeError: <class 'amorsize.monitoring.CloudWatchMetrics'> does not have the attribute '_boto3'`
 
-2. **Comprehensive Test Suite** - `tests/test_dead_letter_queue.py` (40 tests, all passing)
+**Root Cause:**
+Tests attempted to patch `_boto3` as a class attribute using `patch.object()` before instantiation, but `_boto3` is an instance attribute that's set in `CloudWatchMetrics.__init__()`.
 
-3. **Example Demonstrations** - `examples/dead_letter_queue_demo.py` (6 demos)
+**Solution Applied:**
+Modified 6 test methods in `tests/test_cloud_monitoring.py` to:
+1. Remove incorrect `@patch('amorsize.monitoring.sys.modules')` decorators
+2. Remove incorrect `patch.object(CloudWatchMetrics, '_boto3', ...)` context managers
+3. Directly set instance attributes after object creation: `metrics._boto3 = mock_boto3`
+4. Set the has_boto3 flag: `metrics._has_boto3 = True`
 
-4. **Documentation** - README.md updated with Option 11
-
-### Code Quality
-- ✅ 40 comprehensive tests (all passing)
-- ✅ Zero external dependencies
-- ✅ 100% backward compatible (2246 total tests pass)
-- ✅ Python 3.7+ compatible
-- ✅ Thread-safe operations
+### Test Results
+- ✅ 8/8 CloudWatch tests now passing (previously 6 failing)
+- ✅ 41/41 cloud monitoring tests passing
+- ✅ 65/65 core module tests passing (optimizer, system_info, sampling)
+- ✅ Zero regressions introduced
 
 ### Files Changed
-- **NEW**: `amorsize/dead_letter_queue.py`
-- **NEW**: `tests/test_dead_letter_queue.py`
-- **NEW**: `examples/dead_letter_queue_demo.py`
-- **MODIFIED**: `amorsize/__init__.py`
-- **MODIFIED**: `README.md`
+- **MODIFIED**: `tests/test_cloud_monitoring.py` (6 test methods fixed)
+
+### Strategic Context
+This fix addresses **SAFETY & ROBUSTNESS** - one of the key strategic priorities. With all infrastructure (physical core detection, memory limits, generator safety, OS spawning overhead, Amdahl's Law) already robustly implemented, this iteration focused on ensuring the monitoring and observability features have reliable test coverage.
 
 ---
 
-**Next Agent:** Consider Bulkhead Pattern, Rate Limiting, or Graceful Degradation.
+**Next Agent:** With all critical infrastructure solid and tests fixed, consider:
+1. **UX & ROBUSTNESS**: Improve error messages, add validation helpers, or enhance edge case handling
+2. **ADVANCED FEATURES**: Bulkhead Pattern, Rate Limiting, or Graceful Degradation (as suggested in previous context)
+3. **DOCUMENTATION**: Expand examples or add troubleshooting guides
