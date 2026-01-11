@@ -708,11 +708,7 @@ class CloudWatchMetrics:
             self._has_boto3 = True
         except ImportError:
             self._has_boto3 = False
-            print(
-                "Warning: boto3 not installed. CloudWatch integration disabled. "
-                "Install with: pip install boto3",
-                file=sys.stderr
-            )
+            print("Warning: boto3 not installed. CloudWatch integration disabled. Install with: pip install boto3", file=sys.stderr)
     
     def _get_client(self):
         """Get or create CloudWatch client (lazy initialization)."""
@@ -949,12 +945,7 @@ class AzureMonitorMetrics:
             self._configure_azure_monitor = configure_azure_monitor
         except ImportError:
             self._has_azure_monitor = False
-            print(
-                "Warning: azure-monitor-opentelemetry not installed. "
-                "Azure Monitor integration disabled. "
-                "Install with: pip install azure-monitor-opentelemetry",
-                file=sys.stderr
-            )
+            print("Warning: azure-monitor-opentelemetry not installed. Azure Monitor integration disabled. Install with: pip install azure-monitor-opentelemetry", file=sys.stderr)
     
     def _send_event(self, name: str, properties: Dict[str, Any]):
         """
@@ -1121,12 +1112,7 @@ class GCPMonitoringMetrics:
             self._has_gcp_monitoring = True
         except ImportError:
             self._has_gcp_monitoring = False
-            print(
-                "Warning: google-cloud-monitoring not installed. "
-                "GCP Monitoring integration disabled. "
-                "Install with: pip install google-cloud-monitoring",
-                file=sys.stderr
-            )
+            print("Warning: google-cloud-monitoring not installed. GCP Monitoring integration disabled. Install with: pip install google-cloud-monitoring", file=sys.stderr)
     
     def _get_client(self):
         """Get or create Cloud Monitoring client (lazy initialization)."""
@@ -1367,12 +1353,7 @@ class OpenTelemetryTracer:
             self._init_tracer()
         except ImportError:
             self._has_opentelemetry = False
-            print(
-                "Warning: opentelemetry-api/sdk not installed. "
-                "OpenTelemetry integration disabled. "
-                "Install with: pip install opentelemetry-api opentelemetry-sdk",
-                file=sys.stderr
-            )
+            print("Warning: opentelemetry-api/sdk not installed. OpenTelemetry integration disabled. Install with: pip install opentelemetry-api opentelemetry-sdk", file=sys.stderr)
     
     def _init_tracer(self):
         """Initialize the OpenTelemetry tracer."""
