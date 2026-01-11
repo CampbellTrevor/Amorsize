@@ -705,6 +705,10 @@ def perform_dry_run(
         # conditional checks in hot path. Profiling is rarely enabled, so we optimize
         # for the common case (no profiling) by eliminating 2 conditional checks per iteration.
         # Measured savings: ~26ns per iteration (~130ns for typical 5-item sample)
+        #
+        # NOTE: Code is intentionally duplicated between the two paths.
+        # This duplication is the optimization - it eliminates conditional checks from the hot path.
+        # Extracting to a helper function would reintroduce the conditional overhead we're eliminating.
         if profiler is not None:
             # Profiling enabled path (slower, but rarely used)
             for idx, item in enumerate(sample):
