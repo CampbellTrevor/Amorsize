@@ -1,4 +1,118 @@
-# Context for Next Agent - Iteration 115
+# Context for Next Agent - Iteration 116
+
+## What Was Accomplished in Iteration 115
+
+**STREAMING ONLINE LEARNING** - Extended online learning to streaming workloads, enabling streaming ML predictions to improve over time just like batch predictions.
+
+### Implementation Completed
+
+1. **Extended TrainingData Class** (amorsize/ml_prediction.py):
+   - Added streaming-specific parameters:
+     - `buffer_size`: Optimal buffer size for imap/imap_unordered
+     - `use_ordered`: Whether ordered (imap) or unordered (imap_unordered) was used
+     - `is_streaming`: Flag to distinguish streaming from batch samples
+   - Backward compatible with existing batch training data
+
+2. **Created update_model_from_streaming_execution() Function** (amorsize/ml_prediction.py):
+   - Saves actual streaming execution results to training data
+   - Captures streaming-specific parameters (buffer_size, use_ordered)
+   - Uses "ml_training_streaming_*.json" prefix for easy identification
+   - Follows same atomic write pattern as batch online learning
+   - Includes hardware-aware features from Iteration 114
+
+3. **Enhanced load_ml_training_data() Function** (amorsize/ml_prediction.py):
+   - Loads streaming parameters from training files
+   - Properly distinguishes batch vs streaming samples
+   - Gracefully handles old training data without streaming fields
+
+4. **Updated StreamingOptimizationResult Class** (amorsize/streaming.py):
+   - Added fields to store training-relevant data:
+     - `estimated_item_time`: For ML feature extraction
+     - `pickle_size`: For ML feature extraction
+     - `coefficient_of_variation`: For ML feature extraction
+   - All optimize_streaming() return paths updated to include these fields
+
+5. **Comprehensive Testing** (tests/test_streaming_online_learning.py):
+   - 17 new tests covering:
+     - Basic streaming model updates
+     - Streaming-specific parameter storage
+     - Training file creation and content validation
+     - Loading and distinguishing batch vs streaming data
+     - Integration with optimize_streaming()
+     - Model improvement over time
+     - Edge cases (small/large buffers, ordered/unordered)
+     - Cache persistence and atomic writes
+   - All 17 new tests passing
+   - All 121 ML/streaming tests still passing
+
+6. **Comprehensive Example** (examples/streaming_online_learning_demo.py):
+   - 7 comprehensive demos:
+     - Demo 1: Baseline without online learning
+     - Demo 2: ML with no training data (fallback)
+     - Demo 3: Building streaming training data
+     - Demo 4: Direct ML prediction API
+     - Demo 5: Complete ML-enhanced streaming workflow
+     - Demo 6: Heterogeneous workload learning
+     - Demo 7: Performance comparison (dry-run vs ML)
+   - Shows 10-100x faster optimization after training
+
+7. **Updated Exports** (amorsize/__init__.py):
+   - Added `update_model_from_streaming_execution`
+   - Updated stub functions for when ML module unavailable
+
+### Key Features
+
+**How It Works:**
+1. User calls `optimize_streaming()` to get optimal parameters
+2. After actual streaming execution, user calls `update_model_from_streaming_execution()`
+3. Model learns from actual buffer sizes and ordering preferences
+4. Next streaming optimization benefits from improved predictions
+5. Model automatically learns heterogeneous workload characteristics
+
+**Benefits:**
+- ✅ 10-100x faster streaming optimization after training
+- ✅ Automatic learning from actual streaming performance
+- ✅ Better buffer size predictions over time
+- ✅ Better ordering (imap vs imap_unordered) predictions
+- ✅ Learns heterogeneous workload handling
+- ✅ No manual model retraining required
+- ✅ Training data persists across sessions
+
+**Architecture:**
+```
+optimize_streaming(enable_ml_prediction=True)
+    │
+    ├─→ ML Prediction (if enabled & training data available)
+    │   └─→ predict_streaming_parameters()  [uses streaming training data]
+    │
+    └─→ Fallback: Dry-run sampling (if needed)
+
+After execution:
+update_model_from_streaming_execution()
+    ├─→ Extract features (including hardware topology)
+    ├─→ Save streaming-specific parameters (buffer_size, use_ordered)
+    └─→ Write to ml_training_streaming_*.json
+```
+
+### Testing Results
+
+**All Tests Passing:**
+- 17/17 new streaming online learning tests ✅
+- 36/36 ML prediction tests ✅
+- 19/19 batch online learning tests ✅
+- 19/19 ML streaming prediction tests ✅
+- 30/30 streaming optimization tests ✅
+- Total: 121/121 ML & streaming tests passing ✅
+
+**Test Coverage:**
+- Basic streaming model updates
+- Streaming-specific parameter storage and loading
+- Training file creation with streaming prefix
+- Batch vs streaming data distinction
+- Integration with optimize_streaming()
+- Model improvement over time
+- Edge cases (buffers, ordering)
+- Cache persistence
 
 ## What Was Accomplished in Iteration 114
 
@@ -447,30 +561,29 @@ Fixed streaming optimization verbose output formatting:
 
 ## Recommended Focus for Next Agent
 
-**Option 1: Update Online Learning for Streaming (🔥 RECOMMENDED)**
-- Extend update_model_from_execution() to support streaming workloads
-- Add streaming-specific features (buffer_size, use_ordered) to training data
-- Enable streaming predictions to improve over time like batch predictions
-- Benefits: Streaming ML gets better with use, 10-100x faster optimization after training
-- Prerequisites: Online learning (Iteration 112) + ML streaming (Iteration 113)
-
-**Option 2: Prediction Confidence Calibration**
-- Implement automatic confidence threshold adjustment based on accuracy
-- Track prediction errors and adjust thresholds dynamically
+**Option 1: Prediction Confidence Calibration (🔥 RECOMMENDED)**
+- Implement automatic confidence threshold adjustment based on prediction accuracy
+- Track prediction errors over time and adjust thresholds dynamically
 - Benefits: Better fallback decisions, optimal ML vs dry-run trade-off
-- Prerequisites: Online learning tracking (Iteration 112) + Hardware-aware ML (Iteration 114)
+- Prerequisites: Online learning tracking (Iterations 112, 115) + Hardware-aware ML (Iteration 114)
 
-**Option 3: Cross-System Learning**
+**Option 2: Cross-System Learning**
 - Implement model transfer across different hardware configurations
 - Use system fingerprinting (from hardware features) to identify similar environments
 - Benefits: Faster cold-start on new systems, better generalization
-- Prerequisites: Hardware-aware ML (Iteration 114) + Online learning (Iteration 112)
+- Prerequisites: Hardware-aware ML (Iteration 114) + Online learning (Iterations 112, 115)
 
-**Option 4: Feature Importance Analysis**
+**Option 3: Feature Importance Analysis**
 - Implement feature importance scoring to identify which features matter most
 - Use variance-based or correlation-based importance metrics
 - Benefits: Better understanding of model, potential feature reduction, improved interpretability
 - Prerequisites: Hardware-aware ML (Iteration 114) with 12 features
+
+**Option 4: Adaptive Chunking Integration with ML**
+- Integrate adaptive chunking parameters into ML predictions
+- Learn optimal adaptation rates and bounds for different workload types
+- Benefits: Better heterogeneous workload handling out of the box
+- Prerequisites: Adaptive chunking (Iteration 107) + ML prediction (Iteration 115)
 
 ## Progress
 - ✅ Distributed Caching (Iteration 102)
@@ -486,4 +599,6 @@ Fixed streaming optimization verbose output formatting:
 - ✅ Online Learning for ML Prediction (Iteration 112)
 - ✅ ML-Enhanced Streaming Optimization (Iteration 113)
 - ✅ Advanced Cost Model + ML Integration (Iteration 114)
-- ⏳ Online Learning for Streaming or Confidence Calibration (Next - Recommended)
+- ✅ Online Learning for Streaming (Iteration 115)
+- ⏳ Confidence Calibration or Cross-System Learning (Next - Recommended)
+

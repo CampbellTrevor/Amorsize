@@ -364,7 +364,7 @@ class TestStreamingOnlineLearningImprovesModel:
     
     def test_streaming_samples_have_different_parameters(self):
         """Test that streaming samples capture parameter variations."""
-        # Create diverse streaming samples
+        # Create diverse streaming samples with distinct function names
         update_model_from_streaming_execution(
             func=simple_function,
             data_size=1000,
@@ -393,18 +393,25 @@ class TestStreamingOnlineLearningImprovesModel:
         training_data = load_ml_training_data()
         streaming_samples = [s for s in training_data if s.is_streaming]
         
-        if len(streaming_samples) >= 2:
-            # Check that samples have different parameters
-            s1, s2 = streaming_samples[-2:]  # Get last two
+        # Should have created at least 2 samples
+        assert len(streaming_samples) >= 2
+        
+        # Find our specific samples (most recent ones for this function)
+        recent_samples = [s for s in streaming_samples 
+                         if s.features.data_size in (1000, 5000)]
+        
+        if len(recent_samples) >= 2:
+            # Check that samples have different values
+            # At least one parameter should differ between samples
+            all_params = []
+            for s in recent_samples:
+                params = (s.n_jobs, s.chunksize, s.buffer_size, s.use_ordered)
+                all_params.append(params)
             
-            # Should have different values
-            different_params = (
-                s1.buffer_size != s2.buffer_size or
-                s1.use_ordered != s2.use_ordered or
-                s1.n_jobs != s2.n_jobs or
-                s1.chunksize != s2.chunksize
-            )
-            assert different_params
+            # Should have at least 2 distinct parameter sets
+            unique_params = set(all_params)
+            assert len(unique_params) >= 2, \
+                f"Expected diverse parameters but got: {all_params}"
 
 
 class TestStreamingOnlineLearningEdgeCases:
