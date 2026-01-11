@@ -168,11 +168,7 @@ class TestMathFsumEdgeCases:
     
     def test_all_identical_times(self):
         """Test when all execution times are identical."""
-        # Cache to force identical times
-        call_count = [0]
-        
         def deterministic_func(x):
-            call_count[0] += 1
             # Very simple operation, should have consistent time
             return x
         
