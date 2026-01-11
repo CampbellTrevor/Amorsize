@@ -27,7 +27,8 @@ from amorsize.ml_prediction import (
 
 def create_synthetic_workload(
     pattern_type: str,
-    num_samples: int = 20
+    num_samples: int = 20,
+    seed: int = 42
 ) -> List[Tuple[WorkloadFeatures, int, int, float]]:
     """
     Create synthetic training data with different patterns.
@@ -35,10 +36,12 @@ def create_synthetic_workload(
     Args:
         pattern_type: Type of pattern ('cpu_intensive', 'io_bound', 'mixed')
         num_samples: Number of samples to generate
+        seed: Random seed for reproducibility
     
     Returns:
         List of (features, n_jobs, chunksize, speedup) tuples
     """
+    random.seed(seed)
     samples = []
     
     for i in range(num_samples):
@@ -114,6 +117,7 @@ def calculate_prediction_error(
 
 def demo_single_vs_ensemble():
     """Demonstrate single k-NN vs ensemble accuracy."""
+    random.seed(42)  # For reproducible results
     print("=" * 70)
     print("DEMO 1: Single k-NN vs Ensemble Accuracy")
     print("=" * 70)
@@ -190,6 +194,7 @@ def demo_single_vs_ensemble():
 
 def demo_adaptive_learning():
     """Demonstrate adaptive weight learning over time."""
+    random.seed(123)  # For reproducible results
     print("=" * 70)
     print("DEMO 2: Adaptive Weight Learning")
     print("=" * 70)
@@ -245,6 +250,7 @@ def demo_adaptive_learning():
 
 def demo_robustness():
     """Demonstrate robustness to outliers."""
+    random.seed(456)  # For reproducible results
     print("=" * 70)
     print("DEMO 3: Robustness to Outliers")
     print("=" * 70)
