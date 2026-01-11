@@ -49,7 +49,8 @@ def benchmark_optimized_cv(m2_values, count_values, mean_values, iterations=1000
     
     CV = sqrt(m2) / (mean * sqrt(count))
     
-    This is mathematically equivalent but computed in a single expression.
+    This is mathematically equivalent but computed in a single expression
+    using math.sqrt for better performance.
     """
     times = []
     
@@ -57,8 +58,8 @@ def benchmark_optimized_cv(m2_values, count_values, mean_values, iterations=1000
         start = time.perf_counter()
         
         for m2, count, mean in zip(m2_values, count_values, mean_values):
-            # Optimized calculation (1 expression)
-            cv = (m2 ** 0.5) / (mean * (count ** 0.5))
+            # Optimized calculation (1 expression with math.sqrt)
+            cv = math.sqrt(m2) / (mean * math.sqrt(count))
         
         elapsed = time.perf_counter() - start
         times.append(elapsed)
@@ -68,10 +69,10 @@ def benchmark_optimized_cv(m2_values, count_values, mean_values, iterations=1000
 
 def benchmark_cv_calculation_with_math_sqrt(m2_values, count_values, mean_values, iterations=10000):
     """
-    Benchmark using math.sqrt instead of ** 0.5.
+    Benchmark using ** 0.5 operator instead of math.sqrt.
     
-    This tests if using math.sqrt (potentially optimized C function)
-    is faster than the ** operator.
+    This tests the performance difference between the power operator
+    and the optimized math.sqrt C function.
     """
     times = []
     
@@ -79,8 +80,8 @@ def benchmark_cv_calculation_with_math_sqrt(m2_values, count_values, mean_values
         start = time.perf_counter()
         
         for m2, count, mean in zip(m2_values, count_values, mean_values):
-            # Using math.sqrt
-            cv = math.sqrt(m2) / (mean * math.sqrt(count))
+            # Using ** 0.5 operator
+            cv = (m2 ** 0.5) / (mean * (count ** 0.5))
         
         elapsed = time.perf_counter() - start
         times.append(elapsed)
@@ -129,31 +130,31 @@ def run_cv_benchmark():
             m2_values, count_values, mean_values, iterations
         )
         
-        math_sqrt_mean, math_sqrt_std = benchmark_cv_calculation_with_math_sqrt(
+        power_op_mean, power_op_std = benchmark_cv_calculation_with_math_sqrt(
             m2_values, count_values, mean_values, iterations
         )
         
         # Calculate speedup
         speedup_optimized = traditional_mean / optimized_mean if optimized_mean > 0 else 1.0
-        speedup_math_sqrt = traditional_mean / math_sqrt_mean if math_sqrt_mean > 0 else 1.0
+        speedup_power_op = traditional_mean / power_op_mean if power_op_mean > 0 else 1.0
         
         # Per-operation time
         per_op_traditional = (traditional_mean / n) * 1_000_000  # microseconds
         per_op_optimized = (optimized_mean / n) * 1_000_000
-        per_op_math_sqrt = (math_sqrt_mean / n) * 1_000_000
+        per_op_power_op = (power_op_mean / n) * 1_000_000
         
         print(f"  Traditional (3-step):      {traditional_mean*1000:.4f}ms ± {traditional_std*1000:.4f}ms")
-        print(f"  Optimized (1-expression):  {optimized_mean*1000:.4f}ms ± {optimized_std*1000:.4f}ms")
-        print(f"  Math.sqrt variant:         {math_sqrt_mean*1000:.4f}ms ± {math_sqrt_std*1000:.4f}ms")
+        print(f"  Optimized (math.sqrt):     {optimized_mean*1000:.4f}ms ± {optimized_std*1000:.4f}ms")
+        print(f"  Power operator (** 0.5):   {power_op_mean*1000:.4f}ms ± {power_op_std*1000:.4f}ms")
         print()
         print(f"  Per-operation time:")
         print(f"    Traditional:  {per_op_traditional:.3f}μs/op")
         print(f"    Optimized:    {per_op_optimized:.3f}μs/op")
-        print(f"    Math.sqrt:    {per_op_math_sqrt:.3f}μs/op")
+        print(f"    Power op:     {per_op_power_op:.3f}μs/op")
         print()
         print(f"  Speedup:")
         print(f"    Optimized vs Traditional:  {speedup_optimized:.3f}x")
-        print(f"    Math.sqrt vs Traditional:  {speedup_math_sqrt:.3f}x")
+        print(f"    Power op vs Traditional:   {speedup_power_op:.3f}x")
         
         if speedup_optimized > 1.0:
             improvement = (speedup_optimized - 1.0) * 100
