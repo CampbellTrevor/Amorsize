@@ -89,6 +89,7 @@ try:
         predict_parameters,
         predict_streaming_parameters,
         update_model_from_execution,
+        update_model_from_streaming_execution,
         load_ml_training_data,
         PredictionResult,
         StreamingPredictionResult,
@@ -104,6 +105,8 @@ except ImportError:
     def predict_streaming_parameters(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     def update_model_from_execution(*args, **kwargs):
+        raise ImportError("ML prediction module not available")
+    def update_model_from_streaming_execution(*args, **kwargs):
         raise ImportError("ML prediction module not available")
     def load_ml_training_data(*args, **kwargs):
         raise ImportError("ML prediction module not available")
@@ -210,6 +213,7 @@ __all__ = [
     "predict_parameters",
     "predict_streaming_parameters",
     "update_model_from_execution",
+    "update_model_from_streaming_execution",
     "load_ml_training_data",
     "PredictionResult",
     "StreamingPredictionResult",
