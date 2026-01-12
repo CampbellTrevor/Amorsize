@@ -200,8 +200,12 @@ class TestCheckpointStateInvariants:
     @given(state=checkpoint_state_strategy())
     def test_completed_indices_within_bounds(self, state):
         """Property: All completed indices are within [0, total_items)."""
-        for idx in state.completed_indices:
-            assert 0 <= idx < state.total_items or state.total_items == 0
+        # When total_items is 0, completed_indices should be empty (verified by strategy)
+        if state.total_items == 0:
+            assert len(state.completed_indices) == 0
+        else:
+            for idx in state.completed_indices:
+                assert 0 <= idx < state.total_items
 
 
 # ============================================================================
@@ -608,15 +612,13 @@ class TestResumeHelpers:
         
         assert len(final_results) == state.total_items
         
-        # Verify completed results preserved
+        # Verify completed results preserved (strategy ensures indices are valid)
         for idx, result in zip(state.completed_indices, state.results):
-            if idx < state.total_items:
-                assert final_results[idx] == result
+            assert final_results[idx] == result
         
-        # Verify new results placed correctly
+        # Verify new results placed correctly (strategy ensures indices are valid)
         for idx, result in zip(pending_indices, new_results):
-            if idx < state.total_items:
-                assert final_results[idx] == result
+            assert final_results[idx] == result
     
     @given(
         total_items=st.integers(min_value=1, max_value=100)
