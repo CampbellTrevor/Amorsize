@@ -704,7 +704,7 @@ For most users:
 
 **See Also:**
 - [Python multiprocessing contexts](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods)
-- [PEP 446](https://www.python.org/dev/peps/pep-0446/) - Background on fork safety
+- [Python multiprocessing programming guidelines](https://docs.python.org/3/library/multiprocessing.html#programming-guidelines)
 
 ---
 
