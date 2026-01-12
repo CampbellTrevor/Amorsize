@@ -631,7 +631,7 @@ import warnings
 # Suppress fork warnings (only if you're confident your code is safe)
 warnings.filterwarnings('ignore', 
                        category=DeprecationWarning, 
-                       message='.*multi-threaded.*fork.*')
+                       message='.*multi-threaded.*fork\(\).*deadlocks.*')
 
 from amorsize import optimize
 result = optimize(func, data)
@@ -672,7 +672,7 @@ if __name__ == '__main__':
 **Why Amorsize Uses fork() by Default:**
 
 On Linux systems, fork() is the default because:
-- ✅ 10-15x faster spawn time than spawn method
+- ✅ 10-15x faster than spawn method
 - ✅ Lower overhead for short-lived workers
 - ✅ Better performance for typical workloads
 - ✅ Amorsize measures and accounts for spawn costs
