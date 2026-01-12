@@ -730,7 +730,7 @@ with create_adaptive_pool(max_workers=4) as pool:
 
 # Memory-safe batching
 from amorsize import process_in_batches, estimate_safe_batch_size
-batch_size = estimate_safe_batch_size(result_size_bytes=50_000_000)
+batch_size = estimate_safe_batch_size(result_size_bytes=50_000_000)  # 50MB per result
 for batch in process_in_batches(function, data, batch_size):
     process(batch)
 
