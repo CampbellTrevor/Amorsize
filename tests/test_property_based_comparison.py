@@ -12,6 +12,7 @@ automatically generate thousands of edge cases for:
 """
 
 import math
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, List
@@ -804,6 +805,3 @@ class TestIntegrationProperties:
         # Verify results are valid
         assert len(comparison.execution_times) == len(comparison.configs)
         assert all(t > 0 for t in comparison.execution_times)
-
-
-import threading

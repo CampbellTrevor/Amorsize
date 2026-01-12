@@ -36,7 +36,7 @@ Like previous iterations, all property-based tests pass without discovering issu
 
 #### 1. **Property-Based Test Suite** (`tests/test_property_based_comparison.py`)
 
-**Size:** 809 lines (45 tests across 9 test classes)
+**Size:** 806 lines (45 tests across 9 test classes)
 
 **Test Categories:**
 - **ComparisonConfig Invariants:** Valid creation, n_jobs/chunksize/executor_type validation, repr/str formatting
