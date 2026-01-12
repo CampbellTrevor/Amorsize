@@ -165,12 +165,14 @@ class TestBenchmarkResultInvariants:
         """Test that accuracy_percent is within valid range [0, 100]."""
         result = BenchmarkResult(**data)
         
-        # Accuracy can theoretically be slightly above 100% due to floating point,
-        # but should generally be in [0, 100] range
+        # Accuracy can theoretically be slightly above 100% due to floating point precision
+        # in the calculation: accuracy = (1 - |error| / max(predicted, actual)) * 100
+        # We allow up to 105% as a reasonable upper bound for floating point errors
+        # while still catching clearly invalid calculations
         assert result.accuracy_percent >= 0, \
             f"accuracy_percent should be non-negative, got {result.accuracy_percent}"
         assert result.accuracy_percent <= 105, \
-            f"accuracy_percent should be <= 105, got {result.accuracy_percent}"
+            f"accuracy_percent should be <= 105 (allowing for float precision), got {result.accuracy_percent}"
 
     @given(data=benchmark_result_data())
     @settings(max_examples=50, deadline=2000, suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -240,9 +242,10 @@ class TestValidateOptimizationInvariants:
         # Calculate expected speedup
         expected_speedup = result.serial_time / result.parallel_time
         
-        # Should match within floating point precision
-        assert abs(result.actual_speedup - expected_speedup) < 0.01, \
-            f"actual_speedup ({result.actual_speedup}) should equal serial_time/parallel_time ({expected_speedup})"
+        # Should match within floating point precision (use relative tolerance for robustness)
+        relative_error = abs(result.actual_speedup - expected_speedup) / max(expected_speedup, 0.001)
+        assert relative_error < 0.01, \
+            f"actual_speedup ({result.actual_speedup}) should equal serial_time/parallel_time ({expected_speedup}), relative error: {relative_error}"
 
     @given(
         data=valid_data_lists(min_size=20, max_size=100),
@@ -530,7 +533,7 @@ class TestNumericalStability:
         # Test with custom thresholds
         assert result.is_accurate(threshold=0.0)  # Always passes with 0 threshold
         if accuracy < 100.0:
-            assert not result.is_accurate(threshold=100.0)  # Almost never passes with 100 threshold
+            assert not result.is_accurate(threshold=100.0)  # Never passes when accuracy < 100%
 
 
 class TestIntegrationProperties:
