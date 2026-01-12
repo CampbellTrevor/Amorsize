@@ -201,7 +201,7 @@ def fetch_data(url):
     response = requests.get(url)
     return response.json()
 
-urls = ["https://api.example.com/data/{}".format(i) for i in range(100)]
+urls = [f"https://api.example.com/data/{i}" for i in range(100)]
 
 # ⚠️ For pure I/O, use threading instead of multiprocessing
 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
