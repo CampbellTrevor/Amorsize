@@ -472,6 +472,7 @@ results = execute(func, data, chunksize=500)  # Larger chunks = less overhead
   - **Getting Started Notebook**: `examples/notebooks/01_getting_started.ipynb` - Learn the basics in 10 minutes
   - **Performance Analysis Notebook**: `examples/notebooks/02_performance_analysis.ipynb` - Deep dive into bottleneck analysis and monitoring
   - **Parameter Tuning Notebook**: `examples/notebooks/03_parameter_tuning.ipynb` - Master advanced tuning strategies
+  - **Web Services Notebook**: `examples/notebooks/04_use_case_web_services.ipynb` - Django, Flask, and FastAPI integration
   - See `examples/notebooks/README.md` for setup instructions
 
 - **Demo Scripts** - Runnable examples for common scenarios
