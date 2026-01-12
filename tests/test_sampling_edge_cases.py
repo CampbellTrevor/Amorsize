@@ -248,6 +248,31 @@ class TestSamplingErrorHandling:
         
         # Should complete but capture the error
         assert result.sample_count >= 0
+    
+    def test_profiler_stats_preserved_on_exception(self):
+        """Test that profiler stats are preserved even when exception occurs.
+        
+        This is a regression test for the bug where profiler stats were lost
+        when an exception occurred during dry run with profiling enabled.
+        The bug caused test isolation issues in the test suite.
+        """
+        def failing_function(x):
+            if x > 2:
+                raise ValueError("Test exception")
+            return x * 2
+        
+        data = list(range(10))
+        result = perform_dry_run(
+            failing_function,
+            data,
+            sample_size=5,
+            enable_function_profiling=True
+        )
+        
+        # Exception should be captured
+        assert result.error is not None
+        # But profiler stats should still be preserved
+        assert result.function_profiler_stats is not None
 
     def test_check_data_picklability_with_measurements_unpicklable(self):
         """Test picklability check with measurements on unpicklable data."""

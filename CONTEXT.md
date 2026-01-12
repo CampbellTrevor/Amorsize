@@ -1,3 +1,142 @@
+# Context for Next Agent - Iteration 190
+
+## What Was Accomplished in Iteration 190
+
+**"FIX TEST ISOLATION BUG - PROFILER STATS PRESERVATION"** - Fixed critical bug in sampling exception handler that caused test isolation issues and data loss when profiling was enabled during error conditions. All 2501 tests now passing (up from 2499).
+
+### Implementation Summary
+
+**Strategic Priority Addressed:** SAFETY & ACCURACY (Strengthen Guardrails - ensuring reliable test suite and robust error handling)
+
+**Problem Identified:**
+- Test `test_perform_dry_run_with_profiling_enabled` failed intermittently in full suite but passed in isolation
+- Root cause: Exception handler in `sampling.py` (lines 874-897) didn't preserve `function_profiler_stats` when exceptions occurred
+- Impact: Test isolation issues, data loss in error conditions, unreliable diagnostics
+
+**Solution Implemented:**
+Fixed exception handler in `amorsize/sampling.py` to preserve profiler stats:
+1. Added profiler stats creation in exception path (lines 882-889)
+2. Included safe stats creation with nested try/except
+3. Passed `function_profiler_stats` to SamplingResult in exception path
+4. Added regression test `test_profiler_stats_preserved_on_exception`
+
+### Key Changes
+
+#### 1. **Fixed Exception Handler** (`amorsize/sampling.py`)
+
+**Lines Modified:** 874-910 (16 lines added)
+
+**Changes:**
+- Added profiler stats preservation logic in exception path
+- Creates `pstats.Stats` from profiler if profiling was enabled
+- Includes nested try/except for safe stats creation
+- Ensures consistency with success path behavior
+
+**Before:**
+```python
+except Exception as e:
+    # ... cleanup code ...
+    return SamplingResult(
+        # ... parameters ...
+        # Missing: function_profiler_stats parameter
+    )
+```
+
+**After:**
+```python
+except Exception as e:
+    # ... cleanup code ...
+    
+    # Preserve profiler stats if profiling was enabled
+    profiler_stats = None
+    if profiler is not None:
+        try:
+            profiler_stats = pstats.Stats(profiler)
+            profiler_stats.strip_dirs()
+        except Exception:
+            profiler_stats = None
+    
+    return SamplingResult(
+        # ... parameters ...
+        function_profiler_stats=profiler_stats  # <- ADDED
+    )
+```
+
+#### 2. **Added Regression Test** (`tests/test_sampling_edge_cases.py`)
+
+**Lines Added:** 252-277 (25 lines)
+
+**Test:** `test_profiler_stats_preserved_on_exception`
+
+**Purpose:**
+- Verifies profiler stats are preserved when function raises exception
+- Prevents future regression of this bug
+- Ensures complete exception path testing
+
+### Current State Assessment
+
+**Testing Status:**
+- ✅ Unit tests (2501 tests passing, +1 from Iteration 189)
+- ✅ Property-based tests (20 tests, 1000+ cases - Iteration 178)
+- ✅ Optimizer edge cases (34 tests - Iteration 184)
+- ✅ Sampling edge cases (53 tests, +1 - Iteration 190) ← NEW
+- ✅ System_info edge cases (103 tests - Iteration 186)
+- ✅ Cost_model edge cases (88 tests - Iteration 187)
+- ✅ Cache edge cases (198 tests - Iteration 188)
+- ⏭️ Mutation testing baseline (requires CI/CD - Iteration 183 documented limitations)
+
+**Strategic Priority Status:**
+1. ✅ **INFRASTRUCTURE** - All complete
+2. ✅ **SAFETY & ACCURACY** - All complete + **Profiler bug fixed ← NEW (Iteration 190)**
+3. ✅ **CORE LOGIC** - All complete
+4. ✅ **UX & ROBUSTNESS** - All complete
+5. ✅ **PERFORMANCE** - Optimized (0.114ms)
+6. ✅ **DOCUMENTATION** - Complete (guides + notebooks + navigation + mutation status + Performance Cookbook)
+7. ✅ **TESTING** - Property-based + Mutation infrastructure + All module edge cases + **Test isolation fixed ← NEW**
+
+### Files Changed
+
+1. **MODIFIED**: `amorsize/sampling.py`
+   - **Lines:** 874-910 (16 lines added)
+   - **Change:** Fixed exception handler to preserve profiler stats
+   - **Purpose:** Ensure profiling data never lost, even in error conditions
+
+2. **MODIFIED**: `tests/test_sampling_edge_cases.py`
+   - **Lines:** 252-277 (25 lines added)
+   - **Change:** Added regression test for profiler stats preservation
+   - **Purpose:** Prevent future regression of this bug
+
+3. **CREATED**: `ITERATION_190_SUMMARY.md`
+   - **Purpose:** Complete documentation of bug fix and iteration
+   - **Size:** ~10KB
+
+4. **MODIFIED**: `CONTEXT.md` (this file)
+   - **Change:** Added Iteration 190 summary
+   - **Purpose:** Document accomplishment and guide next agent
+
+### Quality Metrics
+
+**Test Results:**
+- Before: 2499 passed, 1 failed, 73 skipped
+- After: 2501 passed, 73 skipped
+- Improvement: Fixed test isolation issue, added 1 regression test
+
+**Code Quality:**
+- Minimal changes: 16 lines to fix bug
+- Backwards compatible: No breaking API changes
+- Well tested: Added specific regression test
+- Documented: Clear inline comments
+
+**Bug Impact Resolution:**
+- ✅ Test isolation issue resolved
+- ✅ Profiling data always preserved
+- ✅ Exception path complete and tested
+- ✅ User diagnostics improved
+
+---
+
+## Previous Work Summary (Iteration 189)
+
 # Context for Next Agent - Iteration 189
 
 ## What Was Accomplished in Iteration 189
