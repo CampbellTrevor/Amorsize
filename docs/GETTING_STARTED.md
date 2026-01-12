@@ -452,7 +452,8 @@ results = execute(func, data, chunksize=500)  # Larger chunks = less overhead
 - **Data Processing** - Pandas, CSV, database batch operations with ETL patterns
   - See `docs/USE_CASE_DATA_PROCESSING.md`
 
-- **ML Pipelines** - PyTorch, TensorFlow, feature engineering (Coming soon)
+- **ML Pipelines** - PyTorch, TensorFlow, feature engineering, cross-validation, hyperparameter tuning
+  - See `docs/USE_CASE_ML_PIPELINES.md`
 
 ### Read Best Practices
 
