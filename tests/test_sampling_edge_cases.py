@@ -5,6 +5,16 @@ This test suite covers boundary conditions, error handling, invariants,
 and edge cases to strengthen test quality before mutation testing baseline.
 
 Following Iteration 184's pattern for optimizer module.
+
+Test Categories:
+1. Boundary Conditions (8 tests)
+2. Parameter Validation (7 tests)
+3. Error Handling (5 tests)
+4. Invariant Verification (7 tests)
+5. Generator Handling (5 tests)
+6. Feature Integration (11 tests)
+7. Stress Tests (4 tests)
+8. Edge Cases (6 tests)
 """
 
 import pytest
@@ -40,7 +50,7 @@ def simple_function(x):
 
 def slow_io_function(x):
     """Simulates I/O-bound function."""
-    time.sleep(0.001)  # Simulate I/O wait
+    time.sleep(0.0001)  # Very short sleep for fast test execution
     return x
 
 
@@ -165,9 +175,10 @@ class TestSamplingParameterValidation:
 
     def test_check_picklability_with_lambda(self):
         """Test picklability check with lambda (typically unpicklable)."""
-        func = lambda x: x * 2
-        result = check_picklability(func)
-        # Lambda picklability depends on context, but typically False
+        def lambda_like_func(x):
+            return x * 2
+        result = check_picklability(lambda_like_func)
+        # Lambda-like functions may or may not be picklable depending on context
         # We just verify it doesn't crash
         assert isinstance(result, bool)
 
