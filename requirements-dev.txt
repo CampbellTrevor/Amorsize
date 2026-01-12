@@ -1,0 +1,21 @@
+# Development dependencies for Amorsize
+# Install with: pip install -r requirements-dev.txt
+
+# Core testing framework
+pytest>=7.0.0
+pytest-cov>=3.0.0
+
+# Property-based testing (for test_property_based_optimizer.py and related tests)
+hypothesis>=6.0.0
+
+# Enhanced functionality (optional but recommended for full functionality)
+psutil>=5.8.0
+
+# Bayesian optimization (optional feature)
+scikit-optimize>=0.9.0
+
+# Code quality tools (recommended for contributors)
+black>=22.0.0
+flake8>=4.0.0
+mypy>=0.950
+isort>=5.10.0

@@ -160,24 +160,38 @@ User calls optimize(func, data)
 git clone https://github.com/CampbellTrevor/Amorsize.git
 cd Amorsize
 
-# Install in development mode with all dependencies
+# Option 1: Install using pyproject.toml optional dependencies
 pip install -e ".[full,dev]"
+
+# Option 2: Install using requirements-dev.txt (recommended for contributors)
+pip install -e .
+pip install -r requirements-dev.txt
 
 # Run tests to verify setup
 pytest tests/ -v
 ```
 
 ### Development Dependencies
-```
-# Core
-psutil                    # Enhanced physical core detection
 
-# Development
-pytest>=6.0              # Test framework
-pytest-cov               # Coverage reporting
-black                    # Code formatting
-flake8                   # Linting
-mypy                     # Type checking (future)
+All development dependencies are listed in `requirements-dev.txt`:
+
+```
+# Core testing framework
+pytest>=7.0.0            # Test framework
+pytest-cov>=3.0.0        # Coverage reporting
+hypothesis>=6.0.0        # Property-based testing
+
+# Enhanced functionality (recommended)
+psutil>=5.8.0            # Physical core detection & memory monitoring
+
+# Bayesian optimization (optional feature)
+scikit-optimize>=0.9.0   # Bayesian parameter tuning
+
+# Code quality tools (recommended for contributors)
+black>=22.0.0            # Code formatting
+flake8>=4.0.0            # Linting
+mypy>=0.950              # Type checking
+isort>=5.10.0            # Import sorting
 
 # Optional
 matplotlib               # Visualization
