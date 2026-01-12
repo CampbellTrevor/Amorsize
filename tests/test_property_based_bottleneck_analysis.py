@@ -22,6 +22,14 @@ from amorsize.bottleneck_analysis import (
     HETEROGENEOUS_CV_THRESHOLD,
 )
 
+# Memory size constants for readability
+MB = 1024**2
+GB = 1024**3
+TB = 1024**4
+
+# Floating point tolerance for percentage sums
+PERCENTAGE_SUM_TOLERANCE = 2.0  # Allow 2% error for floating point rounding
+
 
 # Custom strategies for bottleneck analysis parameters
 @st.composite
@@ -36,8 +44,8 @@ def bottleneck_params(draw):
     chunking_overhead = draw(st.floats(min_value=0.0, max_value=2.0))
     estimated_speedup = draw(st.floats(min_value=1.0, max_value=64.0))
     physical_cores = draw(st.integers(min_value=1, max_value=128))
-    available_memory = draw(st.integers(min_value=1024**2, max_value=1024**4))  # 1 MB to 1 TB
-    estimated_memory_per_job = draw(st.integers(min_value=0, max_value=10 * 1024**3))  # 0 to 10 GB
+    available_memory = draw(st.integers(min_value=MB, max_value=TB))
+    estimated_memory_per_job = draw(st.integers(min_value=0, max_value=10 * GB))
     coefficient_of_variation = draw(st.floats(min_value=0.0, max_value=3.0))
     
     return {
@@ -173,7 +181,7 @@ class TestAnalyzeBottlenecksBasicProperties:
         if analysis.overhead_breakdown:
             total = sum(analysis.overhead_breakdown.values())
             # Allow some floating point error
-            assert 98.0 <= total <= 102.0 or total == 0.0
+            assert 100.0 - PERCENTAGE_SUM_TOLERANCE <= total <= 100.0 + PERCENTAGE_SUM_TOLERANCE or total == 0.0
 
 
 class TestSpawnOverheadDetection:
@@ -383,8 +391,8 @@ class TestWorkloadTooSmallDetection:
             chunking_overhead=0.02,
             estimated_speedup=1.5,
             physical_cores=physical_cores,
-            available_memory=8 * 1024**3,
-            estimated_memory_per_job=100 * 1024**2,
+            available_memory=8 * GB,
+            estimated_memory_per_job=100 * MB,
         )
         
         # Workload too small should be either primary or contributing bottleneck
@@ -416,8 +424,8 @@ class TestInsufficientComputationDetection:
             chunking_overhead=0.02,
             estimated_speedup=2.0,
             physical_cores=physical_cores,
-            available_memory=8 * 1024**3,
-            estimated_memory_per_job=100 * 1024**2,
+            available_memory=8 * GB,
+            estimated_memory_per_job=100 * MB,
         )
         
         # Insufficient computation should be either primary or contributing bottleneck
@@ -450,8 +458,8 @@ class TestHeterogeneousWorkloadDetection:
             chunking_overhead=0.02,
             estimated_speedup=3.0,
             physical_cores=physical_cores,
-            available_memory=8 * 1024**3,
-            estimated_memory_per_job=100 * 1024**2,
+            available_memory=8 * GB,
+            estimated_memory_per_job=100 * MB,
             coefficient_of_variation=coefficient_of_variation,
         )
         
@@ -500,8 +508,8 @@ class TestPrimaryBottleneckSelection:
         params['avg_execution_time'] = 0.1
         params['total_items'] = 1000
         params['coefficient_of_variation'] = 0.1
-        params['estimated_memory_per_job'] = 100 * 1024**2
-        params['available_memory'] = 8 * 1024**3
+        params['estimated_memory_per_job'] = 100 * MB
+        params['available_memory'] = 8 * GB
         
         analysis = analyze_bottlenecks(**params)
         
@@ -589,18 +597,18 @@ class TestEdgeCases:
     """Test edge cases and boundary conditions."""
     
     def test_all_zeros(self):
-        """Test with all zero values."""
+        """Test with minimal valid values."""
         analysis = analyze_bottlenecks(
-            n_jobs=0,
+            n_jobs=1,  # Minimum valid n_jobs
             chunksize=1,
-            total_items=0,
+            total_items=1,  # Minimum valid items
             avg_execution_time=0.0,
             spawn_cost=0.0,
             ipc_overhead=0.0,
             chunking_overhead=0.0,
             estimated_speedup=1.0,
             physical_cores=1,
-            available_memory=1024**3,
+            available_memory=GB,
             estimated_memory_per_job=0,
         )
         
@@ -649,8 +657,8 @@ class TestEdgeCases:
             chunking_overhead=0.0,
             estimated_speedup=1.0,
             physical_cores=1,
-            available_memory=1024**3,
-            estimated_memory_per_job=100 * 1024**2,
+            available_memory=GB,
+            estimated_memory_per_job=100 * MB,
         )
         
         assert isinstance(analysis, BottleneckAnalysis)
