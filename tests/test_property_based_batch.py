@@ -10,10 +10,8 @@ automatically generate thousands of edge cases for:
 - Edge cases (empty data, single items, large datasets)
 """
 
-import pickle
 import sys
 import threading
-from typing import Any, List
 
 import pytest
 from hypothesis import given, strategies as st, settings, assume
@@ -191,7 +189,6 @@ class TestProcessInBatchesParameterValidation:
     )
     def test_rejects_non_positive_max_memory_percent(self, data, max_memory_percent):
         """Should reject non-positive max_memory_percent."""
-        assume(max_memory_percent <= 0.0)
         with pytest.raises(ValueError, match="max_memory_percent must be between 0 and 1"):
             process_in_batches(square, data, max_memory_percent=max_memory_percent)
     
@@ -387,7 +384,6 @@ class TestEstimateSafeBatchSize:
     )
     def test_rejects_non_positive_max_memory_percent(self, result_size, max_memory_percent):
         """Should reject non-positive max_memory_percent."""
-        assume(max_memory_percent <= 0.0)
         with pytest.raises(ValueError, match="max_memory_percent must be between 0 and 1"):
             estimate_safe_batch_size(result_size, max_memory_percent)
     
