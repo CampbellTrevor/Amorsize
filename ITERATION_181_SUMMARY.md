@@ -25,7 +25,7 @@ Based on the cache.py baseline:
 - cache.py: 2,741 mutations
 - optimizer.py: ~4,000+ mutations (larger, more complex)
 - sampling.py: ~3,000+ mutations
-- system_info.py: ~2,500+ mutations  
+- system_info.py: ~2,500+ mutations
 - cost_model.py: ~1,500+ mutations
 
 **Total estimated:** 15,000-20,000 mutations for priority modules
@@ -53,7 +53,7 @@ Based on the cache.py baseline:
 
 According to CONTEXT.md:
 1. ✅ INFRASTRUCTURE - All complete
-2. ✅ SAFETY & ACCURACY - All complete  
+2. ✅ SAFETY & ACCURACY - All complete
 3. ✅ CORE LOGIC - All complete
 4. ✅ UX & ROBUSTNESS - All complete
 5. ✅ PERFORMANCE - Optimized (0.114ms)
