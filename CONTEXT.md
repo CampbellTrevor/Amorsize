@@ -1,3 +1,163 @@
+# Context for Next Agent - Iteration 197
+
+## What Was Accomplished in Iteration 197
+
+**"PROPERTY-BASED TESTING EXPANSION FOR COST_MODEL MODULE"** - Created 39 comprehensive property-based tests for the cost_model module (698 lines), increasing property-based test coverage from 84 to 123 tests (+46%) and automatically testing thousands of edge cases for advanced cost modeling. **Found and fixed a division-by-zero bug** in cache coherency overhead calculation that would crash in edge cases (containers/VMs with zero cache sizes).
+
+### Implementation Summary
+
+**Strategic Priority Addressed:** SAFETY & ACCURACY (The Guardrails - Strengthen property-based testing coverage)
+
+**Problem Identified:**
+- Property-based testing infrastructure expanded in Iterations 178 (optimizer), 195 (sampling), and 196 (system_info)
+- Only 84 property-based tests existed (20 optimizer + 30 sampling + 34 system_info)
+- Cost_model module (698 lines) is a critical module for advanced cost modeling without property-based tests
+- Module handles complex calculations (cache coherency, NUMA penalties, memory bandwidth, false sharing)
+- Regular tests can miss edge cases that property-based tests catch automatically
+
+**Solution Implemented:**
+Created `tests/test_property_based_cost_model.py` with 39 comprehensive property-based tests using Hypothesis framework:
+1. CacheInfo/NUMAInfo/MemoryBandwidthInfo Invariants (6 tests) - Non-negative values, reasonable ranges, structure
+2. Parse Size String (4 tests) - Non-negative, unit conversions, invalid input handling
+3. Detect Cache Info (3 tests) - Valid CacheInfo, reasonable values, deterministic
+4. Detect NUMA Info (3 tests) - Valid NUMAInfo, cores distribution, single node behavior
+5. Estimate Memory Bandwidth (3 tests) - Positive values, reasonable range (10-500 GB/s)
+6. Detect System Topology (2 tests) - Valid SystemTopology, component validity
+7. Cache Coherency Overhead (4 tests) - At least 1.0, single job no overhead, increases with jobs, NUMA penalty
+8. Memory Bandwidth Impact (3 tests) - Between 0.0 and 1.0, single job no impact, low demand no impact
+9. False Sharing Overhead (4 tests) - At least 1.0, single job no overhead, large/small object behavior
+10. Advanced Amdahl Speedup (5 tests) - Positive, bounded by n_jobs, single job ~1.0, overhead breakdown
+11. Edge Cases (3 tests) - Zero compute time, zero n_jobs, zero cache sizes
+
+**Critical Bug Found and Fixed:**
+- **Bug:** Division by zero in `estimate_cache_coherency_overhead()` when `l3_size=0`
+- **Scenario:** Containers, VMs, or systems where cache detection fails
+- **Fix:** Added `l3_size == 0` check before division (1 line change)
+- **Impact:** Prevents crash in edge cases
+
+### Key Changes
+
+#### 1. **Property-Based Test Suite** (`tests/test_property_based_cost_model.py`)
+
+**Size:** 841 lines (39 tests)
+
+**Test Categories:**
+- **Dataclass Invariants:** CacheInfo, NUMAInfo, MemoryBandwidthInfo structure
+- **Parsing Functions:** Size string parsing with K/M/G units
+- **Detection Functions:** Cache, NUMA, bandwidth, topology detection
+- **Cost Models:** Cache coherency, bandwidth impact, false sharing
+- **Advanced Amdahl:** Speedup with hardware-level cost factors
+- **Edge Cases:** Zero values, extreme parameters
+
+**All Tests Passing:** 39/39 ✅
+
+**Execution Time:** 1.90 seconds (fast feedback)
+
+**Generated Cases:** ~4,000-6,000 edge cases automatically tested per run
+
+#### 2. **Bug Fix** (`amorsize/cost_model.py`)
+
+**Modified:** Line 444 in `estimate_cache_coherency_overhead()`
+- Added check: `if l3_size == 0 or total_working_set <= l3_size:`
+- Prevents division by zero when cache size is 0
+- Handles edge case in containers/VMs gracefully
+
+#### 3. **Test Execution Results**
+
+**Before:** 2688 tests (84 property-based)
+**After:** 2727 tests (123 property-based)
+- 2727 passed
+- 0 regressions
+- 39 new property-based tests
+- 1 bug found and fixed
+
+### Current State Assessment
+
+**Property-Based Testing Status:**
+- ✅ Optimizer module (20 tests - Iteration 178)
+- ✅ Sampling module (30 tests - Iteration 195)
+- ✅ System_info module (34 tests - Iteration 196)
+- ✅ **Cost_model module (39 tests) ← NEW (Iteration 197)**
+- ⏭️ Cache module (2104 lines - potential future expansion)
+
+**Testing Coverage:**
+- 123 property-based tests (generates 1000s of edge cases)
+- 2604 regular tests
+- 268 edge case tests (Iterations 184-188)
+- 2727 total tests
+
+**Strategic Priority Status:**
+1. ✅ **INFRASTRUCTURE** - All complete + **Property-based testing for cost modeling ← NEW (Iteration 197)**
+2. ✅ **SAFETY & ACCURACY** - All complete + **Property-based testing expanded (123 tests)** ← ENHANCED + **Bug fix (division by zero)** ← NEW
+3. ✅ **CORE LOGIC** - All complete
+4. ✅ **UX & ROBUSTNESS** - All complete
+5. ✅ **PERFORMANCE** - Optimized (0.114ms)
+6. ✅ **DOCUMENTATION** - Complete
+7. ✅ **TESTING** - Property-based (123 tests) + Mutation infrastructure + Edge cases (268 tests) ← **ENHANCED**
+
+### Files Changed
+
+1. **CREATED**: `tests/test_property_based_cost_model.py`
+   - **Purpose:** Property-based tests for cost_model module
+   - **Size:** 841 lines (39 tests)
+   - **Coverage:** 13 categories of cost_model functionality
+   - **Impact:** +46% property-based test coverage
+   - **Bug Found:** Division by zero in cache coherency calculation
+
+2. **MODIFIED**: `amorsize/cost_model.py`
+   - **Change:** Fixed division-by-zero bug (line 444)
+   - **Purpose:** Handle edge case when l3_size is 0
+   - **Lines Changed:** 1 line
+
+3. **CREATED**: `ITERATION_197_SUMMARY.md`
+   - **Purpose:** Document iteration accomplishment
+   - **Size:** ~11KB
+
+4. **MODIFIED**: `CONTEXT.md` (this file)
+   - **Change:** Added Iteration 197 summary at top
+   - **Purpose:** Guide next agent with current state
+
+### Quality Metrics
+
+**Test Coverage Improvement:**
+- Property-based tests: 84 → 123 (+46%)
+- Total tests: 2688 → 2727 (+39)
+- Generated edge cases: ~4,000-6,000 per run
+
+**Test Quality:**
+- 0 regressions (all existing tests pass)
+- Fast execution (1.90s for 39 new tests)
+- No flaky tests
+- **Found and fixed 1 real bug!**
+
+**Invariants Verified:**
+- Non-negativity (cache sizes, bandwidth, overhead factors)
+- Bounded values (bandwidth impact 0-1, overhead ≥1.0, speedup ≤ n_jobs)
+- Type correctness (int for sizes/cores, float for bandwidth/overhead)
+- Reasonable ranges (cache: KB-MB, bandwidth: 1-1000 GB/s)
+- Mathematical properties (single job = no overhead)
+- Edge case handling (zero values, extreme parameters)
+
+### Impact Metrics
+
+**Immediate Impact:**
+- 46% more property-based tests
+- 1000s of edge cases automatically tested for cost modeling
+- **Found and fixed division-by-zero bug** (crash prevention)
+- Better confidence in cost model correctness
+- Clear property specifications as executable documentation
+
+**Long-Term Impact:**
+- Stronger foundation for mutation testing baseline
+- Better coverage improves mutation score
+- Clear patterns for expanding to remaining modules (cache)
+- Self-documenting tests (properties describe behavior)
+- Prevents regressions in complex cost calculations
+
+---
+
+## Previous Work Summary (Iteration 196)
+
 # Context for Next Agent - Iteration 196
 
 ## What Was Accomplished in Iteration 196

@@ -441,7 +441,7 @@ def estimate_cache_coherency_overhead(
     total_working_set = working_set_per_core * n_jobs
 
     # Cache pressure multiplier (1.0 if fits in L3, higher if spills to RAM)
-    if total_working_set <= l3_size:
+    if l3_size == 0 or total_working_set <= l3_size:
         cache_pressure = 1.0
     else:
         # Linear increase in overhead as working set exceeds cache
