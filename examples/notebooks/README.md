@@ -56,6 +56,20 @@ Welcome to the Amorsize interactive tutorial notebooks! These Jupyter notebooks 
 
 **Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of web frameworks helpful but not required.
 
+### 5. Data Processing Use Cases (`05_use_case_data_processing.ipynb`)
+**Optimize data pipelines!** Learn patterns for pandas, CSV processing, databases, and ETL workflows.
+
+**What you'll learn:**
+- Pandas DataFrame parallel operations (apply, groupby, merge)
+- CSV and file batch processing
+- Database bulk insert and update optimization
+- ETL pipeline parallelization
+- Memory-efficient processing for large datasets
+- Production deployment patterns
+- Cross-operation performance benchmarks
+
+**Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of pandas and data processing helpful.
+
 ---
 
 ## 🚀 Quick Start
@@ -105,14 +119,17 @@ jupyter notebook
 1. Complete `01_getting_started.ipynb` if you haven't already
 2. Work through `02_performance_analysis.ipynb` - Learn to diagnose and optimize
 3. Try `03_parameter_tuning.ipynb` - Master advanced tuning strategies
-4. Explore `04_use_case_web_services.ipynb` for web service integration
+4. Explore use case notebooks:
+   - `04_use_case_web_services.ipynb` for web service integration
+   - `05_use_case_data_processing.ipynb` for data pipelines
 5. Check domain-specific use case guides for your domain
 
 ### For Advanced Users
-1. Review notebooks `01` through `04` for a complete overview
+1. Review notebooks `01` through `05` for a complete overview
 2. Explore domain-specific interactive notebooks:
    - `04_use_case_web_services.ipynb` - Django, Flask, FastAPI patterns
-   - More coming soon: Data Processing, ML Pipelines
+   - `05_use_case_data_processing.ipynb` - Pandas, CSV, database, ETL patterns
+   - More coming soon: ML Pipelines
 3. Read detailed use case guides:
    - [Web Services](../../docs/USE_CASE_WEB_SERVICES.md)
    - [Data Processing](../../docs/USE_CASE_DATA_PROCESSING.md)
