@@ -13,11 +13,18 @@ from amorsize import execute, with_rate_limit, with_retry
 
 # Simulate an API that limits to 10 requests/second
 class FakeAPI:
-    """Simulated API with rate limiting."""
+    """
+    Simulated API with rate limiting.
+    
+    Note: The higher limit (50 req/s) is used to simulate a real API
+    that has some capacity above our rate limiter's target (10 req/s).
+    This allows us to demonstrate that our rate limiter effectively
+    controls the request rate.
+    """
     
     def __init__(self):
         self.request_times: List[float] = []
-        self.rate_limit_per_second = 50  # Higher limit to simulate real API
+        self.rate_limit_per_second = 50  # Higher than our rate limiter to allow demonstration
     
     def get_data(self, item_id: int) -> Dict:
         """Fetch data for an item (simulated)."""

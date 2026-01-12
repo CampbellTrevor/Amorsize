@@ -15,6 +15,9 @@ from amorsize.rate_limit import (
     rate_limited_call,
 )
 
+# Tolerance for timing-based assertions (floating point precision)
+TIME_TOLERANCE = 0.1
+
 
 class TestRateLimitPolicy:
     """Tests for RateLimitPolicy configuration."""
@@ -76,7 +79,7 @@ class TestRateLimiter:
         initial_tokens = limiter.get_available_tokens()
         limiter.acquire()
         # Allow small tolerance for time elapsed during execution
-        assert abs(limiter.get_available_tokens() - (initial_tokens - 1.0)) < 0.1
+        assert abs(limiter.get_available_tokens() - (initial_tokens - 1.0)) < TIME_TOLERANCE
     
     def test_acquire_multiple_tokens(self):
         """Test acquiring multiple tokens at once."""
@@ -85,7 +88,7 @@ class TestRateLimiter:
         
         limiter.acquire(tokens=5.0)
         # Allow small tolerance for time elapsed during execution
-        assert abs(limiter.get_available_tokens() - 15.0) < 0.1
+        assert abs(limiter.get_available_tokens() - 15.0) < TIME_TOLERANCE
     
     def test_try_acquire_success(self):
         """Test try_acquire when tokens available."""
@@ -94,7 +97,7 @@ class TestRateLimiter:
         
         assert limiter.try_acquire() is True
         # Allow small tolerance for time elapsed during execution
-        assert abs(limiter.get_available_tokens() - 9.0) < 0.1
+        assert abs(limiter.get_available_tokens() - 9.0) < TIME_TOLERANCE
     
     def test_try_acquire_failure(self):
         """Test try_acquire when insufficient tokens."""
@@ -117,7 +120,7 @@ class TestRateLimiter:
             limiter.acquire()
         
         # Allow small tolerance for time elapsed during loop
-        assert limiter.get_available_tokens() < 0.1
+        assert limiter.get_available_tokens() < TIME_TOLERANCE
         
         # Wait for refill
         time.sleep(0.5)  # Should refill 5 tokens (10 req/s * 0.5s)
@@ -166,7 +169,7 @@ class TestRateLimiter:
         # Consume some tokens
         limiter.acquire(tokens=15.0)
         # Allow small tolerance for time elapsed
-        assert abs(limiter.get_available_tokens() - 5.0) < 0.1
+        assert abs(limiter.get_available_tokens() - 5.0) < TIME_TOLERANCE
         
         # Reset
         limiter.reset()
@@ -183,7 +186,7 @@ class TestRateLimiter:
             pass  # Token acquired in __enter__
         
         # Allow small tolerance for time elapsed
-        assert abs(limiter.get_available_tokens() - (initial_tokens - 1.0)) < 0.1
+        assert abs(limiter.get_available_tokens() - (initial_tokens - 1.0)) < TIME_TOLERANCE
     
     def test_concurrent_access_thread_safety(self):
         """Test that limiter is thread-safe."""
@@ -316,7 +319,7 @@ class TestWithRateLimitDecorator:
         func1()
         func2()
         # Allow small tolerance for time elapsed
-        assert abs(limiter.get_available_tokens() - (initial_tokens - 2.0)) < 0.1
+        assert abs(limiter.get_available_tokens() - (initial_tokens - 2.0)) < TIME_TOLERANCE
     
     def test_decorator_enforces_rate_limit(self):
         """Test that decorator actually enforces rate limiting."""
@@ -568,7 +571,7 @@ class TestEdgeCases:
         # Acquire exactly 10 tokens
         limiter.acquire(tokens=10.0)
         # Allow small tolerance for time elapsed
-        assert limiter.get_available_tokens() < 0.1
+        assert limiter.get_available_tokens() < TIME_TOLERANCE
         
         # Should wait for next token
         assert limiter.try_acquire() is False

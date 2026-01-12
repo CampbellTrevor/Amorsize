@@ -64,8 +64,9 @@ class RateLimitPolicy:
             raise ValueError("requests_per_second must be positive")
         
         # Default burst size to requests_per_second (minimum 1)
+        # Use round() for more intuitive behavior with fractional rates
         if self.burst_size is None:
-            self.burst_size = max(1, int(self.requests_per_second))
+            self.burst_size = max(1, round(self.requests_per_second))
         
         if self.burst_size < 1:
             raise ValueError("burst_size must be >= 1")
@@ -206,7 +207,8 @@ class RateLimiter:
                     pass
             
             # Wait for tokens to become available
-            # Use small sleep to avoid busy-waiting
+            # Use small sleep to avoid busy-waiting while remaining responsive
+            # For very high-frequency APIs, tokens refill quickly enough
             time.sleep(min(wait_time, 0.1))
     
     def __enter__(self):
