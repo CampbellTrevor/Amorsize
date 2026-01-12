@@ -345,7 +345,7 @@ This indicates significant gaps in test coverage. Focus on:
 
 - **Mutmut Documentation**: https://mutmut.readthedocs.io/
 - **Mutation Testing Introduction**: https://en.wikipedia.org/wiki/Mutation_testing
-- **Paper on Mutation Testing**: "Are Mutants a Valid Substitute for Real Faults in Software Testing?" (2014)
+- **Research Paper**: Just, R., Jalali, D., Inozemtseva, L., Ernst, M. D., Holmes, R., & Fraser, G. (2014). "Are Mutants a Valid Substitute for Real Faults in Software Testing?" *Proceedings of the 22nd ACM SIGSOFT International Symposium on Foundations of Software Engineering (FSE 2014)*, pp. 654-665. DOI: 10.1145/2635868.2635929
 
 ## Example Workflow
 

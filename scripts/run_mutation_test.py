@@ -41,9 +41,14 @@ def main():
         cmd.extend(['--max-mutations', str(max_mutations)])
     
     print(f"Running: {' '.join(cmd)}")
-    subprocess.run(cmd)
-    subprocess.run(['mutmut', 'results'])
+    result = subprocess.run(cmd)
     
+    # Show results even if some mutations survived
+    print("\n" + "="*60)
+    subprocess.run(['mutmut', 'results'])
+    print("="*60)
+    
+    # Return 0 even if mutations survived (not a failure)
     return 0
 
 if __name__ == '__main__':

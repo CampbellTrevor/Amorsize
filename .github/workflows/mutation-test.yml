@@ -103,10 +103,12 @@ jobs:
         RESULTS=$(mutmut results 2>&1 || echo "No results")
         echo "$RESULTS"
         
-        # Extract statistics (if available)
+        # Extract statistics (if available) - using portable sed instead of grep -P
         if echo "$RESULTS" | grep -q "Killed:"; then
-          KILLED=$(echo "$RESULTS" | grep "Killed:" | grep -oP '\d+' | head -1)
-          TOTAL=$(echo "$RESULTS" | grep "Total:" | grep -oP '\d+' | head -1)
+          # Extract killed count (first number after "Killed:")
+          KILLED=$(echo "$RESULTS" | sed -n 's/.*Killed:[^0-9]*\([0-9]\+\).*/\1/p' | head -1)
+          # Extract total count (first number after "Total:")
+          TOTAL=$(echo "$RESULTS" | sed -n 's/.*Total:[^0-9]*\([0-9]\+\).*/\1/p' | head -1)
           
           if [ -n "$KILLED" ] && [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
             SCORE=$(awk "BEGIN {printf \"%.1f\", ($KILLED / $TOTAL) * 100}")
