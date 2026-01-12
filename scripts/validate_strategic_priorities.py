@@ -235,7 +235,6 @@ def test_documentation():
     print("6. DOCUMENTATION - User Guidance")
     print("=" * 70)
     
-    import os
     from pathlib import Path
     
     repo_root = Path(__file__).parent.parent
