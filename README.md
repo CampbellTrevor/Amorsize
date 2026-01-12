@@ -689,6 +689,33 @@ Want to squeeze every bit of performance from your parallelization? Check the [P
 
 Master the internals to achieve optimal parallelization for your specific workload and hardware.
 
+## Testing & Quality
+
+Amorsize maintains high code quality through comprehensive testing:
+
+- **2300+ unit tests** across all modules
+- **Property-based testing** with Hypothesis (1000+ automatically generated test cases)
+- **Mutation testing** infrastructure to validate test effectiveness
+- **Cross-platform CI** (Ubuntu, Windows, macOS × Python 3.7-3.13)
+- **Performance regression testing** to catch slowdowns
+
+### Run Mutation Testing
+
+Mutation testing validates that tests actually catch bugs (not just exercise code):
+
+```bash
+# Install mutation testing tool
+pip install mutmut
+
+# Quick test on core module
+python scripts/run_mutation_test.py --module optimizer --quick
+
+# Full mutation testing (slow, ~30-60 minutes)
+python scripts/run_mutation_test.py --all
+```
+
+See [Mutation Testing Guide](docs/MUTATION_TESTING.md) for detailed documentation.
+
 ## Troubleshooting
 
 Having issues? Check the comprehensive [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for solutions to common problems:

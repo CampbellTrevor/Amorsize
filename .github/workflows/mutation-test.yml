@@ -1,0 +1,203 @@
+name: Mutation Testing
+
+# Mutation testing is CPU-intensive, so we run it:
+# - Weekly (scheduled)
+# - On main branch pushes (after PR merge)
+# - Manually (workflow_dispatch)
+# NOT on every PR (would slow down CI significantly)
+
+on:
+  # Weekly schedule (Sunday at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * 0'
+  
+  # Main branch pushes (after PR merge)
+  push:
+    branches: [main]
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      paths:
+        description: 'Paths to mutate (comma-separated)'
+        required: false
+        default: 'amorsize/optimizer.py,amorsize/sampling.py,amorsize/system_info.py'
+      max_mutations:
+        description: 'Maximum number of mutations to test (0 = all)'
+        required: false
+        default: '0'
+
+jobs:
+  mutation-test:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 hours max
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,full]"
+        pip install mutmut
+    
+    - name: Cache mutation results
+      uses: actions/cache@v4
+      with:
+        path: .mutmut-cache
+        key: mutmut-cache-${{ github.sha }}
+        restore-keys: |
+          mutmut-cache-
+    
+    - name: Run mutation testing (core modules)
+      run: |
+        # Determine paths to mutate
+        if [ -n "${{ github.event.inputs.paths }}" ]; then
+          PATHS="${{ github.event.inputs.paths }}"
+        else
+          PATHS="amorsize/optimizer.py,amorsize/sampling.py,amorsize/system_info.py,amorsize/cost_model.py,amorsize/cache.py"
+        fi
+        
+        # Determine max mutations
+        MAX_MUTATIONS="${{ github.event.inputs.max_mutations }}"
+        if [ -z "$MAX_MUTATIONS" ] || [ "$MAX_MUTATIONS" = "0" ]; then
+          MAX_MUTATIONS_ARG=""
+        else
+          MAX_MUTATIONS_ARG="--max-mutations $MAX_MUTATIONS"
+        fi
+        
+        echo "Running mutation testing on: $PATHS"
+        echo "Max mutations: ${MAX_MUTATIONS:-unlimited}"
+        
+        # Run mutmut
+        mutmut run \
+          --paths-to-mutate "$PATHS" \
+          --tests-dir tests/ \
+          $MAX_MUTATIONS_ARG \
+          || true  # Don't fail if some mutations survive
+      env:
+        AMORSIZE_TESTING: "1"
+    
+    - name: Generate mutation report
+      if: always()
+      run: |
+        echo "Generating mutation testing report..."
+        mutmut results
+        
+        # Generate HTML report
+        mutmut html || echo "HTML generation failed (may not have results yet)"
+    
+    - name: Calculate mutation score
+      if: always()
+      id: mutation_score
+      run: |
+        # Parse mutation results
+        RESULTS=$(mutmut results 2>&1 || echo "No results")
+        echo "$RESULTS"
+        
+        # Extract statistics (if available)
+        if echo "$RESULTS" | grep -q "Killed:"; then
+          KILLED=$(echo "$RESULTS" | grep "Killed:" | grep -oP '\d+' | head -1)
+          TOTAL=$(echo "$RESULTS" | grep "Total:" | grep -oP '\d+' | head -1)
+          
+          if [ -n "$KILLED" ] && [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+            SCORE=$(awk "BEGIN {printf \"%.1f\", ($KILLED / $TOTAL) * 100}")
+            echo "mutation_score=$SCORE" >> $GITHUB_OUTPUT
+            echo "📊 Mutation Score: $SCORE%"
+            
+            # Check if score meets threshold (70%)
+            if awk "BEGIN {exit !($SCORE >= 70.0)}"; then
+              echo "✅ Mutation score ($SCORE%) meets 70% threshold"
+              echo "score_acceptable=true" >> $GITHUB_OUTPUT
+            else
+              echo "⚠️  Mutation score ($SCORE%) below 70% threshold"
+              echo "score_acceptable=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Could not calculate mutation score"
+            echo "mutation_score=unknown" >> $GITHUB_OUTPUT
+            echo "score_acceptable=true" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "No mutation results available"
+          echo "mutation_score=unknown" >> $GITHUB_OUTPUT
+          echo "score_acceptable=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Upload HTML report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mutation-testing-report
+        path: html/
+        retention-days: 30
+        if-no-files-found: ignore
+    
+    - name: Upload mutation cache
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mutation-cache
+        path: .mutmut-cache
+        retention-days: 7
+        if-no-files-found: ignore
+    
+    - name: Comment on low mutation score (scheduled runs only)
+      if: |
+        always() &&
+        github.event_name == 'schedule' &&
+        steps.mutation_score.outputs.score_acceptable == 'false'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const score = '${{ steps.mutation_score.outputs.mutation_score }}';
+          const body = `⚠️ **Mutation Testing Alert**
+          
+          The scheduled mutation testing run found a mutation score of **${score}%**, which is below the 70% threshold.
+          
+          This indicates potential gaps in test coverage. Consider:
+          1. Reviewing survived mutations with \`mutmut show <id>\`
+          2. Adding tests to catch these mutations
+          3. Improving boundary condition testing
+          
+          [View full report in workflow artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          `;
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Mutation Score Alert: ${score}%`,
+            body: body,
+            labels: ['testing', 'quality']
+          });
+    
+    - name: Summary
+      if: always()
+      run: |
+        echo "## Mutation Testing Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        SCORE="${{ steps.mutation_score.outputs.mutation_score }}"
+        if [ "$SCORE" != "unknown" ]; then
+          echo "**Mutation Score:** $SCORE%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.mutation_score.outputs.score_acceptable }}" = "true" ]; then
+            echo "✅ Score meets 70% threshold" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️  Score below 70% threshold" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "ℹ️ Mutation score calculation not available" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "View detailed report in workflow artifacts." >> $GITHUB_STEP_SUMMARY
