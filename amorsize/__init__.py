@@ -118,6 +118,15 @@ from .circuit_breaker import (
     circuit_breaker_call,
 )
 
+# Rate limiting for API throttling (no extra dependencies)
+from .rate_limit import (
+    RateLimitPolicy,
+    RateLimiter,
+    RateLimitExceeded,
+    with_rate_limit,
+    rate_limited_call,
+)
+
 # Checkpoint/Resume for long-running workloads (no extra dependencies)
 from .checkpoint import (
     CheckpointManager,
@@ -463,6 +472,11 @@ __all__ = [
     "CircuitState",
     "with_circuit_breaker",
     "circuit_breaker_call",
+    "RateLimitPolicy",
+    "RateLimiter",
+    "RateLimitExceeded",
+    "with_rate_limit",
+    "rate_limited_call",
     "DLQPolicy",
     "DLQEntry",
     "DLQFormat",
