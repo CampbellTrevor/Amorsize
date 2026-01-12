@@ -550,8 +550,8 @@ class TestWarningFormattingProperties:
 # Test: Helpful Tips
 # ============================================================================
 
-class TestHelpfulTipsProperties:
-    """Property-based tests for helpful tips."""
+class TestHelpfulTips:
+    """Tests for helpful tips function (non-parametric)."""
 
     def test_helpful_tips_structure(self):
         """Helpful tips should have consistent structure."""
