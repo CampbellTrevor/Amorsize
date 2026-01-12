@@ -11,6 +11,7 @@ import os
 import tempfile
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -59,7 +60,7 @@ def valid_cache_entry():
         estimated_speedup=st.floats(min_value=0.1, max_value=100.0, allow_nan=False, allow_infinity=False),
         reason=st.text(min_size=1, max_size=200),
         warnings=st.lists(st.text(min_size=1, max_size=100), max_size=10),
-        timestamp=st.floats(min_value=0, max_value=time.time() + 86400),  # Now to tomorrow
+        timestamp=st.floats(min_value=time.time() - 86400, max_value=time.time() + 86400),  # Yesterday to tomorrow
         system_info=valid_system_info(),
         cache_version=st.just(CACHE_VERSION),
         pickle_size=st.one_of(st.none(), st.integers(min_value=0, max_value=1024**3)),
@@ -438,8 +439,8 @@ class TestSaveLoadCacheEntryInvariants:
     @settings(max_examples=50, deadline=5000, suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_save_load_roundtrip_preserves_data(self, n_jobs, chunksize, speedup):
         """Test that saving and loading a cache entry preserves data."""
-        # Use a unique cache key for this test
-        cache_key = f"test_roundtrip_{time.time()}_{os.getpid()}"
+        # Use a unique cache key for this test (uuid ensures uniqueness)
+        cache_key = f"test_roundtrip_{uuid.uuid4().hex}"
         
         # Save an entry
         save_cache_entry(
@@ -475,7 +476,8 @@ class TestSaveLoadCacheEntryInvariants:
 
     def test_load_nonexistent_entry_returns_none(self):
         """Test that loading a nonexistent cache entry returns None."""
-        cache_key = f"nonexistent_{time.time()}_{os.getpid()}"
+        # Use uuid to ensure unique cache key
+        cache_key = f"nonexistent_{uuid.uuid4().hex}"
         
         loaded_entry, miss_reason = load_cache_entry(cache_key)
         
@@ -493,8 +495,8 @@ class TestSaveLoadCacheEntryInvariants:
         # Only test cases where entry should be expired
         assume(age > ttl)
         
-        # Use a unique cache key
-        cache_key = f"test_expired_{time.time()}_{os.getpid()}"
+        # Use uuid to ensure unique cache key
+        cache_key = f"test_expired_{uuid.uuid4().hex}"
         
         # Save entry with old timestamp
         old_timestamp = time.time() - age
