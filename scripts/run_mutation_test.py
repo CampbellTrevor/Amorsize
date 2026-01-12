@@ -12,7 +12,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 
 # Module mapping
 MODULES = {
@@ -93,9 +92,10 @@ def main():
         # Build command
         cmd = ['mutmut', 'run']
         if args.quick:
-            # In quick mode, we'll manually stop after a few mutations
-            print("\nQuick mode: Testing first 20 mutants for rapid feedback")
-            print("(This is not a complete test, just a preview)\n")
+            # Note: mutmut doesn't support limiting mutations via CLI
+            # User will need to manually interrupt (Ctrl+C) or use timeout
+            print("\nQuick mode: You may want to interrupt (Ctrl+C) after a few mutations for rapid feedback")
+            print("(Mutmut doesn't support automatic mutation limits)\n")
         
         print(f"Running: {' '.join(cmd)}")
         print("="*60)
@@ -119,7 +119,7 @@ def main():
             html_result = subprocess.run(['mutmut', 'html'], capture_output=True, text=True)
             if html_result.returncode == 0:
                 print("HTML report generated successfully")
-                print("View it at: file://{}/.mutmut-cache.html".format(os.getcwd()))
+                print(f"View it at: file://{os.getcwd()}/.mutmut-cache.html")
             else:
                 print("Failed to generate HTML report")
                 print(html_result.stderr)
