@@ -78,6 +78,15 @@ pip install -e ".[full]"
 
 ## Quick Start
 
+### Verify Installation
+
+After installing, verify everything works correctly:
+```bash
+python scripts/verify_installation.py
+```
+
+This runs 6 quick checks (~5 seconds) to ensure all core features are functional.
+
 ### Option 1: Command-Line Interface (Fastest to Try)
 
 Analyze or execute functions without writing code:
