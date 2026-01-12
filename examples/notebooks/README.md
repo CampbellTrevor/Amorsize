@@ -70,6 +70,20 @@ Welcome to the Amorsize interactive tutorial notebooks! These Jupyter notebooks 
 
 **Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of pandas and data processing helpful.
 
+### 6. ML Pipelines Optimization (`06_use_case_ml_pipelines.ipynb`)
+**Accelerate ML workflows!** Learn patterns for PyTorch, TensorFlow, scikit-learn, and ML-specific pipelines.
+
+**What you'll learn:**
+- Feature extraction parallelization (images, text, audio)
+- Cross-validation acceleration
+- Hyperparameter tuning optimization (grid search, random search)
+- Batch prediction and inference optimization
+- Ensemble model training
+- Production ML deployment patterns
+- ML-specific performance benchmarks
+
+**Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of machine learning workflows helpful but not required.
+
 ---
 
 ## 🚀 Quick Start
@@ -122,14 +136,15 @@ jupyter notebook
 4. Explore use case notebooks:
    - `04_use_case_web_services.ipynb` for web service integration
    - `05_use_case_data_processing.ipynb` for data pipelines
+   - `06_use_case_ml_pipelines.ipynb` for ML workflow optimization
 5. Check domain-specific use case guides for your domain
 
 ### For Advanced Users
-1. Review notebooks `01` through `05` for a complete overview
+1. Review notebooks `01` through `06` for a complete overview
 2. Explore domain-specific interactive notebooks:
    - `04_use_case_web_services.ipynb` - Django, Flask, FastAPI patterns
    - `05_use_case_data_processing.ipynb` - Pandas, CSV, database, ETL patterns
-   - More coming soon: ML Pipelines
+   - `06_use_case_ml_pipelines.ipynb` - PyTorch, TensorFlow, scikit-learn patterns
 3. Read detailed use case guides:
    - [Web Services](../../docs/USE_CASE_WEB_SERVICES.md)
    - [Data Processing](../../docs/USE_CASE_DATA_PROCESSING.md)

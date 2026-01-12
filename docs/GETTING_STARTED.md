@@ -474,6 +474,7 @@ results = execute(func, data, chunksize=500)  # Larger chunks = less overhead
   - **Parameter Tuning Notebook**: `examples/notebooks/03_parameter_tuning.ipynb` - Master advanced tuning strategies
   - **Web Services Notebook**: `examples/notebooks/04_use_case_web_services.ipynb` - Django, Flask, and FastAPI integration
   - **Data Processing Notebook**: `examples/notebooks/05_use_case_data_processing.ipynb` - Pandas, CSV, database, and ETL patterns
+  - **ML Pipelines Notebook**: `examples/notebooks/06_use_case_ml_pipelines.ipynb` - PyTorch, TensorFlow, scikit-learn, and ML workflows
   - See `examples/notebooks/README.md` for setup instructions
 
 - **Demo Scripts** - Runnable examples for common scenarios
