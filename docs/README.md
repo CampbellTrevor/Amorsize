@@ -183,9 +183,7 @@ This documentation is actively maintained. If you find errors or have suggestion
 
 ---
 
-**Last Updated**: January 2026
-
-**Documentation Version**: 0.1.0
+**Documentation Version**: Matches Amorsize 0.1.0
 
 **Most Popular Guides**:
 1. Getting Started (⭐ Start here!)
