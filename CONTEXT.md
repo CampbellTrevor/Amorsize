@@ -1,3 +1,485 @@
+# Context for Next Agent - Iteration 175
+
+## What Was Accomplished in Iteration 175
+
+**"WEB SERVICES USE CASE INTERACTIVE NOTEBOOK"** - Created comprehensive interactive notebook for Django, Flask, and FastAPI integration, providing hands-on framework-specific patterns for web service optimization.
+
+### Implementation Summary
+
+**Strategic Priority Addressed:** DOCUMENTATION & EXAMPLES (Continue from Iteration 174 - Use case-specific interactive notebooks as recommended)
+
+**Problem Identified:**
+- Getting Started (Iteration 172), Performance Analysis (Iteration 173), and Parameter Tuning (Iteration 174) established interactive learning
+- Missing framework-specific interactive examples for web developers
+- Text guide exists (USE_CASE_WEB_SERVICES.md from Iteration 169) but lacks interactive format
+- No hands-on experience with Django, Flask, FastAPI integration
+- Users needed production deployment patterns and error handling examples
+
+**Solution Implemented:**
+Created `examples/notebooks/04_use_case_web_services.ipynb` - a comprehensive 28.8KB interactive notebook with framework-specific patterns and production workflows.
+
+### Key Changes
+
+#### 1. **Web Services Use Case Notebook** (`examples/notebooks/04_use_case_web_services.ipynb`)
+
+**Structure:**
+1. **Django Integration** - Batch order processing, background tasks
+2. **Flask Integration** - Image processing API with mixed workloads
+3. **FastAPI Integration** - URL analysis with async endpoint patterns
+4. **Cross-Framework Comparison** - Side-by-side performance visualization
+5. **Production Deployment Patterns** - Resource-aware processing, error handling
+6. **Configuration Management** - Save/load optimal parameters
+7. **Production Readiness Checklist** - Automated validation
+
+**Django Patterns:**
+- Batch order processing in views (database + external API)
+- Background task processing (Celery alternative)
+- Performance visualization (serial vs optimized)
+- Real speedup demonstration with benchmarks
+
+**Flask Patterns:**
+- Image processing API (download, process, upload)
+- Mixed workload (I/O + CPU bound)
+- Optimization analysis and recommendations
+- REST API response formatting
+
+**FastAPI Patterns:**
+- URL analysis endpoint (metadata extraction)
+- Security scoring and statistics
+- Async framework integration
+- Modern Python patterns
+
+**Production Patterns:**
+- Resource-aware processing (CPU load, memory checks)
+- Error handling with exponential backoff retry
+- Configuration save/load for deployment
+- Production readiness validation checklist
+
+**Interactive Features:**
+- 28 cells (14 markdown, 14 code)
+- 15+ executable code examples
+- 3 matplotlib visualizations (bar charts, comparisons)
+- Framework comparison analysis
+- Self-contained (no framework installation required)
+- Production-ready patterns (not toy examples)
+
+#### 2. **Updated Notebook README** (`examples/notebooks/README.md`)
+
+**Added:**
+- Description of Web Services notebook
+- Framework-specific learning path (Django, Flask, FastAPI)
+- Prerequisites and integration patterns
+- Updated available notebooks list (now 4 total)
+
+**Change:**
+- Added fourth notebook entry with detailed description
+- Updated learning paths for all user levels
+- Maintained consistent format with previous entries
+
+#### 3. **Updated Getting Started Guide** (`docs/GETTING_STARTED.md`)
+
+**Modified:** "Try Interactive Examples" section
+- Added Web Services notebook link
+- Clear description of framework coverage
+- Maintained progressive learning structure
+
+#### 4. **Comprehensive Testing**
+
+**Created:** `/tmp/test_web_services_notebook.py`
+- Tests all notebook code examples (8 test scenarios)
+- Validates API usage and correctness
+- Ensures examples work as documented
+- All tests passing (8/8)
+
+**Test Results:**
+```
+✅ Django order processing (10 orders)
+✅ Flask image processing (10 images, 2 workers)
+✅ FastAPI URL analysis (10 URLs, 7 safe)
+✅ Resource-aware processing (10 items)
+✅ Error handling with retry (5/5 successful)
+✅ Configuration management (save/load)
+✅ Production readiness check (all checks passed)
+✅ All imports successful
+```
+
+### Files Changed
+
+1. **CREATED**: `examples/notebooks/04_use_case_web_services.ipynb`
+   - **Size:** 28,767 bytes (~700 lines JSON)
+   - **Cells:** 28 (14 markdown, 14 code)
+   - **Topics:** Django, Flask, FastAPI, production patterns, deployment
+   - **Visualizations:** 3 matplotlib charts
+   - **Examples:** 15+ working patterns
+   - **Production workflow:** Complete deployment pipeline
+
+2. **MODIFIED**: `examples/notebooks/README.md`
+   - **Change:** Added Web Services notebook description
+   - **Size:** +22 lines in notebooks section and learning paths
+   - **Purpose:** Document new notebook and guide user progression
+
+3. **MODIFIED**: `docs/GETTING_STARTED.md`
+   - **Change:** Updated "Try Interactive Examples" section
+   - **Size:** +1 line
+   - **Purpose:** Link to Web Services notebook from getting started
+
+4. **CREATED**: `/tmp/test_web_services_notebook.py` (testing only)
+   - **Purpose:** Validate all notebook code examples
+   - **Result:** All tests passing (8/8)
+
+5. **CREATED**: `ITERATION_175_SUMMARY.md`
+   - **Purpose:** Complete documentation of accomplishment
+   - **Size:** 17,724 bytes (~600 lines)
+
+6. **MODIFIED**: `CONTEXT.md` (this file)
+   - **Change:** Added Iteration 175 summary
+   - **Purpose:** Document accomplishment and guide next agent
+
+### Current State Assessment
+
+**Documentation Status:**
+- ✅ Getting Started tutorial (Iteration 168)
+- ✅ Web Services use case guide (Iteration 169)
+- ✅ Data Processing use case guide (Iteration 170)
+- ✅ ML Pipelines use case guide (Iteration 171)
+- ✅ Interactive Getting Started notebook (Iteration 172)
+- ✅ Interactive Performance Analysis notebook (Iteration 173)
+- ✅ Interactive Parameter Tuning notebook (Iteration 174)
+- ✅ **Interactive Web Services notebook (Iteration 175) ← NEW**
+- ✅ Performance methodology (Iteration 167)
+- ✅ 30+ feature-specific examples
+- ✅ 8+ detailed technical docs
+
+**Strategic Priority Status:**
+1. ✅ **INFRASTRUCTURE** - All complete
+2. ✅ **SAFETY & ACCURACY** - All complete
+3. ✅ **CORE LOGIC** - All complete
+4. ✅ **UX & ROBUSTNESS** - All complete
+5. ✅ **PERFORMANCE** - Optimized (0.114ms)
+6. ✅ **DOCUMENTATION** - Getting Started + Use Cases + **4 Interactive Notebooks ← NEW**
+
+**Documentation Coverage by Audience:**
+- ✅ Text learners (Getting Started, Use Case guides)
+- ✅ Visual learners (4 Interactive notebooks with charts)
+- ✅ Reference users (API docs, troubleshooting)
+- ✅ Domain-specific (Web, Data, ML guides)
+- ✅ Performance engineers (Deep-dive analysis notebook)
+- ✅ **Web developers (Framework-specific notebook) ← NEW**
+
+### Quality Metrics
+
+**Notebook Quality:**
+- **Interactivity:** ✅ All 14 code cells executable
+- **Visualizations:** ✅ 3 matplotlib charts (bar charts, comparisons)
+- **Completeness:** ✅ Setup → Django → Flask → FastAPI → production
+- **Actionability:** ✅ 15+ copy-paste ready patterns
+- **Accuracy:** ✅ All examples tested and verified (8/8 tests passing)
+- **Production-ready:** ✅ Real deployment workflows, not toys
+- **Progressive:** ✅ Basic → intermediate → advanced examples
+
+**Code Quality:**
+- **Lines changed:** 0 lines of library code (documentation only)
+- **Risk level:** None (no code modifications)
+- **Test impact:** 0 regressions (all tests passing)
+- **Compatibility:** 100% (no breaking changes)
+
+**User Experience:**
+- **Learning progression:** Clear path from basics to web service integration
+- **Hands-on experience:** Interactive code with immediate results
+- **Visual feedback:** Charts make framework differences concrete
+- **Production patterns:** Complete workflows ready for real deployment
+
+### Technical Highlights
+
+**Notebook Design Strategy:**
+
+**Framework-Specific Approach:**
+1. **Django section** - ORM integration, batch views, background tasks
+2. **Flask section** - REST API, image processing, mixed workloads
+3. **FastAPI section** - Async integration, URL analysis, modern patterns
+4. **Comparison** - Side-by-side performance visualization
+5. **Production** - Deployment patterns applicable to all frameworks
+6. **Validation** - Readiness checklist for production deployment
+
+**Educational Principles:**
+1. **Build on foundations** - Assumes Getting Started completion
+2. **Framework variety** - Serves Django, Flask, and FastAPI developers
+3. **Interactive exploration** - Modify and re-run examples
+4. **Production focus** - Real patterns for real systems
+5. **Visual reinforcement** - Charts for every comparison
+
+**Key Notebook Features:**
+
+1. **Django Integration**
+   - Simulated Django models and ORM
+   - External API calls (shipping calculation)
+   - Database save operations
+   - Batch processing in views
+   - Background task patterns
+
+2. **Flask Integration**
+   - Image download/process/upload workflow
+   - Mixed I/O + CPU workload
+   - REST API response format
+   - Workload type detection
+   - Optimization analysis
+
+3. **FastAPI Integration**
+   - URL analysis endpoint
+   - Metadata extraction
+   - Security scoring
+   - Statistics reporting
+   - Async compatibility
+
+4. **Production Patterns**
+   - Resource-aware processing (CPU load, memory)
+   - Error handling with exponential backoff
+   - Configuration save/load
+   - Deployment workflow
+   - Production readiness validation
+
+5. **Self-Contained**
+   - No Django/Flask/FastAPI installation required
+   - Simulates framework behavior
+   - Generates test data on the fly
+   - All dependencies clearly documented
+   - Works out of the box
+
+### Performance Impact
+
+**Direct Impact:** None (documentation only, no code changes)
+
+**Indirect Impact (User Adoption):**
+
+**For Web Developers:**
+- Clear framework-specific integration patterns
+- Hands-on experience with Django, Flask, FastAPI
+- Production deployment workflows
+- Error handling best practices
+
+**Expected Adoption Metrics:**
+- 📈 Web developer adoption (framework-specific guidance)
+- 📈 Production confidence (deployment patterns)
+- 📈 Django/Flask/FastAPI integration (practical examples)
+- 📈 Configuration reuse (save/load patterns)
+- 📉 Integration friction (interactive examples reduce barriers)
+
+**Community Impact:**
+- More web service use cases
+- More framework-specific examples
+- More production deployment patterns
+- More configuration sharing
+
+---
+
+## Next Agent Recommendations
+
+With Getting Started (172), Performance Analysis (173), Parameter Tuning (174), and Web Services (175) notebooks complete, continue building domain-specific interactive tutorials:
+
+### High-Value Options (Priority Order):
+
+**1. MORE USE CASE NOTEBOOKS (Highest Priority - Continue Pattern)**
+
+**Next: Data Processing Use Case Notebook**
+- **Target audience:** Data engineers, data scientists working with pandas/Dask
+- **Why prioritize:**
+  - Pattern established (4 successful notebooks)
+  - Text guide exists (USE_CASE_DATA_PROCESSING.md from Iteration 170)
+  - Different audience (data engineers vs web developers)
+  - High-demand scenario (pandas, CSV, ETL)
+  - Zero risk (documentation only)
+  - Complements web services with different domain
+- **Content to include:**
+  - `05_use_case_data_processing.ipynb` - Interactive pandas/CSV/database examples
+  - Pandas DataFrame operations (apply, groupby, merge)
+  - CSV/Excel file processing patterns
+  - Database batch operations (bulk inserts, updates)
+  - ETL pipeline optimization
+  - Memory-efficient processing for large datasets
+  - Visualizations of data processing performance
+  - Production ETL patterns
+- **Estimated effort:** Medium (similar to web services notebook)
+- **Expected impact:** 📈 Data engineer adoption, 📈 Pandas integration
+- **File:** `examples/notebooks/05_use_case_data_processing.ipynb`
+
+**Alternative: ML Pipelines Use Case Notebook**
+- **Target audience:** ML engineers, data scientists
+- **Why valuable:**
+  - Text guide exists (USE_CASE_ML_PIPELINES.md from Iteration 171)
+  - Growing field with parallel processing needs
+  - PyTorch/TensorFlow integration
+  - Feature engineering parallelization
+- **Content:**
+  - `06_use_case_ml_pipelines.ipynb` - Interactive PyTorch/TensorFlow examples
+  - Feature extraction (images, text, audio)
+  - Cross-validation parallelization
+  - Hyperparameter tuning patterns
+  - Batch prediction optimization
+  - Model training parallelization
+- **Estimated effort:** Medium-high (requires ML domain knowledge)
+- **File:** `examples/notebooks/06_use_case_ml_pipelines.ipynb`
+
+**2. TESTING & QUALITY (Strengthen Foundation)**
+
+**If Use Case Notebooks Complete:**
+- Property-based testing with Hypothesis
+- Mutation testing for test quality
+- Performance regression benchmarks
+- Cross-platform CI expansion (more Python versions, OS combinations)
+- Integration tests for real-world scenarios
+
+**3. ECOSYSTEM INTEGRATION (Expand Compatibility)**
+
+**Framework/Library Integrations:**
+- Celery integration (task queue optimization)
+- Ray integration (distributed computing)
+- Joblib compatibility layer
+- Concurrent.futures wrapper
+- Pandas parallel apply optimization
+
+### Recommendation Priority
+
+**Highest Value Next: Data Processing Use Case Notebook**
+
+**Rationale:**
+- ✅ Pattern established (4 successful notebooks: Iterations 172-175)
+- ✅ Interactive format proven successful (all tested and validated)
+- ✅ Text guide exists (Iteration 170)
+- ✅ Different audience (data engineers vs web developers)
+- ✅ High-demand scenario (pandas ubiquitous in data science)
+- ✅ Zero risk (documentation only)
+- ✅ Complements web services with different domain
+- ✅ Easy to expand (template established)
+
+**Approach:**
+1. Create `05_use_case_data_processing.ipynb` for pandas/CSV/databases
+2. Cover DataFrame operations (apply, groupby, merge, transform)
+3. Include file processing (CSV, Excel, Parquet)
+4. Show database patterns (bulk operations, query optimization)
+5. Demonstrate ETL pipeline optimization
+6. Include memory-efficient patterns for large datasets
+7. Add performance benchmarks and visualizations
+8. Test all notebook examples
+9. Update notebook README with new entry
+10. Link from main documentation
+
+**Expected Impact:**
+- 📈 Data engineer adoption (pandas integration)
+- 📈 CSV/database integration (practical examples)
+- 📈 Production confidence (ETL patterns)
+- 📈 Memory efficiency (large dataset handling)
+- 📉 Integration friction (interactive examples)
+
+**Alternative: ML Pipelines Notebook**
+
+If data processing seems too similar to previous patterns, pivot to ML pipelines for different perspective and audience. Serves ML engineers with PyTorch/TensorFlow examples.
+
+**Why this matters:**
+- Different user base (ML engineers)
+- Different libraries (PyTorch, TensorFlow, scikit-learn)
+- Different use cases (training, inference, feature engineering)
+- High growth field
+- Demonstrates versatility
+
+---
+
+### Lessons Learned from Iteration 175
+
+**What Worked Well:**
+
+1. **Framework-Specific Organization**
+   - Django/Flask/FastAPI sections serve different developers
+   - Each can jump to their framework
+   - Pattern-based approach more useful than feature docs
+   - Side-by-side comparison valuable
+
+2. **Production Patterns**
+   - Real deployment considerations included
+   - Error handling and retry logic essential
+   - Resource-aware processing builds confidence
+   - Configuration management critical for production
+
+3. **Visual Comparisons**
+   - Framework comparison charts effective
+   - Performance visualizations make differences concrete
+   - Side-by-side speedup bars intuitive
+   - Visual feedback immediate
+
+4. **Self-Contained Examples**
+   - No framework installation required
+   - Simulates framework behavior
+   - Reduces friction
+   - Users can run immediately
+
+5. **Comprehensive Testing**
+   - Test script validates all examples
+   - Caught API mismatches early
+   - Ensures documentation accuracy
+   - Builds confidence
+
+**Key Insights:**
+
+1. **Domain-Specific Notebooks > Generic**
+   - Web developers want Django/Flask/FastAPI examples
+   - Not generic parallelization examples
+   - Framework-specific serves clear audience
+   - Easier to find relevant content
+
+2. **Production Focus Essential**
+   - Toy examples don't help production users
+   - Deployment patterns critical
+   - Error handling not optional
+   - Configuration management needed
+
+3. **Multiple Entry Points**
+   - Different developers use different frameworks
+   - Need to serve all major frameworks
+   - Pattern reuse across frameworks important
+   - Comparison helps decision making
+
+4. **Testing Prevents Rot**
+   - Documentation easily gets stale
+   - Test scripts catch API changes
+   - Automated validation essential
+   - Confidence in accuracy
+
+**Applicable to Future Iterations:**
+
+1. **Continue Domain-Specific Approach**
+   - Create notebooks for different scenarios
+   - Data processing, ML pipelines, batch jobs
+   - Each notebook targets specific audience
+   - Clear use case focus
+
+2. **Maintain Production Focus**
+   - Real patterns, not toys
+   - Deployment considerations
+   - Error handling
+   - Resource management
+   - Configuration patterns
+
+3. **Keep Testing Discipline**
+   - Test all code examples
+   - Validate API usage
+   - Catch issues before users do
+   - Keep documentation current
+
+4. **Visual Emphasis Works**
+   - Charts and graphs effective
+   - Make abstract concepts concrete
+   - Show actual results
+   - Visual feedback valuable
+
+5. **Self-Contained Best**
+   - No complex setup required
+   - Simulates external dependencies
+   - Reduces friction
+   - Immediate value
+
+---
+
+## Previous Work Summary (Iteration 174)
+
 # Context for Next Agent - Iteration 174
 
 ## What Was Accomplished in Iteration 174
