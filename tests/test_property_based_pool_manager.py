@@ -8,9 +8,7 @@ of the worker pool management system across a wide range of inputs and scenarios
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Pool
 from multiprocessing.pool import Pool as PoolType
-from typing import List, Tuple
 
 import pytest
 from hypothesis import given, settings, strategies as st, HealthCheck, assume
