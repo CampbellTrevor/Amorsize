@@ -10,6 +10,8 @@ Amorsize analyzes your Python functions and data to determine the optimal parall
 
 Learn the basics in 5 minutes with practical examples for data processing, ML, and web scraping!
 
+**[💻 Try Interactive Notebooks](examples/notebooks/)** - Hands-on Jupyter tutorials with visualizations!
+
 ---
 
 ## Why Amorsize?

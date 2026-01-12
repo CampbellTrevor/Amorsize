@@ -1,3 +1,448 @@
+# Context for Next Agent - Iteration 172
+
+## What Was Accomplished in Iteration 172
+
+**"INTERACTIVE JUPYTER NOTEBOOK TUTORIALS"** - Created hands-on, visual learning resources with a comprehensive Getting Started notebook, providing interactive exploration of multiprocessing optimization concepts.
+
+### Implementation Summary
+
+**Strategic Priority Addressed:** DOCUMENTATION & EXAMPLES (Continue from Iteration 171 - Interactive tutorials as highest priority)
+
+**Problem Identified:**
+- Getting Started tutorial (Iteration 168) and Use Case trilogy (Iterations 169-171) provided static documentation
+- Missing interactive, hands-on learning experience for visual learners
+- No way to experiment with parameters and see live results
+- Documentation doesn't show actual visualizations of performance comparisons
+- Workshop/training environments benefit from executable, shareable notebooks
+
+**Solution Implemented:**
+Created `examples/notebooks/` directory with comprehensive Getting Started notebook and supporting documentation.
+
+### Key Changes
+
+#### 1. **Getting Started Notebook** (`examples/notebooks/01_getting_started.ipynb`)
+
+**Structure:**
+1. **The Problem with Blind Parallelization** - Interactive demonstration of negative scaling
+2. **The Amorsize Solution** - One-line optimization with live results
+3. **Visualizing the Optimization** - Bar charts comparing serial, blind, and optimized
+4. **Diagnostic Insights** - Deep dive into optimization decisions
+5. **Interactive Parameter Exploration** - Test different worker counts with scaling curves
+6. **Real-World Example** - Data processing with transaction validation
+7. **Key Takeaways** - Summary and next steps
+8. **Appendix** - Troubleshooting common issues
+
+**Interactive Features:**
+- Live performance comparisons (serial vs blind vs optimized)
+- Matplotlib visualizations (execution time, speedup charts)
+- Parameter exploration with worker count sweep
+- Real transaction processing example
+- Diagnostic profile inspection
+- All code is executable and modifiable
+
+**Educational Design:**
+- **Progressive complexity**: Simple → advanced examples
+- **Visual feedback**: Charts and graphs for all comparisons
+- **Hands-on**: Users can modify and re-run examples
+- **Production-ready**: Real-world patterns, not toys
+- **Self-contained**: All examples work without external data
+
+**Content Coverage:**
+- Basic optimization workflow
+- Performance visualization techniques
+- Diagnostic profiling
+- Parameter tuning strategies
+- Real-world data processing
+- Common troubleshooting scenarios
+
+#### 2. **Notebook Directory README** (`examples/notebooks/README.md`)
+
+**Purpose:** Complete setup and usage guide for notebooks
+
+**Content:**
+- Quick start instructions
+- Installation dependencies (Jupyter, matplotlib, numpy)
+- Learning path guidance
+- Tips for using notebooks effectively
+- Troubleshooting common issues
+- Links to related documentation
+
+**Features:**
+- Clear dependency list
+- Installation commands
+- Usage tips and best practices
+- Troubleshooting section
+- Multiple installation options
+
+#### 3. **Updated Documentation Links**
+
+**Modified:** `docs/GETTING_STARTED.md`
+- Updated "Try Interactive Examples" section
+- Added link to new Jupyter notebooks
+- Clear path: `examples/notebooks/01_getting_started.ipynb`
+
+**Modified:** `README.md`
+- Added prominent link to interactive notebooks
+- Positioned next to Getting Started guide
+- Makes notebooks discoverable immediately
+
+#### 4. **Comprehensive Testing**
+
+**Created:** `/tmp/test_notebook_examples.py`
+- Tests all notebook code examples
+- Validates API usage
+- Verifies results correctness
+- All 5 test scenarios pass
+
+**Test Results:**
+```
+✅ Amorsize imports successful
+✅ Serial execution baseline
+✅ Amorsize optimize with profiling
+✅ Amorsize execute workflow
+✅ Diagnostic profile generation
+✅ Real-world transaction processing
+```
+
+### Files Changed
+
+1. **CREATED**: `examples/notebooks/01_getting_started.ipynb`
+   - **Size:** 19,794 bytes (~350 lines)
+   - **Cells:** 22 (mix of markdown and code)
+   - **Topics:** Optimization, visualization, parameter tuning, real-world examples
+   - **Visualizations:** 4 matplotlib charts
+   - **Examples:** 7 working code examples
+
+2. **CREATED**: `examples/notebooks/README.md`
+   - **Size:** 5,031 bytes (~250 lines)
+   - **Purpose:** Setup guide and usage instructions
+   - **Sections:** Quick start, dependencies, tips, troubleshooting
+
+3. **MODIFIED**: `docs/GETTING_STARTED.md`
+   - **Change:** Updated "Try Interactive Examples" section with notebook links
+   - **Size:** +3 lines
+   - **Purpose:** Make notebooks discoverable from main tutorial
+
+4. **MODIFIED**: `README.md`
+   - **Change:** Added prominent link to interactive notebooks
+   - **Size:** +2 lines
+   - **Purpose:** Immediate visibility on repository home page
+
+5. **CREATED**: `/tmp/test_notebook_examples.py` (testing only)
+   - **Purpose:** Validate notebook code examples
+   - **Result:** All tests passing
+
+6. **MODIFIED**: `CONTEXT.md` (this file)
+   - **Change:** Added Iteration 172 summary
+   - **Purpose:** Document accomplishment and guide next agent
+
+### Current State Assessment
+
+**Documentation Status:**
+- ✅ Getting Started tutorial (Iteration 168)
+- ✅ Web Services use case guide (Iteration 169)
+- ✅ Data Processing use case guide (Iteration 170)
+- ✅ ML Pipelines use case guide (Iteration 171)
+- ✅ **Interactive Jupyter notebooks (Iteration 172) ← NEW**
+- ✅ Performance methodology (Iteration 167)
+- ✅ 30+ feature-specific examples
+- ✅ 8+ detailed technical docs
+
+**Strategic Priority Status:**
+1. ✅ **INFRASTRUCTURE** - All complete
+2. ✅ **SAFETY & ACCURACY** - All complete
+3. ✅ **CORE LOGIC** - All complete
+4. ✅ **UX & ROBUSTNESS** - All complete
+5. ✅ **PERFORMANCE** - Optimized (0.114ms)
+6. ✅ **DOCUMENTATION** - Getting Started + Use Cases + **Interactive Notebooks ← NEW**
+
+**Documentation Coverage by Learning Style:**
+- ✅ Text learners (Getting Started, Use Case guides)
+- ✅ **Visual learners (Interactive notebooks) ← NEW**
+- ✅ Reference users (API docs, troubleshooting)
+- ✅ Domain-specific (Web, Data, ML guides)
+
+### Quality Metrics
+
+**Notebook Quality:**
+- **Interactivity:** ✅ All code cells executable
+- **Visualizations:** ✅ 4 matplotlib charts
+- **Completeness:** ✅ Setup → advanced → troubleshooting
+- **Actionability:** ✅ 7 copy-paste ready examples
+- **Accuracy:** ✅ All examples tested and verified
+- **Production-ready:** ✅ Real patterns, not toys
+
+**Code Quality:**
+- **Lines changed:** 0 lines of library code (documentation only)
+- **Risk level:** None (no code modifications)
+- **Test impact:** 0 regressions (all tests passing)
+- **Compatibility:** 100% (no breaking changes)
+
+**User Experience:**
+- **Learning style support:** Now serves both text and visual learners
+- **Hands-on experience:** Users can experiment immediately
+- **Visual feedback:** Charts make concepts concrete
+- **Shareability:** Easy to share for workshops/training
+
+### Technical Highlights
+
+**Notebook Design Strategy:**
+
+**Interactive Learning Approach:**
+1. **Problem demonstration**: Show negative scaling in action
+2. **Solution comparison**: Side-by-side performance charts
+3. **Deep dive**: Diagnostic insights and profiling
+4. **Experimentation**: Interactive parameter tuning
+5. **Real-world**: Practical data processing example
+6. **Takeaways**: Summary and next steps
+
+**Educational Principles:**
+1. **Show, don't tell**: Execute code and see results
+2. **Visual reinforcement**: Charts for every comparison
+3. **Progressive disclosure**: Simple → intermediate → advanced
+4. **Hands-on experimentation**: Encourage modification
+5. **Real patterns**: Production-ready, not toy examples
+
+**Key Notebook Features:**
+
+1. **Performance Visualizations**
+   - Bar charts for execution time comparison
+   - Speedup charts with baseline reference
+   - Scaling curves showing worker count impact
+   - Side-by-side comparisons (serial, blind, optimized)
+
+2. **Interactive Exploration**
+   - Worker count sweep with live results
+   - Parameter tuning playground
+   - Diagnostic profile inspection
+   - Real-time performance feedback
+
+3. **Real-World Examples**
+   - Transaction processing pipeline
+   - Validation and error handling
+   - Memory and performance considerations
+   - Production patterns
+
+4. **Self-Contained**
+   - No external data files required
+   - Generates test data on the fly
+   - All dependencies clearly documented
+   - Works out of the box
+
+### Performance Impact
+
+**Direct Impact:** None (documentation only, no code changes)
+
+**Indirect Impact (User Adoption):**
+
+**For Visual Learners:**
+- Clear performance visualizations
+- Hands-on experimentation
+- Immediate feedback
+- See actual speedups
+
+**Expected Adoption Metrics:**
+- 📈 Visual learner adoption (charts and graphs)
+- 📈 Workshop/training usage (shareable notebooks)
+- 📈 Confidence (see results in real-time)
+- 📈 Experimentation (easy to modify and test)
+- 📉 Learning curve (hands-on exploration)
+
+**Community Impact:**
+- More interactive examples
+- Workshop/training materials
+- Live demonstrations
+- Reproducible results
+
+---
+
+## Next Agent Recommendations
+
+With Getting Started tutorial (Iteration 168), Use Case trilogy (Iterations 169-171), and Interactive Notebooks (Iteration 172) complete, the documentation suite is comprehensive. Consider next steps:
+
+### High-Value Options (Priority Order):
+
+**1. MORE INTERACTIVE NOTEBOOKS (Highest Priority)**
+
+**Next: Additional Jupyter Notebooks**
+- **Target audience:** Users wanting deeper exploration of specific topics
+- **Why prioritize:**
+  - Complements existing Getting Started notebook
+  - Different topics for different use cases
+  - Interactive format proven valuable
+  - Zero risk (documentation only)
+  - Leverages existing patterns
+- **Notebook ideas:**
+  - `02_performance_analysis.ipynb` - Deep dive into bottleneck analysis
+  - `03_parameter_tuning.ipynb` - Advanced parameter optimization strategies
+  - `04_monitoring.ipynb` - Real-time monitoring with hook integration
+  - `05_use_case_web_services.ipynb` - Interactive web services examples
+  - `06_use_case_data_processing.ipynb` - Interactive data processing examples
+- **Estimated effort:** Medium per notebook (similar to Getting Started)
+- **Files:** `examples/notebooks/02_*.ipynb`, etc.
+
+**Alternative: Performance Cookbook**
+- **Target audience:** Developers making optimization decisions
+- **Why valuable:**
+  - Quick reference for common scenarios
+  - Decision tree format
+  - Pattern library
+  - Troubleshooting flowcharts
+- **Content:**
+  - When to parallelize (decision tree)
+  - Worker count selection guide
+  - Chunksize optimization patterns
+  - Memory management recipes
+  - I/O-bound vs CPU-bound patterns
+- **Estimated effort:** Medium
+- **File:** `docs/PERFORMANCE_COOKBOOK.md`
+
+**2. TESTING & QUALITY (Strengthen Foundation)**
+
+**If Documentation is Sufficient:**
+- Property-based testing with Hypothesis
+- Mutation testing for test quality
+- Performance regression benchmarks
+- Cross-platform CI expansion (more Python versions, OS combinations)
+- Integration tests for real-world scenarios
+
+**3. ECOSYSTEM INTEGRATION (Expand Compatibility)**
+
+**Framework/Library Integrations:**
+- Celery integration (task queue optimization)
+- Ray integration (distributed computing)
+- Joblib compatibility layer
+- Concurrent.futures wrapper
+- Pandas parallel apply optimization
+
+### Recommendation Priority
+
+**Highest Value Next: Additional Interactive Notebooks**
+
+**Rationale:**
+- ✅ Getting Started notebook (Iteration 172) establishes pattern
+- ✅ Interactive format received positive testing results
+- ✅ Different learning style (visual, hands-on)
+- ✅ Easy to expand (template established)
+- ✅ Zero risk (documentation only)
+- ✅ High value for specific use cases
+
+**Approach:**
+1. Create `02_performance_analysis.ipynb` for bottleneck analysis
+2. Add visualizations for overhead breakdown
+3. Include real-time monitoring examples
+4. Show hook integration patterns
+5. Test all notebooks execute successfully
+6. Update notebook README with new entries
+7. Link from main documentation
+
+**Expected Impact:**
+- 📈 Deeper understanding of optimization internals
+- 📈 More advanced users (performance analysis skills)
+- 📈 Production confidence (monitoring patterns)
+- 📉 Support questions (self-service deep dives)
+
+**Alternative: Performance Cookbook**
+
+If more notebooks seem redundant, create a Performance Cookbook instead:
+- Decision trees for optimization questions
+- Quick reference cards for scenarios
+- Pattern library for common problems
+- Troubleshooting flowcharts
+
+**Why this matters:**
+- Quick reference for experienced users
+- Reduces decision fatigue
+- Complements detailed guides
+- Production-focused
+
+---
+
+### Lessons Learned from Iteration 172
+
+**What Worked Well:**
+
+1. **Interactive Format**
+   - Jupyter notebooks enable hands-on learning
+   - Visualizations make concepts concrete
+   - Users can experiment and see results
+   - Easy to share for workshops
+
+2. **Comprehensive Testing**
+   - Test script validates all examples
+   - Caught API mismatches early
+   - Ensures notebook quality
+   - Builds confidence
+
+3. **Visual Demonstrations**
+   - Performance charts show speedup clearly
+   - Scaling curves illustrate optimization
+   - Side-by-side comparisons effective
+   - Real-time feedback engaging
+
+4. **Production Patterns**
+   - Real-world transaction example
+   - Not toy code
+   - Demonstrates practical usage
+   - Builds user confidence
+
+**Key Insights:**
+
+1. **Different Learning Styles**
+   - Text documentation serves one audience
+   - Interactive notebooks serve another
+   - Visual learners benefit from charts
+   - Hands-on experimentation valuable
+
+2. **API Testing Critical**
+   - Notebook examples must match actual API
+   - Test scripts catch mismatches
+   - Documentation easily gets stale
+   - Automated validation essential
+
+3. **Progressive Complexity Works**
+   - Start simple (basic optimization)
+   - Build understanding (visualizations)
+   - Add depth (diagnostics, profiling)
+   - Real-world examples (transaction processing)
+   - Clear learning path
+
+4. **Self-Contained Examples Best**
+   - No external data dependencies
+   - Generate test data on the fly
+   - Works out of the box
+   - Reduces friction
+
+**Applicable to Future Iterations:**
+
+1. **Continue Interactive Approach**
+   - Create more topic-specific notebooks
+   - Performance analysis, monitoring, hooks
+   - Use case-specific notebooks
+   - Maintain interactive format
+
+2. **Maintain Testing Discipline**
+   - Test all notebook examples
+   - Validate API usage
+   - Catch issues before users do
+   - Keep notebooks up to date
+
+3. **Keep Visual Emphasis**
+   - Charts and graphs effective
+   - Make concepts concrete
+   - Show actual results
+   - Visual feedback valuable
+
+4. **Production Focus**
+   - Real patterns, not toys
+   - Practical use cases
+   - Deployment considerations
+   - Build confidence
+
+---
+
+## Previous Work Summary (Iteration 171)
+
 # Context for Next Agent - Iteration 171
 
 ## What Was Accomplished in Iteration 171

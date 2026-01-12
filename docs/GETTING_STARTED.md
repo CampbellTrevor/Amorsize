@@ -468,8 +468,9 @@ results = execute(func, data, chunksize=500)  # Larger chunks = less overhead
 
 ### Try Interactive Examples
 
-- **Jupyter Notebook** - Interactive tutorial with visualizations
-  - See `examples/amorsize_quickstart.ipynb`
+- **Jupyter Notebooks** - Interactive tutorials with visualizations and hands-on exploration
+  - **Getting Started Notebook**: `examples/notebooks/01_getting_started.ipynb`
+  - See `examples/notebooks/README.md` for setup instructions
 
 - **Demo Scripts** - Runnable examples for common scenarios
   - See `examples/` directory
