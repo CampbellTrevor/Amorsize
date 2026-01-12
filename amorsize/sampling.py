@@ -878,6 +878,17 @@ def perform_dry_run(
                 tracemalloc.stop()
             except Exception:
                 pass  # Already stopped or never started
+        
+        # Preserve profiler stats if profiling was enabled
+        profiler_stats = None
+        if profiler is not None:
+            try:
+                profiler_stats = pstats.Stats(profiler)
+                profiler_stats.strip_dirs()
+            except Exception:
+                # If we can't create stats, leave as None
+                profiler_stats = None
+        
         return SamplingResult(
             avg_time=0.0,
             return_size=0,
@@ -893,7 +904,8 @@ def perform_dry_run(
             unpicklable_data_index=unpicklable_idx,
             data_pickle_error=pickle_err,
             workload_type="cpu_bound",
-            cpu_time_ratio=1.0
+            cpu_time_ratio=1.0,
+            function_profiler_stats=profiler_stats
         )
 
 
