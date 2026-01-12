@@ -37,7 +37,15 @@ def check_import() -> Tuple[bool, str]:
     """Check that amorsize can be imported."""
     try:
         import amorsize
-        version = getattr(amorsize, '__version__', 'unknown')
+        # Try to get version, but don't fail if not available
+        version = getattr(amorsize, '__version__', None)
+        if version is None:
+            # Try alternate version locations
+            try:
+                from importlib.metadata import version
+                version = version('amorsize')
+            except Exception:
+                version = 'unknown'
         return True, f"Version: {version}"
     except ImportError as e:
         return False, f"Import error: {e}"
@@ -135,6 +143,7 @@ def check_pickle_measurement() -> Tuple[bool, str]:
         import operator
         
         # Use a built-in operator which is guaranteed to be picklable
+        # (Functions defined inside other functions are not picklable)
         test_func = operator.neg
         
         # Perform dry run
