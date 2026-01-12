@@ -7,11 +7,9 @@ of the circuit breaker across a wide range of inputs and state transitions.
 
 import time
 import threading
-from typing import List
-from unittest.mock import Mock
 
 import pytest
-from hypothesis import given, settings, strategies as st, assume, HealthCheck
+from hypothesis import given, settings, strategies as st, HealthCheck
 
 from amorsize.circuit_breaker import (
     CircuitBreaker,
