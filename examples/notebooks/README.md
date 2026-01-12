@@ -29,6 +29,19 @@ Welcome to the Amorsize interactive tutorial notebooks! These Jupyter notebooks 
 
 **Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of parallelization concepts.
 
+### 3. Parameter Tuning (`03_parameter_tuning.ipynb`)
+**Master empirical parameter optimization!** Learn advanced tuning strategies for production workloads.
+
+**What you'll learn:**
+- Grid search tuning to systematically test configurations
+- Quick tuning for rapid prototyping
+- Bayesian optimization for intelligent parameter search
+- Configuration management (save/load optimal parameters)
+- Comparing tuning results with optimizer recommendations
+- Complete production tuning workflow with best practices
+
+**Prerequisites:** Complete `01_getting_started.ipynb` first. Recommended: `02_performance_analysis.ipynb`.
+
 ---
 
 ## 🚀 Quick Start
@@ -77,10 +90,11 @@ jupyter notebook
 ### For Intermediate Users
 1. Complete `01_getting_started.ipynb` if you haven't already
 2. Work through `02_performance_analysis.ipynb` - Learn to diagnose and optimize
-3. Explore domain-specific use case guides for your domain
+3. Try `03_parameter_tuning.ipynb` - Master advanced tuning strategies
+4. Explore domain-specific use case guides for your domain
 
 ### For Advanced Users
-1. Review `01_getting_started.ipynb` and `02_performance_analysis.ipynb` for a refresher
+1. Review `01_getting_started.ipynb`, `02_performance_analysis.ipynb`, and `03_parameter_tuning.ipynb` for a refresher
 2. Explore domain-specific use case guides:
    - [Web Services](../../docs/USE_CASE_WEB_SERVICES.md)
    - [Data Processing](../../docs/USE_CASE_DATA_PROCESSING.md)
