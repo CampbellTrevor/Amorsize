@@ -29,34 +29,6 @@ from amorsize.sampling import (
 )
 
 
-# Custom strategies for generating test data
-@st.composite
-def valid_data_lists(draw, min_size=1, max_size=1000):
-    """Generate valid data lists for sampling."""
-    size = draw(st.integers(min_value=min_size, max_value=max_size))
-    return draw(st.lists(st.integers(), min_size=size, max_size=size))
-
-
-@st.composite
-def picklable_functions(draw):
-    """Generate picklable functions for testing."""
-    # We use a list of known picklable function patterns
-    function_type = draw(st.sampled_from([
-        'lambda_simple',
-        'builtin',
-        'module_function'
-    ]))
-    
-    if function_type == 'lambda_simple':
-        # Simple lambdas are picklable in top-level context
-        return lambda x: x * 2
-    elif function_type == 'builtin':
-        return abs
-    else:
-        # Module-level function
-        return _picklable_test_function
-
-
 def _picklable_test_function(x):
     """A picklable module-level function for testing."""
     return x * 2
