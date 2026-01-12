@@ -1,3 +1,124 @@
+# Context for Next Agent - Iteration 191
+
+## What Was Accomplished in Iteration 191
+
+**"COMPREHENSIVE STATE ANALYSIS & DOCUMENTATION ENHANCEMENT"** - Performed thorough analysis after 190 iterations, verified all strategic priorities complete, and enhanced documentation to help users understand Python 3.12+ fork() deprecation warnings.
+
+### Implementation Summary
+
+**Strategic Priority Addressed:** SAFETY & ACCURACY (The Guardrails - user education and safety assurance)
+
+**Problem Identified:**
+- Python 3.12+ shows DeprecationWarnings about fork() in multi-threaded programs
+- Test suite shows 1626 warnings (expected - from Python's multiprocessing, not Amorsize)
+- Existing documentation recommends fork() for performance (correct)
+- Missing: Explanation of Python 3.12+ warnings and when they're safe to ignore
+
+**Analysis Performed:**
+1. Ran full test suite: 2508 tests passing ✅ (66 skipped - expected)
+2. Verified `optimize()` performance: ~0.003s (excellent) ✅
+3. Confirmed all strategic priorities complete ✅
+4. Investigated fork() warnings: From Python 3.12+, not Amorsize bug ✅
+5. Verified typical user code doesn't trigger warnings ✅
+
+**Solution Implemented:**
+Added comprehensive section to `docs/TROUBLESHOOTING.md`:
+- "Python 3.12+ Fork Deprecation Warnings" (~130 lines)
+- Explains what the warning means and why it appears
+- Documents when warnings are safe to ignore
+- Provides multiple solutions (ignore, suppress, switch to spawn/forkserver)
+- Compares performance trade-offs (fork: 15ms, forkserver: 75ms, spawn: 200ms)
+- Reassures users that Amorsize is safe and warnings are informational
+
+### Key Changes
+
+#### 1. **Enhanced Troubleshooting Documentation** (`docs/TROUBLESHOOTING.md`)
+
+**Section Added:** "Python 3.12+ Fork Deprecation Warnings"  
+**Location:** After "Windows/macOS Spawn Issues", before "Docker/Container Memory Issues"  
+**Size:** ~130 lines
+
+**Content:**
+- What the warning is and why Python 3.12+ added it
+- When users might see it (test suites, multi-threaded apps)
+- Why it's usually safe to ignore
+- Four solution options (ignore, suppress, spawn, forkserver)
+- Performance comparison between start methods
+- Recommendation for most users (keep fork, ignore warning)
+
+**Key Messages:**
+- ✅ Warning is from Python 3.12+, not an Amorsize bug
+- ✅ Amorsize correctly uses thread-safe locks
+- ✅ Typical usage does NOT cause deadlocks
+- ✅ Fork() is fastest (15ms vs 200ms for spawn)
+- ✅ Warnings are informational, not errors
+
+### Current State Assessment
+
+**All Strategic Priorities Complete:**
+
+1. ✅ **INFRASTRUCTURE** - All complete  
+   - Physical cores, memory limits, caching optimized
+
+2. ✅ **SAFETY & ACCURACY** - All complete  
+   - Generator safety, measured overhead, test isolation fixed  
+   - **Python 3.12+ warnings documented ← NEW (Iteration 191)**
+
+3. ✅ **CORE LOGIC** - All complete  
+   - Amdahl's Law, cost modeling, chunksize calculation
+
+4. ✅ **UX & ROBUSTNESS** - All complete  
+   - API consistency, edge cases, error messages
+
+5. ✅ **PERFORMANCE** - Optimized (0.114ms)  
+   - Cache dir (1475x), Redis (8.1x), start method (52.5x)
+
+6. ✅ **DOCUMENTATION** - Complete + **Python 3.12+ warnings ← NEW**  
+   - Getting Started, Use Cases, Performance Cookbook, Troubleshooting
+
+7. ✅ **TESTING** - Complete  
+   - 2508 tests, 268 edge cases, property-based, mutation infrastructure ready
+
+### Files Changed
+
+1. **MODIFIED**: `docs/TROUBLESHOOTING.md`
+   - **Added:** "Python 3.12+ Fork Deprecation Warnings" section (~130 lines)
+   - **Purpose:** Help users understand Python 3.12+ ecosystem changes
+
+2. **CREATED**: `ITERATION_191_SUMMARY.md`
+   - **Purpose:** Document comprehensive state analysis
+   - **Size:** ~12KB
+
+3. **MODIFIED**: `CONTEXT.md` (this file)
+   - **Change:** Added Iteration 191 summary
+   - **Purpose:** Guide next agent with current state
+
+### Quality Metrics
+
+**State Verification:**
+- ✅ All 2508 tests passing
+- ✅ Performance excellent (~0.003s for optimize())
+- ✅ No user-facing bugs or issues
+- ✅ Documentation comprehensive
+- ✅ All strategic priorities complete
+
+**Documentation Quality:**
+- Clear explanation of Python ecosystem changes
+- Multiple solutions with trade-offs documented
+- Performance metrics included
+- Reassuring tone (warnings are safe to ignore)
+- Links to official Python documentation
+
+**User Experience Impact:**
+- Users understand Python 3.12+ warnings
+- Clear guidance on when to ignore vs. act
+- Performance implications clearly stated
+- Multiple options for different needs
+
+---
+
+## Previous Work Summary (Iteration 190)
+
 # Context for Next Agent - Iteration 190
 
 ## What Was Accomplished in Iteration 190

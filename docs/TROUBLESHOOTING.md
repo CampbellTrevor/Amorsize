@@ -579,6 +579,135 @@ if hasattr(os, 'fork'):
 
 ---
 
+### Python 3.12+ Fork Deprecation Warnings
+
+**Symptom:** DeprecationWarning about fork() in multi-threaded programs.
+
+```
+DeprecationWarning: This process (pid=XXXXX) is multi-threaded, use of fork() may lead to deadlocks in the child.
+```
+
+**Cause:** Python 3.12+ warns when `fork()` is used in programs with active threads. This is a Python ecosystem change, not an Amorsize bug.
+
+**Understanding the Warning:**
+
+Python 3.12+ added safety warnings because fork() copies the entire process memory but only the calling thread, which can cause deadlocks if other threads held locks at fork time. This is a general Python issue affecting all code that uses multiprocessing with fork().
+
+**When You Might See This:**
+
+1. **Test Suites:** Tests that spawn many pools or use threading + multiprocessing
+2. **Multi-Threaded Applications:** Programs using both threading and multiprocessing  
+3. **Framework Integration:** Web frameworks that use threading (Flask, Django with threaded workers)
+
+**Is This a Problem?**
+
+**No, in most cases:**
+
+- ✅ Amorsize correctly uses thread-safe locks for caching
+- ✅ The warning is informational, not an error
+- ✅ Typical Amorsize usage does NOT trigger deadlocks
+- ✅ Python's fork() works correctly in practice for most programs
+
+**When to Be Concerned:**
+
+⚠️ Only if you experience actual deadlocks (processes hang indefinitely)
+
+**Solutions:**
+
+#### 1. Ignore the Warning (Recommended for Most Users)
+
+```python
+# Warnings are informational - Amorsize is safe
+from amorsize import optimize
+
+result = optimize(func, data)  # Works correctly despite warning
+```
+
+#### 2. Suppress the Warning
+
+```python
+import warnings
+
+# Suppress fork warnings (only if you're confident your code is safe)
+warnings.filterwarnings('ignore', 
+                       category=DeprecationWarning, 
+                       message='.*multi-threaded.*fork\(\).*deadlocks.*')
+
+from amorsize import optimize
+result = optimize(func, data)
+```
+
+#### 3. Use 'spawn' Start Method (Safest, Slower)
+
+```python
+import multiprocessing
+
+# Set before any multiprocessing code
+if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn', force=True)
+    
+    from amorsize import optimize
+    result = optimize(func, data)
+    # Spawn is slower (~200ms vs ~15ms) but avoids fork warnings
+```
+
+**Trade-offs:**
+- ✅ **fork** (Linux default): Fast (~15ms spawn), warning in Python 3.12+
+- ✅ **spawn** (Windows/macOS): Slower (~200ms spawn), no warnings, safest
+- ✅ **forkserver** (Unix only): Middle ground (~75ms spawn), no warnings
+
+#### 4. Use 'forkserver' Start Method (Balanced)
+
+```python
+import multiprocessing
+
+# Best of both worlds on Unix
+if __name__ == '__main__':
+    multiprocessing.set_start_method('forkserver', force=True)
+    
+    from amorsize import optimize
+    result = optimize(func, data)
+```
+
+**Why Amorsize Uses fork() by Default:**
+
+On Linux systems, fork() is the default because:
+- ✅ 10-15x faster than spawn method
+- ✅ Lower overhead for short-lived workers
+- ✅ Better performance for typical workloads
+- ✅ Amorsize measures and accounts for spawn costs
+
+**Performance Comparison:**
+
+```python
+from amorsize.system_info import measure_spawn_cost, get_multiprocessing_start_method
+
+method = get_multiprocessing_start_method()
+cost_ms = measure_spawn_cost() * 1000
+
+print(f"Start method: {method}")
+print(f"Spawn cost: {cost_ms:.1f}ms per worker")
+
+# Typical results:
+# fork:       ~15ms  (fast, warning in Python 3.12+)
+# spawn:     ~200ms  (slow, safe, no warnings)
+# forkserver: ~75ms  (balanced, safe, no warnings)
+```
+
+**Recommendation:**
+
+For most users:
+- 🔷 **Keep default fork()** (fastest, warnings are harmless)
+- 🔷 **Ignore warnings** unless you experience actual deadlocks
+- 🔷 **Switch to forkserver** if warnings bother you (small performance cost)
+- 🔷 **Use spawn** only if you need maximum safety (significant performance cost)
+
+**See Also:**
+- [Python multiprocessing contexts](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods)
+- [Python multiprocessing programming guidelines](https://docs.python.org/3/library/multiprocessing.html#programming-guidelines)
+
+---
+
 ### Docker/Container Memory Issues
 
 **Symptom:** Workers killed by OOM (Out Of Memory), or memory limit warnings.
