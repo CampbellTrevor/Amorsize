@@ -42,6 +42,20 @@ Welcome to the Amorsize interactive tutorial notebooks! These Jupyter notebooks 
 
 **Prerequisites:** Complete `01_getting_started.ipynb` first. Recommended: `02_performance_analysis.ipynb`.
 
+### 4. Web Services Integration (`04_use_case_web_services.ipynb`)
+**Build optimized web services!** Learn framework-specific patterns for Django, Flask, and FastAPI.
+
+**What you'll learn:**
+- Django batch processing and background tasks
+- Flask image processing and file handling
+- FastAPI async endpoint optimization
+- Resource-aware production patterns
+- Error handling and retry logic
+- Configuration management for deployment
+- Performance comparison across frameworks
+
+**Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of web frameworks helpful but not required.
+
 ---
 
 ## 🚀 Quick Start
@@ -91,16 +105,20 @@ jupyter notebook
 1. Complete `01_getting_started.ipynb` if you haven't already
 2. Work through `02_performance_analysis.ipynb` - Learn to diagnose and optimize
 3. Try `03_parameter_tuning.ipynb` - Master advanced tuning strategies
-4. Explore domain-specific use case guides for your domain
+4. Explore `04_use_case_web_services.ipynb` for web service integration
+5. Check domain-specific use case guides for your domain
 
 ### For Advanced Users
-1. Review `01_getting_started.ipynb`, `02_performance_analysis.ipynb`, and `03_parameter_tuning.ipynb` for a refresher
-2. Explore domain-specific use case guides:
+1. Review notebooks `01` through `04` for a complete overview
+2. Explore domain-specific interactive notebooks:
+   - `04_use_case_web_services.ipynb` - Django, Flask, FastAPI patterns
+   - More coming soon: Data Processing, ML Pipelines
+3. Read detailed use case guides:
    - [Web Services](../../docs/USE_CASE_WEB_SERVICES.md)
    - [Data Processing](../../docs/USE_CASE_DATA_PROCESSING.md)
    - [ML Pipelines](../../docs/USE_CASE_ML_PIPELINES.md)
-3. Read [Performance Optimization](../../docs/PERFORMANCE_OPTIMIZATION.md) for advanced tuning
-4. Integrate monitoring hooks with your production systems
+4. Study [Performance Optimization](../../docs/PERFORMANCE_OPTIMIZATION.md) for advanced tuning
+5. Integrate monitoring hooks with your production systems
 
 ---
 
