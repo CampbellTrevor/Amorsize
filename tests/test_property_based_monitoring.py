@@ -42,7 +42,7 @@ def port_strategy(draw):
 @st.composite
 def namespace_strategy(draw):
     """Generate valid metric namespaces."""
-    return draw(st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu', 'Nd'), whitelist_characters='_'), min_size=1, max_size=20))
+    return draw(st.text(alphabet=st.characters(categories=('Ll', 'Lu', 'Nd'), whitelist_characters='_'), min_size=1, max_size=20))
 
 
 @st.composite
@@ -195,7 +195,7 @@ class TestStatsDClientInvariants:
         host=host_strategy(),
         port=port_strategy(),
         prefix=namespace_strategy(),
-        metric_name=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu'), whitelist_characters='_'), min_size=1, max_size=20),
+        metric_name=st.text(alphabet=st.characters(categories=('Ll', 'Lu'), whitelist_characters='_'), min_size=1, max_size=20),
         value=st.integers(min_value=0, max_value=10000)
     )
     @settings(deadline=1000, max_examples=30)
@@ -213,7 +213,7 @@ class TestStatsDClientInvariants:
         host=host_strategy(),
         port=port_strategy(),
         prefix=namespace_strategy(),
-        metric_name=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu'), whitelist_characters='_'), min_size=1, max_size=20),
+        metric_name=st.text(alphabet=st.characters(categories=('Ll', 'Lu'), whitelist_characters='_'), min_size=1, max_size=20),
         value=st.floats(min_value=0.0, max_value=10000.0, allow_nan=False, allow_infinity=False)
     )
     @settings(deadline=1000, max_examples=30)
@@ -231,7 +231,7 @@ class TestStatsDClientInvariants:
         host=host_strategy(),
         port=port_strategy(),
         prefix=namespace_strategy(),
-        metric_name=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu'), whitelist_characters='_'), min_size=1, max_size=20),
+        metric_name=st.text(alphabet=st.characters(categories=('Ll', 'Lu'), whitelist_characters='_'), min_size=1, max_size=20),
         ms=st.floats(min_value=0.0, max_value=10000.0, allow_nan=False, allow_infinity=False)
     )
     @settings(deadline=1000, max_examples=30)
@@ -324,7 +324,7 @@ class TestGCPMonitoringMetricsInvariants:
     """Test invariants of the GCPMonitoringMetrics class."""
     
     @given(
-        project_id=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Nd'), whitelist_characters='-'), min_size=6, max_size=30)
+        project_id=st.text(alphabet=st.characters(categories=('Ll', 'Nd'), whitelist_characters='-'), min_size=6, max_size=30)
     )
     @settings(deadline=1000, max_examples=30)
     def test_gcp_monitoring_metrics_initialization(self, project_id):
@@ -337,7 +337,7 @@ class TestGCPMonitoringMetricsInvariants:
         assert metrics._client is None  # Lazy initialization
     
     @given(
-        project_id=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Nd'), whitelist_characters='-'), min_size=6, max_size=30),
+        project_id=st.text(alphabet=st.characters(categories=('Ll', 'Nd'), whitelist_characters='-'), min_size=6, max_size=30),
         ctx=hook_context_strategy()
     )
     @settings(deadline=1000, max_examples=30)
@@ -359,7 +359,7 @@ class TestOpenTelemetryTracerInvariants:
     """Test invariants of the OpenTelemetryTracer class."""
     
     @given(
-        service_name=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu'), whitelist_characters='_-.'), min_size=1, max_size=30),
+        service_name=st.text(alphabet=st.characters(categories=('Ll', 'Lu'), whitelist_characters='_-.'), min_size=1, max_size=30),
         exporter_endpoint=st.sampled_from(['http://localhost:4317', 'http://jaeger:4317', 'http://tempo:4317', None])
     )
     @settings(deadline=1000, max_examples=30)
@@ -371,7 +371,7 @@ class TestOpenTelemetryTracerInvariants:
         assert tracer.exporter_endpoint == exporter_endpoint
     
     @given(
-        service_name=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu'), whitelist_characters='_-.'), min_size=1, max_size=30),
+        service_name=st.text(alphabet=st.characters(categories=('Ll', 'Lu'), whitelist_characters='_-.'), min_size=1, max_size=30),
         exporter_endpoint=st.sampled_from(['http://localhost:4317', 'http://jaeger:4317', None]),
         ctx=hook_context_strategy()
     )
@@ -452,7 +452,7 @@ class TestHookCreationFunctions:
         assert isinstance(hooks, HookManager)
     
     @given(
-        project_id=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Nd'), whitelist_characters='-'), min_size=6, max_size=30)
+        project_id=st.text(alphabet=st.characters(categories=('Ll', 'Nd'), whitelist_characters='-'), min_size=6, max_size=30)
     )
     @settings(deadline=1000, max_examples=30)
     def test_create_gcp_monitoring_hook_returns_hook_manager(self, project_id):
@@ -464,7 +464,7 @@ class TestHookCreationFunctions:
         assert isinstance(hooks, HookManager)
     
     @given(
-        service_name=st.text(alphabet=st.characters(whitelist_categories=('Ll', 'Lu'), whitelist_characters='_-.'), min_size=1, max_size=30),
+        service_name=st.text(alphabet=st.characters(categories=('Ll', 'Lu'), whitelist_characters='_-.'), min_size=1, max_size=30),
         exporter_endpoint=st.sampled_from(['http://localhost:4317', 'http://jaeger:4317', None])
     )
     @settings(deadline=1000, max_examples=30)
