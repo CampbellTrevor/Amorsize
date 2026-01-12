@@ -3,8 +3,14 @@ Property-based tests for the adaptive_chunking module using Hypothesis.
 
 These tests automatically generate edge cases and verify invariant properties
 of the adaptive chunking pool across a wide range of inputs and scenarios.
+
+Note: The AdaptiveChunkingPool uses a "small workload optimization" where
+workloads with size <= chunksize * 2 skip adaptive chunking and are processed
+directly. This is because the overhead of tracking and adaptation is not worth
+it for small workloads. Tests account for this behavior.
 """
 
+import math
 import threading
 import time
 from multiprocessing.pool import Pool, ThreadPool
@@ -13,6 +19,10 @@ import pytest
 from hypothesis import given, settings, strategies as st, HealthCheck, assume
 
 from amorsize.adaptive_chunking import AdaptiveChunkingPool, create_adaptive_pool
+
+
+# Constants
+SMALL_WORKLOAD_THRESHOLD_MULTIPLIER = 2  # Workload size <= chunksize * 2 skips adaptation
 
 
 # Custom strategies for generating test data
@@ -106,7 +116,8 @@ class TestAdaptiveChunkingPoolInitialization:
     @settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
     def test_invalid_target_duration(self, target_duration):
         """Test that target_chunk_duration <= 0 raises ValueError."""
-        assume(not (target_duration != target_duration))  # Filter NaN
+        import math
+        assume(not math.isnan(target_duration))  # Filter NaN
         with pytest.raises(ValueError, match="target_chunk_duration must be > 0"):
             AdaptiveChunkingPool(n_jobs=2, initial_chunksize=10, target_chunk_duration=target_duration)
     
@@ -114,7 +125,8 @@ class TestAdaptiveChunkingPoolInitialization:
     @settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
     def test_invalid_adaptation_rate(self, adaptation_rate):
         """Test that adaptation_rate outside [0.0, 1.0] raises ValueError."""
-        assume(not (adaptation_rate != adaptation_rate))  # Filter NaN
+        import math
+        assume(not math.isnan(adaptation_rate))  # Filter NaN
         assume(adaptation_rate < 0.0 or adaptation_rate > 1.0)
         with pytest.raises(ValueError, match="adaptation_rate must be 0.0-1.0"):
             AdaptiveChunkingPool(n_jobs=2, initial_chunksize=10, adaptation_rate=adaptation_rate)
@@ -298,8 +310,13 @@ class TestMapOperation:
     )
     @settings(max_examples=30, deadline=None)
     def test_map_small_workload_no_adaptation(self, n_jobs, chunksize, workload_size):
-        """Test that small workloads don't trigger adaptation."""
-        # For small workloads (size <= chunksize * 2), no adaptation occurs
+        """Test that small workloads don't trigger adaptation.
+        
+        The AdaptiveChunkingPool skips adaptive chunking for small workloads
+        (size <= chunksize * 2) as an optimization - these workloads are
+        processed directly without the overhead of tracking and adaptation.
+        """
+        # Small workload threshold: size <= chunksize * 2
         assume(workload_size <= chunksize * 2)
         
         def simple_func(x):
@@ -542,7 +559,12 @@ class TestStatisticsTracking:
     )
     @settings(max_examples=30, deadline=None)
     def test_stats_after_work(self, n_jobs, chunksize, workload):
-        """Test that stats are updated after processing work."""
+        """Test that stats are updated after processing work.
+        
+        Stats tracking behavior depends on workload size:
+        - Small workloads (size <= chunksize * 2): Stats may not be tracked (optimization)
+        - Large workloads (size > chunksize * 2): Stats should be tracked
+        """
         def simple_func(x):
             return x * 2
         
@@ -558,13 +580,13 @@ class TestStatisticsTracking:
             
             # After work, total_tasks_processed should match workload size
             # For small workloads (size <= chunksize * 2), stats may not be recorded
-            if len(workload) > chunksize * 2:
+            if len(workload) > chunksize * SMALL_WORKLOAD_THRESHOLD_MULTIPLIER:
                 assert stats['total_tasks_processed'] == len(workload)
             else:
                 # For small workloads, stats tracking may be skipped
                 assert stats['total_tasks_processed'] >= 0
             
-            # Non-negative invariants
+            # Non-negative invariants (always hold)
             assert stats['current_chunksize'] >= 1
             assert stats['total_tasks_processed'] >= 0
             assert stats['adaptation_count'] >= 0
@@ -1033,6 +1055,7 @@ class TestIntegration:
             assert stats['total_tasks_processed'] == 0
             
             # Process some work (large enough to track stats)
+            # Use 100 items to ensure workload > chunksize * SMALL_WORKLOAD_THRESHOLD_MULTIPLIER
             workload1 = list(range(100))
             results1 = pool.map(simple_func, workload1)
             assert results1 == [x * 2 for x in workload1]
@@ -1040,7 +1063,7 @@ class TestIntegration:
             # Check stats after first batch
             stats = pool.get_stats()
             # For workload size > chunksize * 2, stats should be tracked
-            if len(workload1) > chunksize * 2:
+            if len(workload1) > chunksize * SMALL_WORKLOAD_THRESHOLD_MULTIPLIER:
                 assert stats['total_tasks_processed'] > 0
             
             # Process more work
@@ -1073,6 +1096,9 @@ class TestIntegration:
     @settings(max_examples=20, deadline=None)
     def test_multiple_operations_with_context_manager(self, n_jobs, chunksize):
         """Test multiple operations within context manager."""
+        # Use a workload size that's guaranteed to be large enough to track stats
+        LARGE_WORKLOAD_SIZE = 100  # Much larger than max chunksize * 2
+        
         def simple_func(x):
             return x * 2
         
@@ -1082,8 +1108,8 @@ class TestIntegration:
             use_threads=True
         ) as pool:
             # Map (large enough workload to track stats)
-            results1 = pool.map(simple_func, list(range(100)))
-            assert len(results1) == 100
+            results1 = pool.map(simple_func, list(range(LARGE_WORKLOAD_SIZE)))
+            assert len(results1) == LARGE_WORKLOAD_SIZE
             
             # Imap
             results2 = list(pool.imap(simple_func, list(range(50))))
@@ -1096,7 +1122,7 @@ class TestIntegration:
             # Check stats - verify invariants
             stats = pool.get_stats()
             # For large workloads, should have processed some tasks
-            if 100 > chunksize * 2:
+            if LARGE_WORKLOAD_SIZE > chunksize * SMALL_WORKLOAD_THRESHOLD_MULTIPLIER:
                 assert stats['total_tasks_processed'] > 0
             # Always check invariants
             assert stats['current_chunksize'] >= 1
