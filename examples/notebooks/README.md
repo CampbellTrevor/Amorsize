@@ -16,6 +16,19 @@ Welcome to the Amorsize interactive tutorial notebooks! These Jupyter notebooks 
 
 **Prerequisites:** None - start here if you're new to Amorsize!
 
+### 2. Performance Analysis (`02_performance_analysis.ipynb`)
+**Deep dive into optimization internals!** Learn how to identify and fix performance bottlenecks.
+
+**What you'll learn:**
+- Diagnostic profiling for transparency into optimization decisions
+- Bottleneck analysis to identify performance limiters
+- Overhead breakdown visualization (spawn, IPC, chunking)
+- Real-time monitoring with execution hooks
+- Comparative analysis of different configurations
+- Complete optimization workflow with dashboard
+
+**Prerequisites:** Complete `01_getting_started.ipynb` first. Basic understanding of parallelization concepts.
+
 ---
 
 ## 🚀 Quick Start
@@ -57,17 +70,23 @@ jupyter notebook
 ## 📖 Learning Path
 
 ### For Beginners
-1. Start with `01_getting_started.ipynb`
+1. Start with `01_getting_started.ipynb` - Learn the basics
 2. Read the [Getting Started Guide](../../docs/GETTING_STARTED.md) for more details
 3. Check out [Use Case Guides](../../docs/) for your specific domain
 
+### For Intermediate Users
+1. Complete `01_getting_started.ipynb` if you haven't already
+2. Work through `02_performance_analysis.ipynb` - Learn to diagnose and optimize
+3. Explore domain-specific use case guides for your domain
+
 ### For Advanced Users
-1. Review `01_getting_started.ipynb` for a refresher
+1. Review `01_getting_started.ipynb` and `02_performance_analysis.ipynb` for a refresher
 2. Explore domain-specific use case guides:
    - [Web Services](../../docs/USE_CASE_WEB_SERVICES.md)
    - [Data Processing](../../docs/USE_CASE_DATA_PROCESSING.md)
    - [ML Pipelines](../../docs/USE_CASE_ML_PIPELINES.md)
 3. Read [Performance Optimization](../../docs/PERFORMANCE_OPTIMIZATION.md) for advanced tuning
+4. Integrate monitoring hooks with your production systems
 
 ---
 
