@@ -8,8 +8,6 @@ matplotlib's optional dependency gracefully.
 
 import os
 import tempfile
-from pathlib import Path
-from typing import List
 from unittest import mock
 
 import pytest
@@ -117,7 +115,7 @@ def valid_comparison_result(draw):
     
     # Create ComparisonConfig objects
     configs = []
-    for i, name in enumerate(config_names):
+    for name in config_names:
         n_jobs = draw(st.integers(min_value=1, max_value=32))
         chunksize = draw(st.integers(min_value=1, max_value=1000))
         method = draw(st.sampled_from(['serial', 'process', 'thread']))
