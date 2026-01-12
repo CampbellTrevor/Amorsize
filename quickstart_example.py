@@ -38,11 +38,9 @@ def main():
     
     # Define our workload
     data = range(100, 200)  # 100 items to process
-    print(f"📊 Workload: Processing {len(list(data))} items with cpu_intensive_task()")
+    data_count = 100  # Number of items
+    print(f"📊 Workload: Processing {data_count} items with cpu_intensive_task()")
     print()
-    
-    # Re-create data as range objects can't be reused after consumption
-    data = range(100, 200)
     
     # ========================================================================
     # Option 1: Get Recommendations (analyze without executing)
