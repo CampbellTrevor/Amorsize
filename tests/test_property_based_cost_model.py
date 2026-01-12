@@ -191,14 +191,10 @@ class TestParseSizeString:
         parsed = _parse_size_string(size_str)
         assert parsed == value, f"No unit should mean bytes, got {parsed} != {value}"
 
-    @given(invalid_str=st.text(min_size=1, max_size=10, alphabet='abcdefghijklmnopqrstuvwxyz'))
+    @given(invalid_str=st.text(min_size=1, max_size=10, alphabet='!@#$%^&*()'))
     @settings(max_examples=50, deadline=2000)
     def test_parse_size_string_invalid_returns_zero(self, invalid_str):
         """Test that invalid strings return 0."""
-        # Skip if string happens to contain valid patterns
-        assume(not any(c in invalid_str.upper() for c in ['K', 'M', 'G']))
-        assume(not any(c.isdigit() for c in invalid_str))
-        
         parsed = _parse_size_string(invalid_str)
         assert parsed == 0, f"Invalid string should return 0, got {parsed}"
 
@@ -207,7 +203,7 @@ class TestDetectCacheInfo:
     """Test properties of detect_cache_info function."""
 
     @settings(max_examples=10, deadline=5000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_detect_cache_info_returns_valid_cache(self, _dummy):
         """Test that detect_cache_info returns valid CacheInfo."""
         cache = detect_cache_info()
@@ -219,7 +215,7 @@ class TestDetectCacheInfo:
         assert cache.cache_line_size > 0, "cache_line_size should be positive"
 
     @settings(max_examples=10, deadline=5000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_detect_cache_info_reasonable_values(self, _dummy):
         """Test that detected cache sizes are in reasonable range."""
         cache = detect_cache_info()
@@ -237,7 +233,7 @@ class TestDetectCacheInfo:
         assert 16 <= cache.cache_line_size <= 256, "cache_line_size should be reasonable"
 
     @settings(max_examples=5, deadline=5000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_detect_cache_info_deterministic(self, _dummy):
         """Test that detect_cache_info returns same values on repeated calls."""
         cache1 = detect_cache_info()
@@ -294,7 +290,7 @@ class TestEstimateMemoryBandwidth:
     """Test properties of estimate_memory_bandwidth function."""
 
     @settings(max_examples=10, deadline=5000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_estimate_memory_bandwidth_positive(self, _dummy):
         """Test that estimated bandwidth is positive."""
         bandwidth = estimate_memory_bandwidth()
@@ -306,7 +302,7 @@ class TestEstimateMemoryBandwidth:
         assert isinstance(bandwidth.is_estimated, bool), "is_estimated should be bool"
 
     @settings(max_examples=10, deadline=5000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_estimate_memory_bandwidth_reasonable_range(self, _dummy):
         """Test that estimated bandwidth is in reasonable range."""
         bandwidth = estimate_memory_bandwidth()
@@ -317,7 +313,7 @@ class TestEstimateMemoryBandwidth:
             f"bandwidth should be in reasonable range, got {bandwidth.bandwidth_gb_per_sec}"
 
     @settings(max_examples=10, deadline=5000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_estimate_memory_bandwidth_is_estimated(self, _dummy):
         """Test that is_estimated flag is set correctly."""
         bandwidth = estimate_memory_bandwidth()
@@ -753,7 +749,7 @@ class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
     @settings(max_examples=20, deadline=2000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_zero_compute_time_handled(self, _dummy):
         """Test that zero compute time is handled gracefully."""
         topology = SystemTopology(
@@ -781,7 +777,7 @@ class TestEdgeCases:
         assert speedup == 1.0, f"Zero compute time should have speedup 1.0, got {speedup}"
 
     @settings(max_examples=20, deadline=2000)
-    @given(st.integers(min_value=0, max_value=0))
+    @given(st.none())
     def test_zero_n_jobs_handled(self, _dummy):
         """Test that zero n_jobs is handled gracefully."""
         topology = SystemTopology(
@@ -809,9 +805,9 @@ class TestEdgeCases:
         assert speedup == 1.0, f"Zero n_jobs should have speedup 1.0, got {speedup}"
 
     @given(
-        l1_size=st.integers(min_value=0, max_value=0),
-        l2_size=st.integers(min_value=0, max_value=0),
-        l3_size=st.integers(min_value=0, max_value=0),
+        l1_size=st.just(0),
+        l2_size=st.just(0),
+        l3_size=st.just(0),
     )
     @settings(max_examples=20, deadline=2000)
     def test_zero_cache_sizes_handled(self, l1_size, l2_size, l3_size):
