@@ -252,10 +252,15 @@ class TestHookManagerBasicOperations:
         """Test that unregister_all clears all hooks for specific event."""
         manager = HookManager()
         
-        # Register multiple hooks
-        hooks = [lambda ctx: None for _ in range(3)]
-        for hook in hooks:
-            manager.register(event, hook)
+        # Register multiple hooks using factory to create unique instances
+        def make_hook(idx):
+            def hook(ctx):
+                pass
+            hook._test_id = idx
+            return hook
+        
+        for i in range(3):
+            manager.register(event, make_hook(i))
         
         count = manager.unregister_all(event)
         assert count == 3
@@ -267,16 +272,18 @@ class TestHookManagerBasicOperations:
         """Test that unregister_all() clears all hooks for all events."""
         manager = HookManager()
         
-        # Register hooks for multiple events
-        total_registered = 0
-        for event in events:
+        # Register hooks for multiple events using factory to create unique instances
+        def make_hook(event_idx):
             def hook(ctx):
                 pass
-            manager.register(event, hook)
-            total_registered += 1
+            hook._test_event_id = event_idx
+            return hook
+        
+        for i, event in enumerate(events):
+            manager.register(event, make_hook(i))
         
         count = manager.unregister_all()
-        assert count == total_registered
+        assert count == len(events)
         
         # Verify all events have no hooks
         for event in events:
@@ -429,20 +436,29 @@ class TestHookManagerThreadSafety:
         manager = HookManager()
         barrier = threading.Barrier(num_threads)
         
-        def register_hook():
+        # Create unique hooks using factory pattern
+        def make_hook(thread_id):
+            def hook(ctx):
+                pass
+            hook._thread_id = thread_id
+            return hook
+        
+        hooks = [make_hook(i) for i in range(num_threads)]
+        
+        def register_hook(hook_func):
             # Synchronize all threads to maximize contention
             barrier.wait()
-            manager.register(event, lambda ctx: None)
+            manager.register(event, hook_func)
         
-        threads = [threading.Thread(target=register_hook) for _ in range(num_threads)]
+        threads = [threading.Thread(target=register_hook, args=(hooks[i],)) for i in range(num_threads)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
         
-        # All hooks should be registered (possibly with duplicates handled correctly)
+        # All hooks should be registered since they're unique
         assert manager.has_hooks(event)
-        # Note: Due to duplicate prevention, count may be less than num_threads
+        assert manager.get_hook_count(event) == num_threads
 
     @given(
         context=valid_hook_context(),
@@ -741,10 +757,16 @@ class TestEdgeCases:
         """Test that hooks for different events are isolated."""
         manager = HookManager()
         
-        hooks_by_event = {}
-        for event in events:
-            def event_hook(ctx: HookContext) -> None:
+        # Create unique hook for each event using factory pattern
+        def make_event_hook(event_idx):
+            def hook(ctx: HookContext) -> None:
                 pass
+            hook._event_idx = event_idx
+            return hook
+        
+        hooks_by_event = {}
+        for i, event in enumerate(events):
+            event_hook = make_event_hook(i)
             hooks_by_event[event] = event_hook
             manager.register(event, event_hook)
         
