@@ -504,10 +504,16 @@ class TestHookManagerStatistics:
         """Test that hook_counts in stats are accurate."""
         manager = HookManager()
         
+        # Create unique hooks using factory pattern to avoid duplicate prevention
+        def make_hook(idx):
+            def hook(ctx):
+                pass
+            # Store index as attribute to make hooks unique
+            hook._test_id = idx
+            return hook
+        
         for i in range(num_hooks):
-            # Create unique hooks to avoid duplicate prevention
-            exec(f"def hook_{i}(ctx): pass")
-            manager.register(event, locals()[f"hook_{i}"])
+            manager.register(event, make_hook(i))
         
         stats = manager.get_stats()
         assert stats["hook_counts"][event.value] == num_hooks
