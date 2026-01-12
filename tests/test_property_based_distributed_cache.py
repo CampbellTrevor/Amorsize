@@ -412,10 +412,10 @@ class TestDistributedCacheEdgeCases:
         disable_distributed_cache()
         _clear_redis_enabled_cache()
 
-    @given(cache_key=st.text(min_size=0, max_size=0))
+    @given(cache_key=st.just(''))
     @settings(max_examples=10, deadline=500)
-    def test_load_with_empty_cache_key(self, cache_key):
-        """Test that load handles empty cache key gracefully."""
+    def test_load_with_empty_string_cache_key(self, cache_key):
+        """Test that load handles empty string cache key gracefully."""
         from amorsize.distributed_cache import load_from_distributed_cache
         
         # Should handle empty string without crashing
@@ -424,9 +424,9 @@ class TestDistributedCacheEdgeCases:
         assert isinstance(result, tuple), "Should return tuple"
         assert len(result) == 2, "Should return tuple of length 2"
 
-    @given(warnings=st.lists(st.text(), min_size=0, max_size=0))
+    @given(warnings=st.just([]))
     @settings(max_examples=10, deadline=500)
-    def test_save_with_empty_warnings(self, warnings):
+    def test_save_with_empty_warnings_list(self, warnings):
         """Test that save handles empty warnings list."""
         from amorsize.distributed_cache import save_to_distributed_cache
         
@@ -459,23 +459,19 @@ class TestDistributedCacheEdgeCases:
         disable_distributed_cache()
         # No assertion needed - just verifying it doesn't crash
 
-    @given(
-        n_jobs=st.just(1),  # Minimum value
-        chunksize=st.just(1)  # Minimum value
-    )
-    @settings(max_examples=10, deadline=500)
-    def test_save_with_minimum_values(self, n_jobs, chunksize):
-        """Test that save handles minimum parameter values."""
+    def test_save_with_minimum_values(self):
+        """Test that save handles minimum parameter values (n_jobs=1, chunksize=1)."""
         from amorsize.distributed_cache import save_to_distributed_cache
         
+        # Test with minimum valid values for n_jobs and chunksize
         result = save_to_distributed_cache(
             cache_key="test_key",
-            n_jobs=n_jobs,
-            chunksize=chunksize,
+            n_jobs=1,  # Minimum workers
+            chunksize=1,  # Minimum chunksize
             executor_type="process",
-            estimated_speedup=1.0,
-            reason="",
-            warnings=[]
+            estimated_speedup=1.0,  # No speedup
+            reason="",  # Empty reason
+            warnings=[]  # No warnings
         )
         
         assert isinstance(result, bool), "Should handle minimum values"
