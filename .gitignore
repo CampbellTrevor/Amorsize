@@ -76,3 +76,8 @@ examples/dns_logs/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Mutation testing
+.mutmut-cache
+mutants/
+html/
