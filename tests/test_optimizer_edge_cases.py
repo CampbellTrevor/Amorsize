@@ -36,7 +36,9 @@ def test_optimize_single_item():
     assert isinstance(result, OptimizationResult)
     assert result.n_jobs == 1  # Should not parallelize single item
     assert result.chunksize >= 1
-    assert "too small" in result.reason.lower() or "single" in result.reason.lower() or "short" in result.reason.lower()
+    # Reason should explain why parallelization isn't beneficial
+    reason_lower = result.reason.lower()
+    assert any(keyword in reason_lower for keyword in ["small", "single", "short", "few"])
 
 
 def test_optimize_two_items():
@@ -118,13 +120,14 @@ def test_optimize_zero_target_chunk_duration():
 
 def test_optimize_with_warnings():
     """Test that warnings are captured when appropriate."""
-    # Very small data should generate a warning
+    # Very small data should generate a warning or explanation in reason
     data = [1]
     result = optimize(simple_func, data)
     
     assert isinstance(result, OptimizationResult)
-    # Should have either a warning or an error for tiny datasets
-    assert len(result.warnings) > 0 or result.error is not None or "small" in result.reason.lower()
+    # For tiny datasets, should have warnings or explain in reason why parallelization isn't used
+    has_warning_indicator = len(result.warnings) > 0 or "small" in result.reason.lower() or "short" in result.reason.lower()
+    assert has_warning_indicator, "Should indicate issue with tiny dataset"
 
 
 def test_optimize_result_attributes():

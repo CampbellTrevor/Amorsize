@@ -76,7 +76,7 @@ Created `tests/test_optimizer_edge_cases.py` with 24 comprehensive tests (316 li
 **After:**
 - 34 tests for optimizer.py (10 existing + 24 new)
 - 470 lines of test code (154 + 316)
-- **Ratio: 2.4%** (improved 5x)
+- **Ratio: 24.7%** (test code / module code)
 - **+240% more tests**
 - **+205% more test code**
 

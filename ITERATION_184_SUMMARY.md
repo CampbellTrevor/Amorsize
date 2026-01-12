@@ -72,7 +72,7 @@ Created `tests/test_optimizer_edge_cases.py` with 24 comprehensive tests (316 li
 - 10 tests for optimizer.py
 - 154 lines of test code
 - 1,905 lines in optimizer module
-- **Ratio: 8.1%** (low coverage)
+- **Ratio: 8.1%** (test code / module code)
 
 **After:**
 - 34 tests for optimizer.py (10 existing + 24 new)
