@@ -78,9 +78,18 @@ pip install -e ".[full]"
 
 ## Quick Start
 
+### Run the Quickstart Example
+
+After installing, try the interactive example to see Amorsize in action:
+```bash
+python quickstart_example.py
+```
+
+This will demonstrate automatic optimization in ~30 seconds with clear explanations of what's happening!
+
 ### Verify Installation
 
-After installing, verify everything works correctly:
+Verify everything works correctly:
 ```bash
 python scripts/verify_installation.py
 ```
