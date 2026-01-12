@@ -48,8 +48,8 @@ def valid_output_destination(draw):
 def valid_logger_name(draw):
     """Generate valid logger names."""
     return draw(st.text(min_size=1, max_size=50, alphabet=st.characters(
-        whitelist_categories=('Lu', 'Ll', 'Nd'),
-        whitelist_characters='_-.'
+        categories=('Lu', 'Ll', 'Nd'),
+        include_characters='_-.'
     )))
 
 
@@ -60,7 +60,7 @@ def valid_function_name(draw):
     first = draw(st.sampled_from('abcdefghijklmnopqrstuvwxyz_'))
     # Rest can be letters, digits, or underscores
     rest = draw(st.text(
-        alphabet=st.characters(whitelist_categories=('Ll', 'Nd'), whitelist_characters='_'),
+        alphabet=st.characters(categories=('Ll', 'Nd'), include_characters='_'),
         max_size=30
     ))
     return first + rest
@@ -145,8 +145,8 @@ def valid_start_method(draw):
 def valid_reason_string(draw):
     """Generate valid reason strings."""
     return draw(st.text(min_size=1, max_size=200, alphabet=st.characters(
-        blacklist_categories=('Cc', 'Cs'),  # Exclude control characters
-        blacklist_characters='\x00\n\r\t'
+        exclude_categories=('Cc', 'Cs'),  # Exclude control characters
+        exclude_characters='\x00\n\r\t'
     )))
 
 
@@ -174,8 +174,8 @@ def valid_metrics_dict(draw):
     metrics = {}
     for _ in range(num_metrics):
         key = draw(st.text(min_size=1, max_size=20, alphabet=st.characters(
-            whitelist_categories=('Ll', 'Nd'),
-            whitelist_characters='_'
+            categories=('Ll', 'Nd'),
+            include_characters='_'
         )))
         value = draw(st.one_of(
             st.integers(min_value=0, max_value=1000000),
