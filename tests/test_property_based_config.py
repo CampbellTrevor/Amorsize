@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from threading import Thread, Barrier
 import pytest
-from hypothesis import given, strategies as st, assume, settings
+from hypothesis import given, strategies as st, settings
 
 from amorsize.config import (
     ConfigData,
