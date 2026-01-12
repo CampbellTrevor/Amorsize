@@ -24,7 +24,18 @@ from amorsize.rate_limit import (
 # Custom strategies for generating test data
 @st.composite
 def valid_rate_limit_policy(draw):
-    """Generate valid RateLimitPolicy configurations."""
+    """
+    Generate valid RateLimitPolicy configurations.
+    
+    Generates policies with:
+    - requests_per_second: 0.1 to 100.0 (covers low to high rates)
+    - burst_size: None or 1 to 200 (None defaults to max(1, round(requests_per_second)))
+    - wait_on_limit: True or False (controls wait vs exception behavior)
+    - on_wait: None (kept simple for property testing)
+    
+    Returns:
+        RateLimitPolicy with randomized but valid parameters
+    """
     requests_per_second = draw(st.floats(min_value=0.1, max_value=100.0))
     burst_size = draw(st.one_of(
         st.none(),
@@ -71,7 +82,7 @@ class TestRateLimitPolicyInvariants:
     @settings(max_examples=50, deadline=1000)
     def test_policy_rejects_non_positive_requests_per_second(self, requests_per_second):
         """Test that non-positive requests_per_second raises ValueError."""
-        assume(requests_per_second <= 0)  # Filter out edge cases from float generation
+        assume(requests_per_second <= 0)  # Only test when value is <= 0 for this negative test
         with pytest.raises(ValueError, match="requests_per_second must be positive"):
             RateLimitPolicy(requests_per_second=requests_per_second)
 
@@ -391,9 +402,11 @@ class TestRateLimiterContextManager:
     @settings(max_examples=30, deadline=2000, suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_limiter_context_manager_multiple_uses(self, policy):
         """Test that context manager can be used multiple times."""
+        # Ensure fast refill and sufficient burst for multiple uses
+        fast_burst = max(5, policy.burst_size) if policy.burst_size else 5
         wait_policy = RateLimitPolicy(
-            requests_per_second=max(10.0, policy.requests_per_second),  # Ensure fast refill
-            burst_size=max(5, policy.burst_size) if policy.burst_size else 5,
+            requests_per_second=max(10.0, policy.requests_per_second),
+            burst_size=fast_burst,
             wait_on_limit=True
         )
         limiter = RateLimiter(wait_policy)
