@@ -23,10 +23,9 @@ Test Coverage:
 import math
 import sys
 from pathlib import Path
-from typing import Callable, List
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 # Add parent directory to path for imports
@@ -55,9 +54,6 @@ from amorsize.ml_prediction import (
     _compute_function_signature,
     _get_current_system_fingerprint,
 )
-
-# Import system info for feature extraction tests
-from amorsize.system_info import get_physical_cores
 
 
 # ============================================================================
