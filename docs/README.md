@@ -31,6 +31,7 @@ Learn how to apply Amorsize to your specific problem domain:
 
 Optimize and understand Amorsize performance:
 
+- **[Performance Cookbook](PERFORMANCE_COOKBOOK.md)** ⭐ - Quick reference recipes and decision trees
 - **[Best Practices](BEST_PRACTICES.md)** - Recommended patterns and anti-patterns
 - **[Performance Tuning](PERFORMANCE_TUNING.md)** - Deep dive into parameter optimization
 - **[Performance Optimization Methodology](PERFORMANCE_OPTIMIZATION.md)** - Case studies and profiling techniques
@@ -97,6 +98,7 @@ Quick Profiling Guide → Distributed Caching
 | Document | Purpose | Audience | Est. Time |
 |----------|---------|----------|-----------|
 | Getting Started | Learn basics | Everyone | 5-10 min |
+| **Performance Cookbook** ⭐ | **Quick recipes & decision trees** | **Everyone** | **5-15 min** |
 | Web Services | Django/Flask/FastAPI patterns | Web developers | 15-20 min |
 | Data Processing | Pandas/CSV/database patterns | Data engineers | 15-20 min |
 | ML Pipelines | PyTorch/TensorFlow patterns | ML engineers | 15-20 min |
@@ -117,6 +119,7 @@ Quick Profiling Guide → Distributed Caching
 
 **I want to...**
 - **...get started quickly** → [Getting Started](GETTING_STARTED.md)
+- **...find quick solutions/recipes** → [Performance Cookbook](PERFORMANCE_COOKBOOK.md) ⭐
 - **...integrate with Django/Flask/FastAPI** → [Web Services](USE_CASE_WEB_SERVICES.md) + [Notebook 04](../examples/notebooks/04_use_case_web_services.ipynb)
 - **...process CSV/Pandas data** → [Data Processing](USE_CASE_DATA_PROCESSING.md) + [Notebook 05](../examples/notebooks/05_use_case_data_processing.ipynb)
 - **...optimize ML training** → [ML Pipelines](USE_CASE_ML_PIPELINES.md) + [Notebook 06](../examples/notebooks/06_use_case_ml_pipelines.ipynb)
